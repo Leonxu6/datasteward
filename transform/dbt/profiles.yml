@@ -1,0 +1,13 @@
+# dbt 连接配置：全部走 DM_* 环境变量（与 dm/config.py 同一套），本文件无密钥。
+# 本机直连默认 127.0.0.1:9030；容器内：DM_WH_HOST=starrocks。
+dm_dw:
+  target: prod
+  outputs:
+    prod:
+      type: starrocks
+      host: "{{ env_var('DM_WH_HOST', '127.0.0.1') }}"
+      port: "{{ env_var('DM_WH_PORT', '9030') | as_number }}"
+      schema: "{{ env_var('DM_DW_SCHEMA', 'dm_dw') }}"
+      username: "{{ env_var('DM_WH_USER', 'root') }}"
+      password: "{{ env_var('DM_WH_PASSWORD', '') }}"
+      threads: 4

@@ -1,0 +1,18 @@
+# Dagster 实例配置（DAGSTER_HOME 下）：运行/事件/调度存储全部落我们自己的 Postgres（dagster 库）。
+storage:
+  postgres:
+    postgres_url:
+      env: DAGSTER_PG_URL
+
+run_coordinator:
+  module: dagster._core.run_coordinator
+  class: QueuedRunCoordinator
+  config:
+    max_concurrent_runs: 2
+
+run_retries:
+  enabled: true
+  max_retries: 1
+
+telemetry:
+  enabled: false

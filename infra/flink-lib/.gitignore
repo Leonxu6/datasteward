@@ -1,0 +1,3 @@
+# Flink 连接器 jar 不入库（合计 ~30MB），用同目录 download.sh 按需拉取并校验 sha256。
+# docker-compose 以文件级 bind mount 把它们挂进容器的 /opt/flink/lib。
+*.jar

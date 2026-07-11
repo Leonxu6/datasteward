@@ -1,0 +1,10 @@
+# 本目录文件在 Linux 主机上由 shell / docker 解释执行，必须 LF 行尾。
+# 强制 eol=lf，避免 Windows 开发机 autocrlf=true 注入 CRLF 导致：
+#   - *.sh 报 "bad interpreter: bash\r"
+#   - docker-compose entrypoint 的 bash 内联脚本因 \r 失败
+*.sh        text eol=lf
+*.sql       text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.md        text eol=lf
+.gitignore  text eol=lf

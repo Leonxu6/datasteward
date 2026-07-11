@@ -1,0 +1,2 @@
+# shell 脚本必须 LF（Windows 开发机 checkout 成 CRLF 后推到 Linux 服务器会炸 \r）
+*.sh text eol=lf

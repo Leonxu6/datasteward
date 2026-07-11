@@ -1,0 +1,16 @@
+# 钉钉 staff_id → 平台角色映射（组织级接入的身份治理面）
+# 部署：cp deploy/role_map.yaml.template ./role_map.yaml（仓库根目录；compose 的 dingtalk profile 会挂载）
+#
+# 规则：
+#   - 未列入本表的提问者一律默认最小权限「仓管」；
+#   - 角色域见 src/dm/security/model.py：采购 / 仓管 / 生产 / 管理层 / 管理员；
+#   - 文件按 mtime 热加载——改完即生效，无需重启 dm-dingtalk；
+#   - staff_id 获取：让员工先 @机器人 发一句话，`docker logs dm-dingtalk` 里
+#     一行 `[钉钉] 收到(...) user=张三 staff=<这串就是> role=仓管` 抄过来即可。
+#
+# 示例（占位，按真实员工替换）：
+roles:
+  "manager0001": 管理员
+  "buyer0001": 采购
+  # 扩展形态（预留行级属性，如仓库归属）：
+  # "wh0001": { role: 仓管, warehouse_id: W01 }

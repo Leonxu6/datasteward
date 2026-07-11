@@ -1,0 +1,3 @@
+# 依赖已收编进 pyproject.toml。安装（含依赖 + 开发工具 pytest）：
+#   pip install -e .[dev]
+-e .[dev]

@@ -1,0 +1,35 @@
+# 真栈冒烟（重型，非 PR 门禁）：起 StarRocks+Postgres，跑 stack 标记的测试子集。
+# 手动触发或每周一次；失败不阻塞 PR，仅作健康信号。
+name: Stack smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * 1"   # 每周一 03:00 UTC
+
+jobs:
+  stack-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: 起数据栈（StarRocks + Postgres）
+        run: |
+          docker compose -f deploy/docker-compose.yml up -d starrocks postgres
+          echo "等待 StarRocks healthy（最长 8 分钟）..."
+          for i in $(seq 1 48); do
+            ST=$(docker compose -f deploy/docker-compose.yml ps starrocks --format '{{.Health}}' || true)
+            [ "$ST" = "healthy" ] && break
+            sleep 10
+          done
+          docker compose -f deploy/docker-compose.yml ps
+      - run: pip install -e .[dev,rag,kg,agent]
+      - name: stack 测试子集（不含需 LLM 的 integration）
+        run: pytest -m "stack and not integration" -q
+      - name: 清理
+        if: always()
+        run: docker compose -f deploy/docker-compose.yml down -v

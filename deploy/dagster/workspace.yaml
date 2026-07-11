@@ -1,0 +1,3 @@
+# Dagster workspace：加载 dm.orchestration.definitions（webserver 与 daemon 共用）。
+load_from:
+  - python_module: dm.orchestration.definitions

@@ -1,0 +1,54 @@
+# 运行时数据目录（compose bind mount：审计 JSONL / 嵌入缓存 / 文件源落地）
+data/
+
+# 数据仓库本地遗留（历史 DuckDB 形态，由 dm-load 重新生成，不入库）
+warehouse.duckdb
+*.duckdb
+*.duckdb.wal
+
+# 运行时留痕日志
+logs/
+*.jsonl
+
+# RAG 合成文档（由 dm-docs build 重新生成，不入库）
+rag_docs/
+
+# dbt 本地产物
+transform/dbt/target/
+transform/dbt/dbt_packages/
+transform/dbt/.user.yml
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+
+# 密钥 / 凭据 / 站点配置 —— 绝不提交
+.env
+.env.*
+secrets.*
+*credential*
+config.local.*
+role_map.yaml
+# 例外：模板与示例（仅占位符、无真实密钥）需入库
+!.env.example
+!deploy/role_map.yaml.template
+
+# 私有文档（如有，保留在本地，不推送）
+*.docx
+*transcript*.txt
+
+# OS / 编辑器
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# 审计报告（本地生成的移交产物，不入库）
+audit-report.md

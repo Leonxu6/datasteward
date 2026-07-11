@@ -1,0 +1,88 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "datasteward"
+version = "0.1.0"
+description = "Self-hosted Foundry-style governed data platform, AI-agent native: ontology + PBAC/markings + full audit + human-approved revertible writebacks, with a LangGraph agent that only reaches data through the governance kernel"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.10"
+keywords = ["data-governance", "data-platform", "ai-agent", "langgraph", "ontology", "starrocks", "dbt", "audit"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Database",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "pymysql>=1.1",
+    "pandas>=2.0",
+    "faker>=25",
+    "streamlit>=1.36",
+    "plotly>=5.20",
+    "pyyaml>=6",
+    "mcp>=1.2",
+    "requests>=2.31",
+    "psycopg[binary]>=3.1",       # v3：管理平台 app/data.py 用
+    "psycopg2-binary>=2.9",       # v2：docs/kg/pipeline/sources 及 pgvector.psycopg2 适配用（合并分支后两版并存）
+]
+
+[project.urls]
+Homepage = "https://github.com/Leonxu6/datasteward"
+Repository = "https://github.com/Leonxu6/datasteward"
+Issues = "https://github.com/Leonxu6/datasteward/issues"
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+# RAG（S2）：本地嵌入 fastembed（onnxruntime，CPU 友好，比 torch 轻）+ pgvector 适配。
+rag = ["fastembed>=0.3", "pgvector>=0.2", "numpy>=1.24"]
+# KG（S3）：Neo4j 官方驱动（纯 Python）。
+kg = ["neo4j>=5"]
+# 连接器：SQL Server/用友 U8（pymssql 或 pyodbc）+ 文件源 Excel（openpyxl）。
+connectors = ["pymssql>=2.2", "openpyxl>=3.1"]
+# 智能体（L10）：自研 LangGraph + OpenAI 兼容端点（云 API 或本地 ollama/LiteLLM）；PG 检查点。
+agent = ["langgraph>=1,<2", "langchain-openai>=1,<2", "langgraph-checkpoint-postgres>=3,<4"]
+# 建模转换（L5）：dbt + StarRocks 适配器（dbt-core 版本由适配器解析，勿双 pin）。
+dbt = ["dbt-starrocks>=1.12"]
+# 编排（L7）：Dagster + dbt 资产集成 + PG 存储。
+# 注意 protobuf：dagster 的 grpc-health gencode 7.35 要求 runtime ≥7.35，而 dbt-core 元数据
+# pin <7 —— 二者在同一次 resolve 里无解（ResolutionImpossible）。解法＝装完后覆盖升级
+# `pip install "protobuf>=7.35"`（deploy/Dockerfile 已内置；实测 dbt 兼容 7.x，见 DEVLOG 坑20）。
+orchestration = ["dagster>=1.13", "dagster-webserver>=1.13", "dagster-dbt>=0.29", "dagster-postgres>=0.29"]
+# 钉钉通道（可选）：Stream 双向机器人。不用钉钉可不装，dm-dingtalk 会给出清晰报错。
+dingtalk = ["dingtalk-stream>=0.22"]
+
+[project.scripts]
+dm-load = "dm.warehouse.load:main"
+dm-agent = "dm.agent.core:main"
+dm-app = "dm.app.__main__:main"
+dm-eval = "dm.eval.run_eval:main"
+dm-dingtalk = "dm.channels.dingtalk:main"
+dm-docs = "dm.docs.index:main"
+dm-kg = "dm.kg.build:main"
+dm-connect = "dm.connect.onboard:main"
+dm-u8 = "dm.connect.u8_mapping:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"dm.eval" = ["eval_set.yaml"]
+"dm.ontology" = ["metrics.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: 需要真实 claude / 网络 / 较慢的端到端用例（跳过用 -m 'not integration'）",
+    "stack: 需要可达的 StarRocks/Postgres 栈（docker compose up -d 后运行；不可达自动跳过）",
+]

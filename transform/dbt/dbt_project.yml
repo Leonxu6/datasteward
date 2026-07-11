@@ -1,0 +1,32 @@
+# DataSteward 数仓分层工程（L5）：ODS(19 表 CDC 镜像 + raw_u8__*) → DWD(Kimball 星型) → DWS(主题汇总) → ADS(应用宽表)
+# 运行：cd transform/dbt && dbt build --profiles-dir .
+# 口径铁律：合成数据锚定 TODAY=2026-06-25（dm/warehouse/generate.py）——一切"当前日"一律
+#          用 var('anchor_today')，严禁 current_date（eval 真值依赖，改了全错）。
+name: dm_dw
+version: "1.0.0"
+profile: dm_dw
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+target-path: target
+clean-targets: ["target", "dbt_packages"]
+
+vars:
+  anchor_today: "2026-06-25"
+
+models:
+  dm_dw:
+    +materialized: table
+    # StarRocks allin1 单 BE：副本数必须 1（FE 全局默认也已在 quickstart 设置，这里双保险）
+    +properties:
+      replication_num: "1"
+
+seeds:
+  dm_dw:
+    +properties:
+      replication_num: "1"
+    dim_date:
+      +column_types:
+        date_day: date

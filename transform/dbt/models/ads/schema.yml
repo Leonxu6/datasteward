@@ -1,0 +1,33 @@
+version: 2
+
+models:
+  - name: ads_shortage_analysis
+    description: "缺料分析：total_stock < safety_stock 的物料（口径=eval 真值 SQL）"
+    columns:
+      - name: material_id
+        tests: [unique, not_null]
+      - name: shortage_qty
+        tests: [not_null]
+
+  - name: ads_fulfillment_check
+    description: "可发货核查：现库存≥未发数量（口径=create_delivery 提交条件）"
+    columns:
+      - name: so_line_key
+        tests: [unique, not_null]
+      - name: fulfillable
+        tests: [not_null]
+
+  - name: ads_procurement_suggestion
+    description: "采购建议：净需求=缺口-在途；建议供应商=历史采购最多"
+    columns:
+      - name: material_id
+        tests: [unique, not_null]
+      - name: net_requirement
+        tests: [not_null]
+      - name: suggested_supplier_id
+        tests:
+          - relationships:
+              to: ref('dim_supplier')
+              field: supplier_id
+              config:
+                severity: warn

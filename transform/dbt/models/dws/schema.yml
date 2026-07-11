@@ -1,0 +1,16 @@
+version: 2
+
+models:
+  - name: dws_material_stock_daily
+    description: "物料库存日汇总：total_stock/safety_stock/gap；snapshot_date=anchor_today"
+    columns:
+      - name: material_id
+        tests: [unique, not_null]
+      - name: total_stock
+        tests: [not_null]
+
+  - name: dws_sales_summary
+    description: "客户×月销售汇总（销售额口径：状态≠已取消；sales_amount 列 FIN）"
+    columns:
+      - name: customer_id
+        tests: [not_null]

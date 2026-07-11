@@ -1,0 +1,368 @@
+# DataSteward · 单机全栈 compose（多架构：amd64/arm64）
+#
+# 快速开始：cp .env.example .env（填 LLM 配置）→ bash deploy/quickstart.sh
+# 手动等价步骤见 infra/README.md。内存参考（默认 profile ≈9GB，+app ≈12GB）：16GB 机器可跑。
+#
+# 绑定策略：数据库端口只绑 127.0.0.1，UI/服务端口绑 0.0.0.0（局域网可看）。
+# 所有宿主端口都可用 .env 里的 DM_PORT_* 重映射（与已有服务冲突时改 .env 即可）。
+#
+# profiles：
+#   (默认)    数据基建：starrocks / postgres / flink×2 / neo4j
+#   app       应用层：dm-app(Streamlit) / dagster-webserver / dagster-daemon
+#   tools     dm-cli（docker compose run --rm dm-cli <命令> 跑一次性任务）
+#   ollama    本地 LLM（可选；零云依赖，需 ~6GB 额外内存或 GPU；.env 里三行切换）
+#   dingtalk  钉钉 Stream 双向通道（可选；需 DINGTALK_APP_KEY/SECRET + role_map.yaml）
+#   sim-u8    用友 U8 仿真源（可选；x86 可用，aarch64 已知不工作——DEVLOG 坑22）
+#   om        OpenMetadata 三件套（可选重型件，额外 ~6GB 内存）
+name: datasteward
+
+x-dm-app-common: &dm-app-common
+  image: datasteward/dm:latest
+  build:
+    context: ..
+    dockerfile: deploy/Dockerfile
+  env_file:
+    - path: ../.env
+      required: false
+  environment: &dm-app-env
+    DM_DATA_DIR: /data
+    DM_WH_HOST: starrocks
+    DM_WH_PORT: "9030"
+    DM_SRC_PG_HOST: postgres
+    DM_SRC_PG_PORT: "5432"
+    DM_FLINK_REST: http://flink-jobmanager:8081
+    DM_NEO4J_URI: bolt://neo4j:7687
+    # LLM：任意 OpenAI 兼容端点。默认取 .env（云 API 或本地 ollama 皆可）；
+    # 未配置时回落到 compose 内 ollama 服务（--profile ollama 启用后即通）。
+    # 注意：若走宿主机自装的 ollama，用 http://host.docker.internal:11434/v1（host-gateway 已配）。
+    # 经验（DEVLOG 坑29）：本地推理务必直连 ollama /v1，不要过 LiteLLM 一类网关——
+    # 网关对客户端断开不取消上游推理（"取消黑洞"），长生成会占死并发槽。
+    DM_LLM_BASE_URL: ${DM_LLM_BASE_URL:-http://ollama:11434/v1}
+    DM_LLM_API_KEY: ${DM_LLM_API_KEY:-sk-local}
+    DM_LLM_MODEL: ${DM_LLM_MODEL:-qwen3:8b}
+    # 合成数据环境的"今天"（generate.py TODAY / dbt anchor_today 同值）；接真库时删除此行回归墙钟
+    DM_ANCHOR_TODAY: "2026-06-25"
+    DAGSTER_PG_URL: postgresql://${DM_SRC_PG_USER:-dm}:${DM_SRC_PG_PASSWORD:-dm_dev_pass}@postgres:5432/dagster
+    DAGSTER_HOME: /dagster_home
+    DM_DBT_DIR: /app/transform/dbt
+    PYTHONUTF8: "1"
+    HF_HUB_OFFLINE: "1"
+    DM_EMBED_CACHE: /data/embed_cache
+  volumes:
+    - ../data:/data
+    - dagster_home:/dagster_home
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  restart: unless-stopped
+
+services:
+  starrocks:
+    image: starrocks/allin1-ubuntu:latest
+    # 关键（DEVLOG 坑1）：allin1 默认把 FE/BE 的 priority_networks 设成 127.0.0.1，导致跨容器
+    # Stream Load 重定向到 127.0.0.1:8040 不可达。entrypoint 预设为容器 IP。
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        IP=$$(grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' /etc/hosts | grep -v '^127\.' | awk '{print $$1; exit}')
+        [ -z "$$IP" ] && IP=$$(hostname -I 2>/dev/null | awk '{print $$1}')
+        echo "dm: using container IP $$IP for FE/BE priority_networks + director MYHOST"
+        grep -q '^priority_networks' /data/deploy/starrocks/fe/conf/fe.conf || echo "priority_networks = $$IP/32" >> /data/deploy/starrocks/fe/conf/fe.conf
+        grep -q '^priority_networks' /data/deploy/starrocks/be/conf/be.conf || echo "priority_networks = $$IP/32" >> /data/deploy/starrocks/be/conf/be.conf
+        sed -i "s|^MYHOST=127.0.0.1|MYHOST=$$IP|" /data/deploy/starrocks/director/run.sh
+        exec /data/deploy/entrypoint.sh
+    ports:
+      - "127.0.0.1:${DM_PORT_SR:-9030}:9030"        # FE MySQL 协议
+      - "127.0.0.1:${DM_PORT_SR_HTTP:-8030}:8030"   # FE HTTP / Stream Load
+      - "127.0.0.1:${DM_PORT_SR_BE:-8040}:8040"     # BE HTTP
+    volumes:
+      - sr_data:/data/deploy/starrocks
+    mem_limit: 4g
+    healthcheck:
+      test: ["CMD-SHELL", "mysql -h127.0.0.1 -P9030 -uroot -e 'show frontends' >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 120s
+    restart: unless-stopped
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    command:
+      - "postgres"
+      - "-c"
+      - "wal_level=logical"        # Flink CDC（Debezium/pgoutput）必需
+      - "-c"
+      - "max_wal_senders=30"
+      - "-c"
+      - "max_replication_slots=30"
+    environment:
+      POSTGRES_USER: ${DM_SRC_PG_USER:-dm}
+      POSTGRES_PASSWORD: ${DM_SRC_PG_PASSWORD:-dm_dev_pass}
+      POSTGRES_DB: ${DM_SRC_PG_DB:-dm}
+    ports:
+      - "127.0.0.1:${DM_PORT_PG:-15432}:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  flink-jobmanager:
+    image: flink:1.18-scala_2.12-java11
+    command: jobmanager
+    ports:
+      - "0.0.0.0:${DM_PORT_FLINK:-8081}:8081"       # Flink Web UI
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: flink-jobmanager
+        jobmanager.memory.process.size: 1024m
+        parallelism.default: 1
+        execution.checkpointing.interval: 5s
+    volumes:
+      - ../infra/flink-lib/flink-sql-connector-postgres-cdc-3.0.1.jar:/opt/flink/lib/flink-sql-connector-postgres-cdc-3.0.1.jar:ro
+      - ../infra/flink-lib/flink-connector-starrocks-1.2.9_flink-1.18.jar:/opt/flink/lib/flink-connector-starrocks-1.2.9_flink-1.18.jar:ro
+    mem_limit: 1200m
+    restart: unless-stopped
+
+  flink-taskmanager:
+    image: flink:1.18-scala_2.12-java11
+    command: taskmanager
+    depends_on:
+      - flink-jobmanager
+    environment:
+      # 19 表 CDC 是单作业 parallelism=1，2 个槽已够（笔记本档；大机器可调大）
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 2
+        taskmanager.memory.process.size: 1728m
+        parallelism.default: 1
+    volumes:
+      - ../infra/flink-lib/flink-sql-connector-postgres-cdc-3.0.1.jar:/opt/flink/lib/flink-sql-connector-postgres-cdc-3.0.1.jar:ro
+      - ../infra/flink-lib/flink-connector-starrocks-1.2.9_flink-1.18.jar:/opt/flink/lib/flink-connector-starrocks-1.2.9_flink-1.18.jar:ro
+    mem_limit: 2g
+    restart: unless-stopped
+
+  neo4j:
+    image: neo4j:5-community
+    environment:
+      NEO4J_AUTH: neo4j/${DM_NEO4J_PASSWORD:-datasteward-dev}
+      # 笔记本档内存（大机器可上调 heap/pagecache）
+      NEO4J_server_memory_heap_initial__size: 512m
+      NEO4J_server_memory_heap_max__size: 512m
+      NEO4J_server_memory_pagecache_size: 256m
+    ports:
+      - "127.0.0.1:${DM_PORT_NEO4J_HTTP:-7474}:7474"
+      - "127.0.0.1:${DM_PORT_NEO4J_BOLT:-7687}:7687"
+    volumes:
+      - neo4j_data:/data
+    mem_limit: 1500m
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+    restart: unless-stopped
+
+  # ---- 本地 LLM（可选，--profile ollama）：拉起后在 .env 里把 LLM 三行指向它 ----
+  ollama:
+    profiles: ["ollama"]
+    image: ollama/ollama:latest
+    ports:
+      - "127.0.0.1:${DM_PORT_OLLAMA:-11434}:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    restart: unless-stopped
+
+  # 一次性：自动拉默认模型（qwen3:8b，~5GB；改 DM_OLLAMA_PULL 换模型）
+  ollama-init:
+    profiles: ["ollama"]
+    image: ollama/ollama:latest
+    depends_on:
+      - ollama
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["ollama pull ${DM_OLLAMA_PULL:-qwen3:8b}"]
+    restart: "no"
+
+  # ---- 仿真 U8 源（可选，--profile sim-u8）：azure-sql-edge 在 x86 正常；
+  # aarch64 新内核上 sqlservr 空转不监听（DEVLOG 坑22），aarch64 请用外部 MSSQL ----
+  sim-u8:
+    profiles: ["sim-u8"]
+    image: mcr.microsoft.com/azure-sql-edge:latest
+    environment:
+      ACCEPT_EULA: "1"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:-SimU8!Passw0rd}
+    ports:
+      - "127.0.0.1:${DM_PORT_MSSQL:-11433}:1433"
+    volumes:
+      - u8_data:/var/opt/mssql
+    mem_limit: 2g
+    healthcheck:
+      # 必须显式 bash：CMD-SHELL 走 /bin/sh(dash)，不支持 /dev/tcp
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/1433"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
+
+  # ================= 应用层（profile: app）=================
+  dm-app:
+    <<: *dm-app-common
+    profiles: ["app"]
+    command: ["dm-app", "--server.port", "8501", "--server.address", "0.0.0.0", "--server.headless", "true"]
+    ports:
+      - "0.0.0.0:${DM_PORT_APP:-8501}:8501"
+    depends_on:
+      starrocks:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health',timeout=5)\" || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  # 钉钉 Stream 双向（可选，--profile dingtalk）：需 .env 里 DINGTALK_APP_KEY/SECRET，
+  # 并先 cp deploy/role_map.yaml.template role_map.yaml（否则 docker 会把缺失 bind 源建成目录）
+  dm-dingtalk:
+    <<: *dm-app-common
+    profiles: ["dingtalk"]
+    command: ["dm-dingtalk", "stream"]
+    volumes:
+      # 覆盖锚点 volumes（compose 合并对列表是整体替换），须把公共两条一并带上
+      - ../data:/data
+      - dagster_home:/dagster_home
+      - ../role_map.yaml:/app/role_map.yaml:ro   # 角色映射热加载
+    depends_on:
+      starrocks:
+        condition: service_healthy
+    mem_limit: 512m
+
+  # dagster.yaml 必须落在 $DAGSTER_HOME 里才生效（否则退回 sqlite，双进程并发出 alembic 多头）
+  dagster-webserver:
+    <<: *dm-app-common
+    profiles: ["app"]
+    command: ["bash", "-c", "cp /app/deploy/dagster/dagster.yaml $$DAGSTER_HOME/ && exec dagster-webserver -h 0.0.0.0 -p 3070 -w /app/deploy/dagster/workspace.yaml"]
+    ports:
+      - "0.0.0.0:${DM_PORT_DAGSTER:-3070}:3070"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 768m
+
+  dagster-daemon:
+    <<: *dm-app-common
+    profiles: ["app"]
+    command: ["bash", "-c", "cp /app/deploy/dagster/dagster.yaml $$DAGSTER_HOME/ && exec dagster-daemon run -w /app/deploy/dagster/workspace.yaml"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 768m
+
+  # 一次性任务跑批入口：docker compose run --rm dm-cli dm-load / dm-eval / dm-u8 full ...
+  dm-cli:
+    <<: *dm-app-common
+    profiles: ["tools"]
+    restart: "no"
+    command: ["bash"]
+
+  # ================= OpenMetadata（profile: om；可选重型件）=================
+  om-mysql:
+    image: mysql:8.3
+    profiles: ["om"]
+    environment:
+      MYSQL_ROOT_PASSWORD: ${OM_MYSQL_ROOT_PASSWORD:-om_dev_root}
+      MYSQL_USER: openmetadata_user
+      MYSQL_PASSWORD: ${OM_MYSQL_PASSWORD:-openmetadata_password}
+      MYSQL_DATABASE: openmetadata_db
+    command: ["--sort_buffer_size=10M"]
+    volumes:
+      - om_mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+    restart: unless-stopped
+
+  om-opensearch:
+    image: opensearchproject/opensearch:2.19.0
+    profiles: ["om"]
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms1g -Xmx1g"
+    volumes:
+      - om_opensearch:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+    restart: unless-stopped
+
+  om-migrate:
+    image: openmetadata/server:1.5.11
+    profiles: ["om"]
+    command: ["./bootstrap/openmetadata-ops.sh", "migrate"]
+    environment: &om-env
+      DB_DRIVER_CLASS: com.mysql.cj.jdbc.Driver
+      DB_SCHEME: mysql
+      DB_PARAMS: allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC
+      DB_USER: openmetadata_user
+      DB_USER_PASSWORD: ${OM_MYSQL_PASSWORD:-openmetadata_password}
+      DB_HOST: om-mysql
+      DB_PORT: "3306"
+      OM_DATABASE: openmetadata_db
+      SEARCH_TYPE: opensearch
+      ELASTICSEARCH_HOST: om-opensearch
+      ELASTICSEARCH_PORT: "9200"
+      ELASTICSEARCH_SCHEME: http
+    depends_on:
+      om-mysql:
+        condition: service_healthy
+      om-opensearch:
+        condition: service_healthy
+    restart: "no"
+
+  openmetadata-server:
+    image: openmetadata/server:1.5.11
+    profiles: ["om"]
+    environment:
+      <<: *om-env
+      OPENMETADATA_CLUSTER_NAME: datasteward
+      SERVER_PORT: "8585"
+    ports:
+      - "0.0.0.0:${DM_PORT_OM:-8585}:8585"
+    depends_on:
+      om-migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:8586/healthcheck >/dev/null || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
+    restart: unless-stopped
+
+volumes:
+  sr_data:
+  pg_data:
+  neo4j_data:
+  u8_data:
+  dagster_home:
+  ollama_models:
+  om_mysql:
+  om_opensearch:

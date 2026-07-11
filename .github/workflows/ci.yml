@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # 纯单元测试：无任何外部服务（stack 用例由 conftest 自动跳过）
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e .[dev,rag,kg,agent]
+      - run: pytest -m "not integration and not stack" -q
+
+  # dbt 工程完整性：parse 纯离线，不连库
+  dbt-parse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install dbt-starrocks
+      - run: cd transform/dbt && dbt parse --profiles-dir . --no-partial-parse
+
+  # compose 配置合法性
+  compose-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose -f deploy/docker-compose.yml config -q
+
+  # 敏感词守门（零容忍清单见 scripts/audit_sensitive.py）
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python scripts/audit_sensitive.py

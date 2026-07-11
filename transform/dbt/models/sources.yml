@@ -1,0 +1,50 @@
+version: 2
+
+sources:
+  - name: ods
+    description: "ODS：PG 影子源经 Flink CDC 同步的 19 张业务表镜像（StarRocks 默认业务库）"
+    schema: "{{ env_var('DM_WH_DB', 'dm') }}"
+    tables:
+      - name: company_org
+      - name: department
+      - name: employee
+      - name: unit
+      - name: material_category
+      - name: material
+        description: "物料主数据（含安全库存 safety_stock——缺料口径锚点）"
+      - name: unit_conversion
+      - name: warehouse
+      - name: storage_location
+      - name: supplier
+      - name: customer
+        description: "客户主数据（credit_limit 带 FIN Marking，查询层强制）"
+      - name: dictionary
+      - name: inventory
+        description: "即时库存：物料×仓库×库位"
+      - name: purchase_order
+        description: "采购订单行（status: 未完成/已完成/已取消）"
+      - name: purchase_arrival
+      - name: sales_order
+        description: "销售订单行（status: 未完成/已完成/已取消）"
+      - name: delivery_note
+      - name: production_order
+      - name: production_material_req
+
+  - name: u8
+    description: "ODS：用友 U8 批抽落地表（dm-u8 管道写入；仿真库联调，真库同构切换）"
+    schema: "{{ env_var('DM_WH_DB', 'dm') }}"
+    tables:
+      - name: raw_u8__inventory
+      - name: raw_u8__vendor
+      - name: raw_u8__customer
+      - name: raw_u8__warehouse
+      - name: raw_u8__department
+      - name: raw_u8__person
+      - name: raw_u8__computationunit
+      - name: raw_u8__currentstock
+      - name: raw_u8__so_somain
+      - name: raw_u8__so_sodetails
+      - name: raw_u8__dispatchlist
+      - name: raw_u8__dispatchlists
+      - name: raw_u8__po_pomain
+      - name: raw_u8__po_podetails

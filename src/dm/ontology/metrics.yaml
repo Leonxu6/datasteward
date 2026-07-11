@@ -1,0 +1,79 @@
+# 指标注册表（L6 语义/指标层，仿 dbt MetricFlow 语义）——口径唯一真相源。
+# 消费方：智能体 query_metric/list_metrics 工具、Streamlit 指标字典页、eval 口径用例。
+# 字段：type=simple(单聚合)；agg=sum/count/count_distinct/avg；expr=聚合表达式（列或常量）；
+#       base_model=DW 层（默认 dm_dw）中的 DWS/ADS 表；dimensions=允许的分组维度白名单；
+#       default_filters=编译时恒加的 WHERE；required_markings=访问该指标须持有的 Marking（PBAC 同步生效）。
+version: 1
+metrics:
+  - name: total_stock
+    cn: 库存总量
+    description: 全部仓库/库位的即时库存数量合计（可按物料分组）
+    type: simple
+    agg: sum
+    expr: total_stock
+    base_model: dws_material_stock_daily
+    dimensions: [material_id, material_name, material_type, category_name]
+    unit: 件
+    owner: 仓储部
+    required_markings: []
+
+  - name: shortage_count
+    cn: 缺料物料数
+    description: 缺料口径＝物料总库存 < 安全库存；本指标统计缺料物料的个数
+    type: simple
+    agg: count
+    expr: material_id
+    base_model: ads_shortage_analysis
+    dimensions: [material_type, category_name]
+    unit: 种
+    owner: 采购部
+    required_markings: []
+
+  - name: net_requirement
+    cn: 物料净需求
+    description: 净需求＝缺口(安全库存-总库存) − 采购在途(未完成单的 订购-已到货)，下限 0
+    type: simple
+    agg: sum
+    expr: net_requirement
+    base_model: ads_procurement_suggestion
+    dimensions: [material_id, material_name, suggested_supplier_id]
+    unit: 件
+    owner: 采购部
+    required_markings: []
+
+  - name: fulfillable_qty
+    cn: 可发货量
+    description: 可发货口径＝现库存 ≥ 未发数量（与 create_delivery 提交条件一致）；本指标合计各订单行的最大可发数量
+    type: simple
+    agg: sum
+    expr: max_fulfillable_qty
+    base_model: ads_fulfillment_check
+    dimensions: [so_id, material_id, customer_id, fulfillable]
+    unit: 件
+    owner: 仓储部
+    required_markings: []
+
+  - name: po_in_transit_qty
+    cn: 采购在途量
+    description: 未完成采购单的 订购数量 − 已到货数量 之和
+    type: simple
+    agg: sum
+    expr: in_transit_qty
+    base_model: fact_purchase_order_line
+    dimensions: [material_id, supplier_id]
+    unit: 件
+    owner: 采购部
+    required_markings: []
+
+  - name: sales_amount
+    cn: 销售额
+    description: 销售额口径＝状态≠已取消 的销售订单行 数量×单价 之和（金额敏感，需 FIN Marking + 正当目的）
+    type: simple
+    agg: sum
+    expr: amount
+    base_model: fact_sales_order_line
+    default_filters: ["status != '已取消'"]
+    dimensions: [customer_id, material_id, order_date, status]
+    unit: 元
+    owner: 管理层
+    required_markings: [FIN]

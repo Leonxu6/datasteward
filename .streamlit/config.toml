@@ -1,0 +1,12 @@
+# 管理平台基础主题（浅色商务蓝）。精致观感主要靠 dm/app/theme.py 注入的 CSS，
+# 这里只兜底基础色，确保 Streamlit 原生控件（输入框/下拉/表格）配色一致。
+[theme]
+base = "light"
+primaryColor = "#185FA5"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F1F5FB"
+textColor = "#1A2B42"
+
+[client]
+toolbarMode = "minimal"
+showSidebarNavigation = false

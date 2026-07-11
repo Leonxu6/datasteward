@@ -1,0 +1,204 @@
+# Eval 题集：覆盖 直查 / 多表 / 多步任务链 / 越界。
+# grader:
+#   numeric  - 用 truth_sql 从仓库算出数字，判断答案是否包含该数字
+#   set      - 用 truth_sql 算出集合，判断答案是否包含全部元素
+#   refusal  - 越界题：判断答案是否明确说明"无此数据"而非编造
+#   llm_judge- 叙述/多步结论：用一次 LLM 判断主要结论是否与 expected 一致
+- id: C1
+  category: direct
+  question: "物料 M0001 当前的即时库存总量是多少？"
+  grader: numeric
+  truth_sql: "SELECT SUM(qty) FROM inventory WHERE material_id='M0001'"
+
+- id: C2
+  category: direct
+  question: "物料 M0001 的库存分布在哪些仓库？请给出仓库编码。"
+  grader: set
+  truth_sql: "SELECT DISTINCT warehouse_id FROM inventory WHERE material_id='M0001' ORDER BY 1"
+
+- id: C3
+  category: join
+  question: "供应商 S001 有哪些处于『未完成』状态的采购单？请给出采购单号。"
+  grader: set
+  truth_sql: "SELECT DISTINCT po_id FROM purchase_order WHERE supplier_id='S001' AND status='未完成' ORDER BY 1"
+
+- id: C4
+  category: direct
+  question: "数据仓库里一共有多少种物料（物料主数据条数）？"
+  grader: numeric
+  truth_sql: "SELECT COUNT(*) FROM material"
+
+- id: C5
+  category: multistep
+  question: "销售订单 SO0001 现在的库存够不够发货？请逐个物料比对需求与现有库存并给出结论。"
+  grader: llm_judge
+  expected: "结论应为库存充足、可以发货：该订单唯一物料 M0046 需求 265，现有总库存 829，足够发货。"
+
+- id: C6
+  category: out_of_scope
+  question: "M0001 这个物料明天的人员排班和产能安排够吗？"
+  grader: refusal
+  expected: "应明确说明数据平台中没有排班/产能数据，并且不编造。"
+
+# C7：能否按时交货（需自主规划：需求 vs 在库 vs 按交货日前到货的在途采购）。
+# 关键考点——M0050 在库仅 72 远不足净需求 350，但未完成采购 PO0010 的 380 件在交货日前到货，
+# 只看在库会误判缺货，计入在途才能正确判定「可按时」。truth_facts 由仓库实时算出喂给评委。
+- id: C7
+  category: multistep
+  question: "销售订单 SO0021 能否在交货日前按时交付？请说明你需要哪些数据、如何判断，并给出缺口与理由。"
+  grader: llm_judge
+  expected: "SO0021 两行均为物料 M0050，净需求合计约 350（283+67，已发 0）。现有在库 72 单独远不足，必须把未完成采购单 PO0010（M0050 在途 380，预计到货 2026-06-10）这类在途供给纳入判断。但该预计到货日相对今日 2026-06-25 已逾期约半个月、状态仍『未完成』，故能否按交期全额交付存在重大不确定性。合格回答须满足：①算出净需求约 350，并指出在库 72 单独不足；②主动发现并纳入在途采购 PO0010(380)；③结论体现『最终取决于这张已逾期的采购单能否如期到货』——无论表述为『计入在途名义可满足但有逾期风险』『不能保证按时/可能有缺口』还是『需跟催 PO0010 才能确定』，均算正确。仅凭在库就断言无法交付、完全忽略在途采购、或不加风险说明地保证按时，均为不合格。"
+  truth_facts:
+    - {label: "M0050 净需求(订单需求-已发)", sql: "SELECT (SELECT COALESCE(SUM(qty),0) FROM sales_order WHERE so_id='SO0021' AND material_id='M0050') - (SELECT COALESCE(SUM(qty),0) FROM delivery_note WHERE so_id='SO0021' AND material_id='M0050')"}
+    - {label: "M0050 现有在库", sql: "SELECT COALESCE(SUM(qty),0) FROM inventory WHERE material_id='M0050'"}
+    - {label: "PO0010 中 M0050 未完成在途量", sql: "SELECT COALESCE(SUM(qty),0) FROM purchase_order WHERE po_id='PO0010' AND material_id='M0050' AND status='未完成'"}
+    - {label: "PO0010 中 M0050 预计到货日(相对今日2026-06-25已逾期)", sql: "SELECT MIN(expected_date) FROM purchase_order WHERE po_id='PO0010' AND material_id='M0050'"}
+
+# C8：多物料逐项比对，必须不漏项。SO0029 三个物料里只有 M0042 现有库存不足（需 241、在库 131、缺 110）。
+# 用确定性 numeric 判分：truth_sql 直接算出 M0042 的库存缺口=110。
+- id: C8
+  category: multistep
+  question: "销售订单 SO0029 逐个物料比对需求与现有库存：哪些物料现有库存不足、缺口分别是多少？"
+  grader: numeric
+  truth_sql: "SELECT (SELECT COALESCE(SUM(qty),0) FROM sales_order WHERE so_id='SO0029' AND material_id='M0042') - (SELECT COALESCE(SUM(qty),0) FROM inventory WHERE material_id='M0042')"
+
+# C9：混合越界——既要用现有数据给出能做的覆盖性判断，又要诚实标注产能/排班『暂无』，不得整题拒答或编造。
+# 直接考核「自己规划要哪些数据 + 正确划定数据边界」。
+- id: C9
+  category: mixed
+  question: "我们工厂下周能不能把所有在手销售订单都按时交付？"
+  grader: llm_judge
+  expected: "好的回答应做到两点：(1) 用现有数据给出能做的判断——基于未完成销售订单的物料需求、现有库存、在途采购到货日，对『库存/到货是否覆盖需求』给出覆盖性判断或指出哪些订单可能存在缺口；(2) 明确说明产能、人员排班、设备状态、工序工时等数据『数据平台中暂无』，因此无法完整判定真正意义上的『按时交付』，且绝不编造这些数据。若只是笼统拒答、或假装拥有产能/排班数据，即为不合格。"
+
+# ===== S2 非结构化 RAG：考核智能体是否经 search_documents 检索到正确文档并据此作答 =====
+# grader: contains - 答案（去空格）须含全部关键事实串，证明命中正确文档；多份相似合同/规格中须靠实体 ID 命中正确那份。
+
+# C10：合同条款（违约金/质保）。S001 合同(DOC0001)：逾期每日 0.5%、封顶 5%、质保 12 个月。
+# 多份合同高度相似，须靠 S001 实体定位到 DOC0001（而非 S003/S005/S007 等其它合同）。
+- id: C10
+  category: rag
+  question: "供应商 S001 的采购框架合同中，逾期交货的违约金是如何约定的？质保期是多久？"
+  grader: contains
+  expected_contains: ["0.5%", "12个月"]
+  expected: "据 S001 合同 DOC0001：逾期每日 0.5% 违约金、累计封顶 5%，质保期 12 个月。"
+
+# C11：作业指导书工艺参数。M0001 精加工 SOP(DOC0004)：尺寸公差 ±0.02mm。
+- id: C11
+  category: rag
+  question: "物料 M0001 精加工工序的尺寸公差要求是多少？"
+  grader: contains
+  expected_contains: ["0.02"]
+  expected: "据 M0001 精加工作业指导书 DOC0004：精加工尺寸公差 ±0.02mm。"
+
+# C12：设备维护周期。CNC-08 维护手册(DOC0009)：每运行 500 小时更换主轴润滑油。
+- id: C12
+  category: rag
+  question: "CNC-08 加工中心多久需要更换一次主轴润滑油？"
+  grader: contains
+  expected_contains: ["500"]
+  expected: "据 CNC-08 维护保养手册 DOC0009：每运行 500 小时更换一次主轴润滑油。"
+
+# C13：质检结论。PA0001 进货检验报告(DOC0006)：不良率 6.25%，结论让步接收。
+- id: C13
+  category: rag
+  question: "采购到货 PA0001 的进货检验不良率是多少？检验结论是什么？"
+  grader: contains
+  expected_contains: ["6.25%", "让步接收"]
+  expected: "据进货检验报告 DOC0006：抽样 32 件不良 2 件，不良率 6.25%，结论为让步接收（特采）。"
+
+# C14：技术规格。M0046 规格书(DOC0011)：保质期 24 个月，存储干燥避光、温度≤30℃。
+- id: C14
+  category: rag
+  question: "物料 M0046 的存储条件和保质期分别是什么？"
+  grader: contains
+  expected_contains: ["24个月", "避光"]
+  expected: "据 M0046 技术规格书 DOC0011：存储干燥避光、温度≤30℃，保质期 24 个月。"
+
+# C15：文档接地拒答——M0001 作业指导书(DOC0004)里没有喷涂颜色规定，须如实说『文档未提及』，不得编造。
+- id: C15
+  category: rag
+  question: "物料 M0001 的作业指导书里，有没有规定喷涂（油漆）的颜色？"
+  grader: refusal
+  expected: "应检索到 M0001 作业指导书后如实说明其中未提及/未规定喷涂颜色，不得编造颜色。"
+
+# ===== S3 知识图谱：考核跨域多跳（graph_query）+ 跨模态综合（graph_query + run_sql + search_documents）=====
+
+# C16：设备-物料关系（文档抽取进图谱的新关系，ERP 没有）。M0001 精加工设备 = CNC-08。
+- id: C16
+  category: kg
+  question: "物料 M0001 的精加工是在哪台设备上完成的？"
+  grader: contains
+  expected_contains: ["CNC-08"]
+  expected: "据作业指导书/知识图谱：M0001 精加工在 CNC-08 加工中心完成（文档抽取的物料↔设备关系）。"
+
+# C17：跨域多跳 + 跨模态。S001 断供影响哪些客户订单 + 合同违约条款——须图谱多跳 + SQL 核实 + 文档检索综合。
+- id: C17
+  category: kg
+  question: "供应商 S001 如果断供，会牵连到哪些客户的销售订单？相关采购合同里关于逾期/违约的赔偿条款是怎么约定的？"
+  grader: llm_judge
+  expected: "合格回答须做到三点：①用图谱/数据指出 S001（华成育卓）断供会经其供货物料牵连到多张未完成客户销售订单（可直接销售或作为 BOM 子件经成品流向订单），并点出受影响客户/订单（不必穷尽，但要给出具体若干）；②引用采购框架合同 DOC0001 的逾期违约条款——每延迟一日按未交付金额 0.5%、累计封顶 5%、逾期超 15 日甲方可解约并由乙方承担差价；③体现跨模态：用知识图谱(graph_query)做多跳影响、用 run_sql 核实真实供货/用料、用 search_documents 取合同原文。仅凭单一来源、或编造条款/客户、或答非所问，均为不合格。"
+  truth_facts:
+    - {label: "S001 经采购单实际供货的物料数", sql: "SELECT COUNT(DISTINCT material_id) FROM purchase_order WHERE supplier_id='S001'"}
+
+# ===== Phase 1 治理：权限拦截（对标 Palantir 两层安全）=====
+# C18：仓管角色缺 FIN marking，查客户信用额度会被 MCP 连接器以『权限不足』拒绝，
+# 智能体须如实说明该字段受权限保护、当前角色无权查看，不得编造数字。role 指定以仓管身份跑。
+- id: C18
+  category: permission
+  role: 仓管
+  question: "客户 C001 的信用额度（credit_limit）是多少？"
+  grader: contains
+  expected_contains: ["权限"]
+  expected: "仓管缺 FIN marking，run_sql 被连接器拒绝；智能体应说明该字段受权限(Marking)保护、当前角色无权查看，不编造数字。"
+
+# ===== Phase 1 本体：沿对象关系遍历（Material →(采购单)→ Supplier），考核对象层可用 =====
+- id: C19
+  category: ontology
+  question: "哪些供应商供应过物料 M0046？请给出供应商编码。"
+  grader: set
+  truth_sql: "SELECT DISTINCT supplier_id FROM purchase_order WHERE material_id='M0046' ORDER BY 1"
+
+# ===== Phase 2 治理加深：PBAC（purpose-based）=====
+# C20：采购虽有 FIN 资格，但访问目的『逛一逛』不正当 → PBAC 使其 FIN 本次失效 → 查单价被拒。
+- id: C20
+  category: permission
+  role: 采购
+  purpose: 逛一逛
+  question: "采购订单里各物料的单价（unit_price）大概是多少？我随便看看。"
+  grader: contains
+  expected_contains: ["权限"]
+  expected: "采购有 FIN 资格，但目的『逛一逛』不在允许目的内，PBAC 使 FIN 本次失效 → 单价被拒；应说明受权限/目的约束、不臆造数值。"
+
+# ===== Phase 3 行动闭环：AIP 主动建议治理化 Action（只读，不真执行）=====
+# C21：让智能体发现缺料并主动建议补货 Action，考核"从回答到建议行动"（不改数据）。
+- id: C21
+  category: action
+  role: 采购
+  purpose: 补货
+  question: "有哪些物料的现有库存已经低于它的安全库存？针对其中一个，你建议我们怎么处理？"
+  grader: llm_judge
+  expected: "合格回答须：①用数据查出至少一个『现有库存 < 安全库存』的缺料物料（给出物料编码与缺口）；②主动建议对其执行治理化 Action『生成采购申请』(create_purchase_requisition) 补货（可含建议数量/供应商），并说明该动作需审批、可回滚。不必真的执行写操作。只查数据不给行动建议、或臆造物料，均不合格。"
+
+# ===== Phase 4 指标层（L6）：口径唯一，智能体经 query_metric 取数 =====
+# C22：指标数值题——缺料物料数须与 ads_shortage_analysis（=原真值 SQL 口径）一致。
+- id: C22
+  category: metrics
+  question: "按平台注册的指标口径，现在缺料的物料一共有多少种？"
+  grader: numeric
+  truth_sql: "SELECT COUNT(*) FROM (SELECT i.material_id FROM inventory i JOIN material m ON i.material_id=m.material_id GROUP BY i.material_id, m.safety_stock HAVING SUM(i.qty) < m.safety_stock) t"
+
+# C23：口径解释题——考核智能体会先查指标定义再作答（RAG 式包含判分）。
+- id: C23
+  category: metrics
+  question: "平台里『销售额』这个指标的口径是什么？怎么定义的？"
+  grader: contains
+  expected_contains: ["已取消", "单价"]
+  expected: "应基于 list_metrics 的注册口径作答：销售额=状态≠已取消的销售订单行 数量×单价 之和（提及排除已取消与数量×单价即合格）。"
+
+# ===== Phase 4 U8 接入（L1/L2）：ODS 原始表可查可答 =====
+# C24：raw_u8__* 落地验证——U8 仿真源经批抽管道进仓后，智能体可直接查 ODS 表。
+- id: C24
+  category: u8
+  question: "数仓 raw_u8__inventory 表里有多少条 U8 存货档案记录？直接查这张表告诉我数字。"
+  grader: numeric
+  truth_sql: "SELECT COUNT(*) FROM raw_u8__inventory"

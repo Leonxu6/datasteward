@@ -1,0 +1,90 @@
+version: 2
+
+models:
+  - name: dim_material
+    description: "物料维：物料 + 分类/单位中文名 + 安全库存（缺料口径锚点）"
+    columns:
+      - name: material_id
+        tests: [unique, not_null]
+      - name: safety_stock
+        tests: [not_null]
+
+  - name: dim_supplier
+    columns:
+      - name: supplier_id
+        tests: [unique, not_null]
+
+  - name: dim_customer
+    columns:
+      - name: customer_id
+        tests: [unique, not_null]
+
+  - name: dim_warehouse
+    columns:
+      - name: warehouse_id
+        tests: [unique, not_null]
+
+  - name: fact_sales_order_line
+    description: "销售订单行事实；amount=qty×unit_price；open_qty=订购-已发货"
+    columns:
+      - name: so_line_key
+        tests: [unique, not_null]
+      - name: customer_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_customer')
+              field: customer_id
+      - name: material_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_material')
+              field: material_id
+      - name: status
+        tests:
+          - accepted_values:
+              values: ['未完成', '已完成', '已取消']
+
+  - name: fact_purchase_order_line
+    columns:
+      - name: po_line_key
+        tests: [unique, not_null]
+      - name: supplier_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_supplier')
+              field: supplier_id
+      - name: material_id
+        tests: [not_null]
+      - name: status
+        tests:
+          - accepted_values:
+              values: ['未完成', '已完成', '已取消']
+
+  - name: fact_inventory
+    columns:
+      - name: id
+        tests: [unique, not_null]
+      - name: material_id
+        tests: [not_null]
+      - name: qty
+        tests: [not_null]
+
+  - name: fact_delivery
+    columns:
+      - name: delivery_id
+        tests: [unique, not_null]
+      - name: so_id
+        tests:
+          - relationships:
+              to: source('ods', 'sales_order')
+              field: so_id
+              config:
+                severity: warn
+
+  - name: fact_production
+    columns:
+      - name: mo_id
+        tests: [unique, not_null]
