@@ -22,14 +22,15 @@ def default_file_source() -> Source:
 
 
 def _dtype_to_base(dtype) -> str:
-    s = str(dtype)
-    if s.startswith("int"):
+    """把 pandas/numpy dtype 归一化为平台的基础类型。"""
+    s = str(dtype).lower()
+    if s.startswith(("int", "uint")):
         return "integer"
     if s.startswith("float"):
         return "double"
     if s.startswith("datetime"):
         return "timestamp"
-    if s == "bool":
+    if s in {"bool", "boolean"}:
         return "boolean"
     return "varchar"
 
@@ -73,7 +74,7 @@ class FileConnector(Connector):
         if exact is not None:
             return exact
 
-        # 常规 API 传 DatasetDef.name（stem）。同 stem 多格式时保持 CSV > XLSX > XLS 的优先级。
+        # 常规 API 传 DatasetDef.name（stem）。同 stem 多格式时保持 CSV > XLSX > XLS 的旧优先级。
         by_stem = [p for p in files if p.stem.casefold() == name.casefold()]
         if by_stem:
             return min(by_stem, key=lambda p: _EXT_PRIORITY[p.suffix.lower()])
