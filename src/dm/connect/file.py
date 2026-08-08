@@ -41,6 +41,10 @@ class FileConnector(Connector):
 
     def _path(self, name: str) -> Path:
         d = self._dir()
+        if not d.exists():
+            raise FileNotFoundError(f"文件源目录不存在: {d}")
+        if not d.is_dir():
+            raise NotADirectoryError(f"文件源路径不是目录: {d}")
         for ext in _EXTS:
             p = d / (name + ext)
             if p.exists():
@@ -58,11 +62,15 @@ class FileConnector(Connector):
 
     def test_connection(self) -> tuple:
         d = self._dir()
-        return (d.exists(), "ok" if d.exists() else f"目录不存在: {d}")
+        if not d.exists():
+            return False, f"目录不存在: {d}"
+        if not d.is_dir():
+            return False, f"路径不是目录: {d}"
+        return True, "ok"
 
     def introspect(self) -> list:
         d = self._dir()
-        if not d.exists():
+        if not d.is_dir():
             return []
         out = []
         for p in sorted(d.iterdir()):
