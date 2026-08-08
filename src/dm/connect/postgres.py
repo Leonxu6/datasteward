@@ -7,7 +7,7 @@ import re
 from typing import Optional
 
 from dm.config import SRC_PG_DB, SRC_PG_HOST, SRC_PG_PASSWORD, SRC_PG_PORT, SRC_PG_USER
-from dm.connect.base import ColumnDef, Connector, DatasetDef, Source
+from dm.connect.base import ColumnDef, Connector, DatasetDef, Source, normalize_read_limit
 
 _IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -76,6 +76,7 @@ class PostgresConnector(Connector):
                    cursor_col: Optional[str] = None, since=None) -> tuple:
         if not _IDENT.match(name):
             raise ValueError(f"非法表名: {name}")
+        limit = normalize_read_limit(limit)
         sql = f'SELECT * FROM "{name}"'
         params = []
         if cursor_col and since is not None:
@@ -83,8 +84,9 @@ class PostgresConnector(Connector):
                 raise ValueError(f"非法游标列: {cursor_col}")
             sql += f' WHERE "{cursor_col}" > %s'   # 对标 Palantir 单调游标 WHERE col > ?
             params.append(since)
-        if limit:
-            sql += f" LIMIT {int(limit)}"
+        if limit is not None:
+            sql += " LIMIT %s"
+            params.append(limit)
         with self._connect() as c, c.cursor() as cur:
             cur.execute(sql, params or None)
             cols = [d[0] for d in cur.description]
