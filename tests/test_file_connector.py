@@ -1,4 +1,4 @@
-"""FileConnector 的纯单元测试：目录校验、文件解析与路径边界。"""
+"""FileConnector 的纯单元测试：目录校验、文件解析与增量读取边界。"""
 
 from pathlib import Path
 
@@ -64,3 +64,44 @@ def test_introspect_ignores_directories_named_like_supported_files(tmp_path):
 
     assert [dataset.name for dataset in datasets] == ["actual"]
     assert datasets[0].col_names() == ["id", "active"]
+
+
+def test_zero_limit_returns_no_rows(tmp_path):
+    (tmp_path / "orders.csv").write_text("id\n1\n2\n", encoding="utf-8")
+    connector = _connector(tmp_path)
+
+    columns, rows = connector.read_table("orders", limit=0)
+
+    assert columns == ["id"]
+    assert rows == []
+
+
+def test_negative_limit_is_rejected(tmp_path):
+    (tmp_path / "orders.csv").write_text("id\n1\n", encoding="utf-8")
+    connector = _connector(tmp_path)
+
+    with pytest.raises(ValueError, match="不能为负数"):
+        connector.read_table("orders", limit=-1)
+
+
+def test_incremental_read_rejects_unknown_cursor_column(tmp_path):
+    (tmp_path / "orders.csv").write_text("id,updated_at\n1,2026-08-01\n", encoding="utf-8")
+    connector = _connector(tmp_path)
+
+    with pytest.raises(ValueError, match="游标列不存在"):
+        connector.read_table("orders", cursor_col="missing", since="2026-07-01")
+
+
+def test_incremental_read_filters_rows(tmp_path):
+    (tmp_path / "orders.csv").write_text(
+        "id,updated_at\n1,2026-07-01\n2,2026-08-01\n3,2026-08-07\n",
+        encoding="utf-8",
+    )
+    connector = _connector(tmp_path)
+
+    columns, rows = connector.read_table(
+        "orders", cursor_col="updated_at", since="2026-07-15"
+    )
+
+    assert columns == ["id", "updated_at"]
+    assert rows == [(2, "2026-08-01"), (3, "2026-08-07")]
