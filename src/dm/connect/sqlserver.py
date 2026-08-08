@@ -73,24 +73,33 @@ class SqlServerConnector(Connector):
 
     def introspect(self, schema: str = "dbo") -> list:
         out = []
+        _, style = _load_driver()
+        ph = "%s" if style == "pymssql" else "?"
         c = self._connect()
         cur = c.cursor()
-        cur.execute("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES "
-                    "WHERE TABLE_TYPE='BASE TABLE' ORDER BY TABLE_NAME")
+        cur.execute(
+            "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES "
+            f"WHERE TABLE_SCHEMA={ph} AND TABLE_TYPE='BASE TABLE' ORDER BY TABLE_NAME",
+            (schema,),
+        )
         tables = [r[0] for r in cur.fetchall()]
         cur.execute(
             "SELECT tc.TABLE_NAME, kcu.COLUMN_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc "
-            "JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu ON tc.CONSTRAINT_NAME=kcu.CONSTRAINT_NAME "
-            "WHERE tc.CONSTRAINT_TYPE='PRIMARY KEY'")
+            "JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu "
+            "ON tc.CONSTRAINT_NAME=kcu.CONSTRAINT_NAME "
+            "AND tc.CONSTRAINT_SCHEMA=kcu.CONSTRAINT_SCHEMA "
+            f"WHERE tc.CONSTRAINT_TYPE='PRIMARY KEY' AND tc.TABLE_SCHEMA={ph}",
+            (schema,),
+        )
         pk_map: dict = {}
         for tname, col in cur.fetchall():
             pk_map.setdefault(tname, []).append(col)
         for t in tables:
-            cur.execute("SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS "
-                        "WHERE TABLE_NAME=%s ORDER BY ORDINAL_POSITION"
-                        if _load_driver()[1] == "pymssql" else
-                        "SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS "
-                        "WHERE TABLE_NAME=? ORDER BY ORDINAL_POSITION", (t,))
+            cur.execute(
+                "SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS "
+                f"WHERE TABLE_SCHEMA={ph} AND TABLE_NAME={ph} ORDER BY ORDINAL_POSITION",
+                (schema, t),
+            )
             pks = set(pk_map.get(t, []))
             cols = [ColumnDef(name=cn, data_type=dt, nullable=(nl == "YES"),
                               is_primary_key=(cn in pks)) for cn, dt, nl in cur.fetchall()]
