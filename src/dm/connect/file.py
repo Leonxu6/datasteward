@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from dm.config import FILE_SOURCE_DIR
-from dm.connect.base import ColumnDef, Connector, DatasetDef, Source
+from dm.connect.base import ColumnDef, Connector, DatasetDef, Source, normalize_read_limit
 
 _EXTS = (".csv", ".xlsx", ".xls")
 _EXT_PRIORITY = {ext: idx for idx, ext in enumerate(_EXTS)}
@@ -111,15 +111,13 @@ class FileConnector(Connector):
 
     def read_table(self, name: str, limit: Optional[int] = None,
                    cursor_col: Optional[str] = None, since=None) -> tuple:
+        limit = normalize_read_limit(limit)
         df = self._read_df(self._path(name))
         if cursor_col and since is not None:
             if cursor_col not in df.columns:
                 raise ValueError(f"增量游标列不存在: {cursor_col}")
             df = df[df[cursor_col] > since]
         if limit is not None:
-            limit = int(limit)
-            if limit < 0:
-                raise ValueError(f"limit 不能为负数: {limit}")
             df = df.head(limit)
         cols = [str(c) for c in df.columns]
         rows = [tuple(r) for r in df.itertuples(index=False, name=None)]
