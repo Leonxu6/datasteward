@@ -1,17 +1,34 @@
-"""FileConnector 的纯单元测试：目录校验、文件解析与增量读取边界。"""
+"""FileConnector 的纯单元测试：目录校验、文件解析、类型归一与增量读取边界。"""
 
 from pathlib import Path
 
 import pytest
 
 from dm.connect.base import Source
-from dm.connect.file import FileConnector
+from dm.connect.file import FileConnector, _dtype_to_base
 
 
 def _connector(path: Path) -> FileConnector:
     return FileConnector(
         Source(name="test_files", source_type="file", params={"dir": str(path)})
     )
+
+
+@pytest.mark.parametrize(
+    ("dtype", "expected"),
+    [
+        ("int64", "integer"),
+        ("Int64", "integer"),
+        ("uint32", "integer"),
+        ("Float64", "double"),
+        ("bool", "boolean"),
+        ("boolean", "boolean"),
+        ("datetime64[ns]", "timestamp"),
+        ("object", "varchar"),
+    ],
+)
+def test_dtype_to_base_handles_numpy_and_nullable_pandas_dtypes(dtype, expected):
+    assert _dtype_to_base(dtype) == expected
 
 
 def test_connection_rejects_regular_file(tmp_path):
