@@ -12,7 +12,7 @@ from typing import Optional
 from dm.config import (
     SRC_MSSQL_DB, SRC_MSSQL_HOST, SRC_MSSQL_PASSWORD, SRC_MSSQL_PORT, SRC_MSSQL_USER,
 )
-from dm.connect.base import ColumnDef, Connector, DatasetDef, Source
+from dm.connect.base import ColumnDef, Connector, DatasetDef, Source, normalize_read_limit
 from dm.connect.postgres import _IDENT
 
 
@@ -102,8 +102,9 @@ class SqlServerConnector(Connector):
                    cursor_col: Optional[str] = None, since=None) -> tuple:
         if not _IDENT.match(name):
             raise ValueError(f"非法表名: {name}")
+        limit = normalize_read_limit(limit)
         ph = "%s" if _load_driver()[1] == "pymssql" else "?"
-        top = f"TOP ({int(limit)}) " if limit else ""
+        top = f"TOP ({limit}) " if limit is not None else ""
         sql = f"SELECT {top}* FROM [{name}]"
         params = []
         if cursor_col and since is not None:
