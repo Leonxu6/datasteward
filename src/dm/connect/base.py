@@ -10,6 +10,7 @@ Palantir 四对象模型 → 我们的落地：
 见 docs/palantir/01-数据连接层-Data-Connection.md。真实客户源为用友 U8/SQL Server，
 先用现有 PostgreSQL 影子源当"模拟客户库"跑通，U8 连接器接口预留、待真库。
 """
+import operator
 import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -21,6 +22,19 @@ class SyncMode(str, Enum):
     SNAPSHOT = "snapshot"        # 全量替换（源不支持增量时）
     INCREMENTAL = "incremental"  # 单调游标增量（APPEND 风格）
     CDC = "cdc"                  # 流式变更捕获（我们由 Flink CDC 承担）
+
+
+def normalize_read_limit(limit: Optional[int]) -> Optional[int]:
+    """规范化 read_table 的行数上限；0 合法，负数和非整数立即拒绝。"""
+    if limit is None:
+        return None
+    try:
+        value = operator.index(limit)
+    except TypeError as exc:
+        raise ValueError(f"limit 必须是整数: {limit!r}") from exc
+    if value < 0:
+        raise ValueError(f"limit 不能为负数: {value}")
+    return value
 
 
 @dataclass
