@@ -10,6 +10,7 @@ from dm.config import FILE_SOURCE_DIR
 from dm.connect.base import ColumnDef, Connector, DatasetDef, Source
 
 _EXTS = (".csv", ".xlsx", ".xls")
+_EXT_PRIORITY = {ext: idx for idx, ext in enumerate(_EXTS)}
 
 
 def default_file_source() -> Source:
@@ -39,19 +40,44 @@ class FileConnector(Connector):
     def _dir(self) -> Path:
         return Path(self.source.params.get("dir", FILE_SOURCE_DIR))
 
-    def _path(self, name: str) -> Path:
+    def _validated_dir(self) -> Path:
         d = self._dir()
         if not d.exists():
             raise FileNotFoundError(f"文件源目录不存在: {d}")
         if not d.is_dir():
             raise NotADirectoryError(f"文件源路径不是目录: {d}")
-        for ext in _EXTS:
-            p = d / (name + ext)
-            if p.exists():
-                return p
-        p = d / name
-        if p.exists():
-            return p
+        return d
+
+    @staticmethod
+    def _validate_name(name: str) -> str:
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("文件源数据集名称不能为空")
+        if Path(name).name != name or "/" in name or "\\" in name or name in {".", ".."}:
+            raise ValueError(f"文件源数据集名称只能是当前目录下的文件名或 stem: {name!r}")
+        return name
+
+    def _supported_files(self, d: Optional[Path] = None) -> list[Path]:
+        d = d or self._validated_dir()
+        return sorted(
+            (p for p in d.iterdir() if p.is_file() and p.suffix.lower() in _EXTS),
+            key=lambda p: (p.stem.casefold(), _EXT_PRIORITY[p.suffix.lower()], p.name.casefold()),
+        )
+
+    def _path(self, name: str) -> Path:
+        d = self._validated_dir()
+        name = self._validate_name(name)
+        files = self._supported_files(d)
+
+        # 允许调用方传完整文件名；Windows/macOS 导出的大小写后缀也能匹配。
+        exact = next((p for p in files if p.name.casefold() == name.casefold()), None)
+        if exact is not None:
+            return exact
+
+        # 常规 API 传 DatasetDef.name（stem）。同 stem 多格式时保持 CSV > XLSX > XLS 的优先级。
+        by_stem = [p for p in files if p.stem.casefold() == name.casefold()]
+        if by_stem:
+            return min(by_stem, key=lambda p: _EXT_PRIORITY[p.suffix.lower()])
+
         raise FileNotFoundError(f"文件源未找到: {name}（目录 {d}）")
 
     def _read_df(self, path: Path, nrows: Optional[int] = None):
@@ -73,9 +99,7 @@ class FileConnector(Connector):
         if not d.is_dir():
             return []
         out = []
-        for p in sorted(d.iterdir()):
-            if p.suffix.lower() not in _EXTS:
-                continue
+        for p in self._supported_files(d):
             try:
                 df = self._read_df(p, nrows=100)
             except Exception:  # noqa: BLE001
