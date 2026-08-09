@@ -7,6 +7,7 @@
 用友 U8 惯例：表名多为 GBK 语义前缀（如 Inventory/PU_* /SO_*），拿到真实 DDL 后
 在源目录/映射层补"U8 表 → 我们对象类型"的映射即可，本连接器逻辑不变。
 """
+from contextlib import contextmanager
 from typing import Optional
 
 from dm.config import (
@@ -60,13 +61,26 @@ class SqlServerConnector(Connector):
                     f"DATABASE={p.get('db', SRC_MSSQL_DB)};UID={p.get('user', SRC_MSSQL_USER)};PWD={pwd}")
         return drv.connect(conn_str, timeout=15)
 
+    @contextmanager
+    def _cursor(self):
+        """跨 pymssql/pyodbc 的轻量资源管理，异常时也保证释放 cursor/connection。"""
+        c = self._connect()
+        cur = None
+        try:
+            cur = c.cursor()
+            yield cur
+        finally:
+            if cur is not None:
+                close_cursor = getattr(cur, "close", None)
+                if close_cursor is not None:
+                    close_cursor()
+            c.close()
+
     def test_connection(self) -> tuple:
         try:
-            c = self._connect()
-            cur = c.cursor()
-            cur.execute("SELECT 1")
-            cur.fetchone()
-            c.close()
+            with self._cursor() as cur:
+                cur.execute("SELECT 1")
+                cur.fetchone()
             return True, "ok"
         except Exception as e:  # noqa: BLE001
             return False, str(e)
@@ -75,36 +89,34 @@ class SqlServerConnector(Connector):
         out = []
         _, style = _load_driver()
         ph = "%s" if style == "pymssql" else "?"
-        c = self._connect()
-        cur = c.cursor()
-        cur.execute(
-            "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES "
-            f"WHERE TABLE_SCHEMA={ph} AND TABLE_TYPE='BASE TABLE' ORDER BY TABLE_NAME",
-            (schema,),
-        )
-        tables = [r[0] for r in cur.fetchall()]
-        cur.execute(
-            "SELECT tc.TABLE_NAME, kcu.COLUMN_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc "
-            "JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu "
-            "ON tc.CONSTRAINT_NAME=kcu.CONSTRAINT_NAME "
-            "AND tc.CONSTRAINT_SCHEMA=kcu.CONSTRAINT_SCHEMA "
-            f"WHERE tc.CONSTRAINT_TYPE='PRIMARY KEY' AND tc.TABLE_SCHEMA={ph}",
-            (schema,),
-        )
-        pk_map: dict = {}
-        for tname, col in cur.fetchall():
-            pk_map.setdefault(tname, []).append(col)
-        for t in tables:
+        with self._cursor() as cur:
             cur.execute(
-                "SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS "
-                f"WHERE TABLE_SCHEMA={ph} AND TABLE_NAME={ph} ORDER BY ORDINAL_POSITION",
-                (schema, t),
+                "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES "
+                f"WHERE TABLE_SCHEMA={ph} AND TABLE_TYPE='BASE TABLE' ORDER BY TABLE_NAME",
+                (schema,),
             )
-            pks = set(pk_map.get(t, []))
-            cols = [ColumnDef(name=cn, data_type=dt, nullable=(nl == "YES"),
-                              is_primary_key=(cn in pks)) for cn, dt, nl in cur.fetchall()]
-            out.append(DatasetDef(name=t, columns=cols, primary_key=pk_map.get(t, [])))
-        c.close()
+            tables = [r[0] for r in cur.fetchall()]
+            cur.execute(
+                "SELECT tc.TABLE_NAME, kcu.COLUMN_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc "
+                "JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu "
+                "ON tc.CONSTRAINT_NAME=kcu.CONSTRAINT_NAME "
+                "AND tc.CONSTRAINT_SCHEMA=kcu.CONSTRAINT_SCHEMA "
+                f"WHERE tc.CONSTRAINT_TYPE='PRIMARY KEY' AND tc.TABLE_SCHEMA={ph}",
+                (schema,),
+            )
+            pk_map: dict = {}
+            for tname, col in cur.fetchall():
+                pk_map.setdefault(tname, []).append(col)
+            for t in tables:
+                cur.execute(
+                    "SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS "
+                    f"WHERE TABLE_SCHEMA={ph} AND TABLE_NAME={ph} ORDER BY ORDINAL_POSITION",
+                    (schema, t),
+                )
+                pks = set(pk_map.get(t, []))
+                cols = [ColumnDef(name=cn, data_type=dt, nullable=(nl == "YES"),
+                                  is_primary_key=(cn in pks)) for cn, dt, nl in cur.fetchall()]
+                out.append(DatasetDef(name=t, columns=cols, primary_key=pk_map.get(t, [])))
         return out
 
     def read_table(self, name: str, limit: Optional[int] = None,
@@ -121,12 +133,10 @@ class SqlServerConnector(Connector):
                 raise ValueError(f"非法游标列: {cursor_col}")
             sql += f" WHERE [{cursor_col}] > {ph}"
             params.append(since)
-        c = self._connect()
-        cur = c.cursor()
-        cur.execute(sql, tuple(params) if params else ())
-        cols = [d[0] for d in cur.description]
-        rows = cur.fetchall()
-        c.close()
+        with self._cursor() as cur:
+            cur.execute(sql, tuple(params) if params else ())
+            cols = [d[0] for d in cur.description]
+            rows = cur.fetchall()
         return cols, rows
 
     def capabilities(self) -> dict:
