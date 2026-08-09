@@ -136,7 +136,8 @@ class SqlServerConnector(Connector):
         with self._cursor() as cur:
             cur.execute(sql, tuple(params) if params else ())
             cols = [d[0] for d in cur.description]
-            rows = cur.fetchall()
+            # pymssql 通常给 tuple，pyodbc 给 pyodbc.Row；统一为 Connector 契约的 tuple。
+            rows = [tuple(row) for row in cur.fetchall()]
         return cols, rows
 
     def capabilities(self) -> dict:
