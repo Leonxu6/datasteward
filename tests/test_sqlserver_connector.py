@@ -52,6 +52,26 @@ class _FailingCursor:
         self.closed = True
 
 
+class _DriverRow(list):
+    """模拟 pyodbc.Row：可迭代，但不是 tuple。"""
+
+
+class _ReadCursor:
+    def __init__(self):
+        self.description = [("id",), ("name",)]
+        self.closed = False
+
+    def execute(self, sql, params=()):
+        self.sql = sql
+        self.params = params
+
+    def fetchall(self):
+        return [_DriverRow([1, "alpha"]), _DriverRow([2, "beta"])]
+
+    def close(self):
+        self.closed = True
+
+
 def test_introspect_scopes_tables_primary_keys_and_columns_to_schema(monkeypatch):
     connector = SqlServerConnector(Source(name="u8", source_type="sqlserver"))
     fake = _IntrospectionConnection()
@@ -106,5 +126,21 @@ def test_test_connection_closes_resources_on_failure(monkeypatch):
 
     assert ok is False
     assert "query failed" in message
+    assert cursor.closed is True
+    assert fake.closed is True
+
+
+def test_read_table_normalizes_driver_rows_to_tuples(monkeypatch):
+    connector = SqlServerConnector(Source(name="u8", source_type="sqlserver"))
+    cursor = _ReadCursor()
+    fake = _IntrospectionConnection(cursor=cursor)
+    monkeypatch.setattr(sqlserver_module, "_load_driver", lambda: (object(), "pyodbc"))
+    monkeypatch.setattr(connector, "_connect", lambda: fake)
+
+    columns, rows = connector.read_table("orders")
+
+    assert columns == ["id", "name"]
+    assert rows == [(1, "alpha"), (2, "beta")]
+    assert all(type(row) is tuple for row in rows)
     assert cursor.closed is True
     assert fake.closed is True
