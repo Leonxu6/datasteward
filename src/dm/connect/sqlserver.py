@@ -101,7 +101,8 @@ class SqlServerConnector(Connector):
                 "JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu "
                 "ON tc.CONSTRAINT_NAME=kcu.CONSTRAINT_NAME "
                 "AND tc.CONSTRAINT_SCHEMA=kcu.CONSTRAINT_SCHEMA "
-                f"WHERE tc.CONSTRAINT_TYPE='PRIMARY KEY' AND tc.TABLE_SCHEMA={ph}",
+                f"WHERE tc.CONSTRAINT_TYPE='PRIMARY KEY' AND tc.TABLE_SCHEMA={ph} "
+                "ORDER BY tc.TABLE_NAME, kcu.ORDINAL_POSITION",
                 (schema,),
             )
             pk_map: dict = {}
