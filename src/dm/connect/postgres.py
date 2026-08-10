@@ -52,13 +52,14 @@ class PostgresConnector(Connector):
                 "SELECT table_name FROM information_schema.tables "
                 "WHERE table_schema=%s AND table_type='BASE TABLE' ORDER BY table_name", (schema,))
             tables = [r[0] for r in cur.fetchall()]
-            # 主键：一次性拉全库
+            # 主键：一次性拉全库，并按约束中的列顺序保持复合主键语义。
             cur.execute(
                 "SELECT tc.table_name, kcu.column_name "
                 "FROM information_schema.table_constraints tc "
                 "JOIN information_schema.key_column_usage kcu "
                 "  ON tc.constraint_name=kcu.constraint_name AND tc.table_schema=kcu.table_schema "
-                "WHERE tc.constraint_type='PRIMARY KEY' AND tc.table_schema=%s", (schema,))
+                "WHERE tc.constraint_type='PRIMARY KEY' AND tc.table_schema=%s "
+                "ORDER BY tc.table_name, kcu.ordinal_position", (schema,))
             pk_map: dict = {}
             for tname, col in cur.fetchall():
                 pk_map.setdefault(tname, []).append(col)
