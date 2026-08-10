@@ -13,8 +13,12 @@ class _IntrospectionCursor:
         self._responses = iter(
             [
                 [("orders",)],
-                [("orders", "id")],
-                [("id", "int", "NO"), ("name", "varchar", "YES")],
+                [("orders", "tenant_id"), ("orders", "order_id")],
+                [
+                    ("tenant_id", "int", "NO"),
+                    ("order_id", "int", "NO"),
+                    ("name", "varchar", "YES"),
+                ],
             ]
         )
         self.closed = False
@@ -72,7 +76,7 @@ class _ReadCursor:
         self.closed = True
 
 
-def test_introspect_scopes_tables_primary_keys_and_columns_to_schema(monkeypatch):
+def test_introspect_scopes_tables_and_preserves_composite_pk_order(monkeypatch):
     connector = SqlServerConnector(Source(name="u8", source_type="sqlserver"))
     fake = _IntrospectionConnection()
     monkeypatch.setattr(sqlserver_module, "_load_driver", lambda: (object(), "pymssql"))
@@ -82,10 +86,10 @@ def test_introspect_scopes_tables_primary_keys_and_columns_to_schema(monkeypatch
 
     assert len(datasets) == 1
     assert datasets[0].name == "orders"
-    assert datasets[0].primary_key == ["id"]
-    assert datasets[0].col_names() == ["id", "name"]
-    assert datasets[0].columns[0].is_primary_key is True
-    assert datasets[0].columns[1].nullable is True
+    assert datasets[0].primary_key == ["tenant_id", "order_id"]
+    assert datasets[0].col_names() == ["tenant_id", "order_id", "name"]
+    assert [c.is_primary_key for c in datasets[0].columns] == [True, True, False]
+    assert datasets[0].columns[2].nullable is True
 
     table_sql, table_params = fake.cursor_obj.calls[0]
     pk_sql, pk_params = fake.cursor_obj.calls[1]
@@ -95,6 +99,7 @@ def test_introspect_scopes_tables_primary_keys_and_columns_to_schema(monkeypatch
     assert table_params == ("erp",)
     assert "tc.TABLE_SCHEMA=%s" in pk_sql
     assert "tc.CONSTRAINT_SCHEMA=kcu.CONSTRAINT_SCHEMA" in pk_sql
+    assert "ORDER BY tc.TABLE_NAME, kcu.ORDINAL_POSITION" in pk_sql
     assert pk_params == ("erp",)
     assert "TABLE_SCHEMA=%s AND TABLE_NAME=%s" in column_sql
     assert column_params == ("erp", "orders")
