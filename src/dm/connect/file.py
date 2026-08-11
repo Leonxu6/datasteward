@@ -64,6 +64,18 @@ class FileConnector(Connector):
             key=lambda p: (p.stem.casefold(), _EXT_PRIORITY[p.suffix.lower()], p.name.casefold()),
         )
 
+    def _logical_files(self, d: Optional[Path] = None) -> list[Path]:
+        """每个逻辑 stem 只暴露一个文件，并与 read_table 的格式优先级保持一致。"""
+        chosen = []
+        seen = set()
+        for p in self._supported_files(d):
+            key = p.stem.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            chosen.append(p)
+        return chosen
+
     def _path(self, name: str) -> Path:
         d = self._validated_dir()
         name = self._validate_name(name)
@@ -100,7 +112,7 @@ class FileConnector(Connector):
         if not d.is_dir():
             return []
         out = []
-        for p in self._supported_files(d):
+        for p in self._logical_files(d):
             try:
                 df = self._read_df(p, nrows=100)
             except Exception:  # noqa: BLE001
