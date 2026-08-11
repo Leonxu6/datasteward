@@ -72,6 +72,21 @@ def test_duplicate_stem_keeps_csv_priority(tmp_path):
     assert rows == [(7,)]
 
 
+def test_introspect_deduplicates_same_logical_stem(tmp_path):
+    """目录里 CSV/XLSX 同 stem 时，catalog 只能暴露 read_table 实际会读取的那个数据集。"""
+    (tmp_path / "orders.csv").write_text("id,name\n7,alpha\n", encoding="utf-8")
+    # 若 introspect 没有去重，会尝试解析这个无效 xlsx；去重后 CSV 优先且只暴露一次 orders。
+    (tmp_path / "orders.xlsx").write_text("not a real workbook", encoding="utf-8")
+    (tmp_path / "customers.csv").write_text("id\n9\n", encoding="utf-8")
+    connector = _connector(tmp_path)
+
+    datasets = connector.introspect()
+
+    assert [dataset.name for dataset in datasets] == ["customers", "orders"]
+    orders = next(dataset for dataset in datasets if dataset.name == "orders")
+    assert orders.col_names() == ["id", "name"]
+
+
 def test_introspect_ignores_directories_named_like_supported_files(tmp_path):
     (tmp_path / "nested.csv").mkdir()
     (tmp_path / "actual.csv").write_text("id,active\n1,true\n", encoding="utf-8")
