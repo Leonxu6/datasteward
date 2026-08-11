@@ -1,7 +1,7 @@
 """PostgreSQL 连接器：我们的影子源（被 Flink CDC 的"假 ERP"），也可直连真实 PG 客户库。
 
 自省走 information_schema（表/列/类型/主键）——这是"接上客户库就能用"的关键：
-不写死表结构，从真实库读元数据自动生成 DatasetDef。CDC 由基建层的 Flink 承担（capabilities.cdc=True）。
+不写死表结构，从真实库读元数据自动生成 DatasetDef。CDC 由基建层的 Flink承担（capabilities.cdc=True）。
 """
 import re
 from typing import Optional
@@ -45,19 +45,24 @@ class PostgresConnector(Connector):
             return False, str(e)
 
     def introspect(self, schema: str = "public") -> list:
-        """自省 public schema 下所有基表 → DatasetDef 列表。"""
+        """自省指定 schema 下所有基表 → DatasetDef 列表。"""
         out = []
         with self._connect() as c, c.cursor() as cur:
             cur.execute(
                 "SELECT table_name FROM information_schema.tables "
                 "WHERE table_schema=%s AND table_type='BASE TABLE' ORDER BY table_name", (schema,))
             tables = [r[0] for r in cur.fetchall()]
-            # 主键：一次性拉全库，并按约束中的列顺序保持复合主键语义。
+            # 主键：一次性拉全 schema，并按表身份隔离同名约束，保持复合主键列顺序。
             cur.execute(
                 "SELECT tc.table_name, kcu.column_name "
                 "FROM information_schema.table_constraints tc "
                 "JOIN information_schema.key_column_usage kcu "
-                "  ON tc.constraint_name=kcu.constraint_name AND tc.table_schema=kcu.table_schema "
+                "  ON tc.constraint_catalog=kcu.constraint_catalog "
+                " AND tc.constraint_schema=kcu.constraint_schema "
+                " AND tc.constraint_name=kcu.constraint_name "
+                " AND tc.table_catalog=kcu.table_catalog "
+                " AND tc.table_schema=kcu.table_schema "
+                " AND tc.table_name=kcu.table_name "
                 "WHERE tc.constraint_type='PRIMARY KEY' AND tc.table_schema=%s "
                 "ORDER BY tc.table_name, kcu.ordinal_position", (schema,))
             pk_map: dict = {}
