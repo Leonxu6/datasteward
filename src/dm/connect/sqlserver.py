@@ -70,11 +70,14 @@ class SqlServerConnector(Connector):
             cur = c.cursor()
             yield cur
         finally:
-            if cur is not None:
-                close_cursor = getattr(cur, "close", None)
-                if close_cursor is not None:
-                    close_cursor()
-            c.close()
+            try:
+                if cur is not None:
+                    close_cursor = getattr(cur, "close", None)
+                    if close_cursor is not None:
+                        close_cursor()
+            finally:
+                # cursor.close() 本身也可能失败；connection 仍必须被释放。
+                c.close()
 
     def test_connection(self) -> tuple:
         try:
