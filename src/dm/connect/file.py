@@ -124,13 +124,16 @@ class FileConnector(Connector):
     def read_table(self, name: str, limit: Optional[int] = None,
                    cursor_col: Optional[str] = None, since=None) -> tuple:
         limit = normalize_read_limit(limit)
-        df = self._read_df(self._path(name))
-        if cursor_col and since is not None:
+        incremental = bool(cursor_col and since is not None)
+        # 普通预览可把 limit 下推到 pandas，避免为几十行预览把超大 CSV/Excel 整份读进内存。
+        # 增量读取必须先看到全部候选行再按 cursor 过滤，不能提前截断。
+        df = self._read_df(self._path(name), nrows=None if incremental else limit)
+        if incremental:
             if cursor_col not in df.columns:
                 raise ValueError(f"增量游标列不存在: {cursor_col}")
             df = df[df[cursor_col] > since]
-        if limit is not None:
-            df = df.head(limit)
+            if limit is not None:
+                df = df.head(limit)
         cols = [str(c) for c in df.columns]
         rows = [tuple(r) for r in df.itertuples(index=False, name=None)]
         return cols, rows
