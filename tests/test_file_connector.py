@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from dm.connect.base import Source
@@ -106,6 +107,50 @@ def test_zero_limit_returns_no_rows(tmp_path):
 
     assert columns == ["id"]
     assert rows == []
+
+
+def test_snapshot_limit_is_pushed_down_to_reader(tmp_path, monkeypatch):
+    (tmp_path / "orders.csv").write_text("id\n1\n2\n3\n", encoding="utf-8")
+    connector = _connector(tmp_path)
+    calls = []
+
+    def fake_read(path, nrows=None):
+        calls.append(nrows)
+        df = pd.DataFrame({"id": [1, 2, 3]})
+        return df.head(nrows) if nrows is not None else df
+
+    monkeypatch.setattr(connector, "_read_df", fake_read)
+
+    columns, rows = connector.read_table("orders", limit=2)
+
+    assert calls == [2]
+    assert columns == ["id"]
+    assert rows == [(1,), (2,)]
+
+
+def test_incremental_limit_is_applied_after_cursor_filter(tmp_path, monkeypatch):
+    (tmp_path / "orders.csv").write_text("id,updated_at\n", encoding="utf-8")
+    connector = _connector(tmp_path)
+    calls = []
+
+    def fake_read(path, nrows=None):
+        calls.append(nrows)
+        return pd.DataFrame(
+            {
+                "id": [1, 2, 3],
+                "updated_at": ["2026-07-01", "2026-08-01", "2026-08-07"],
+            }
+        )
+
+    monkeypatch.setattr(connector, "_read_df", fake_read)
+
+    columns, rows = connector.read_table(
+        "orders", limit=1, cursor_col="updated_at", since="2026-07-15"
+    )
+
+    assert calls == [None]
+    assert columns == ["id", "updated_at"]
+    assert rows == [(2, "2026-08-01")]
 
 
 def test_negative_limit_is_rejected(tmp_path):
