@@ -56,6 +56,21 @@ class _FailingCursor:
         self.closed = True
 
 
+class _CloseFailingCursor:
+    def __init__(self):
+        self.description = [("id",)]
+
+    def execute(self, sql, params=()):
+        self.sql = sql
+        self.params = params
+
+    def fetchall(self):
+        return [(1,)]
+
+    def close(self):
+        raise RuntimeError("cursor close failed")
+
+
 class _DriverRow(list):
     """模拟 pyodbc.Row：可迭代，但不是 tuple。"""
 
@@ -132,6 +147,19 @@ def test_test_connection_closes_resources_on_failure(monkeypatch):
     assert ok is False
     assert "query failed" in message
     assert cursor.closed is True
+    assert fake.closed is True
+
+
+def test_connection_closes_even_if_cursor_close_raises(monkeypatch):
+    connector = SqlServerConnector(Source(name="u8", source_type="sqlserver"))
+    cursor = _CloseFailingCursor()
+    fake = _IntrospectionConnection(cursor=cursor)
+    monkeypatch.setattr(sqlserver_module, "_load_driver", lambda: (object(), "pymssql"))
+    monkeypatch.setattr(connector, "_connect", lambda: fake)
+
+    with pytest.raises(RuntimeError, match="cursor close failed"):
+        connector.read_table("orders")
+
     assert fake.closed is True
 
 
