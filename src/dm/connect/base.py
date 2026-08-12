@@ -25,9 +25,12 @@ class SyncMode(str, Enum):
 
 
 def normalize_read_limit(limit: Optional[int]) -> Optional[int]:
-    """规范化 read_table 的行数上限；0 合法，负数和非整数立即拒绝。"""
+    """规范化 read_table 的行数上限；0 合法，负数、布尔值和非整数立即拒绝。"""
     if limit is None:
         return None
+    # bool 实现了 __index__，但 API 里的 true/false 不是有意义的行数上限，避免静默变成 1/0。
+    if isinstance(limit, bool):
+        raise ValueError(f"limit 必须是整数，不能是布尔值: {limit!r}")
     try:
         value = operator.index(limit)
     except TypeError as exc:
