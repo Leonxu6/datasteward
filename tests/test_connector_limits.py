@@ -59,6 +59,10 @@ def test_normalize_read_limit_accepts_zero_and_rejects_invalid_values():
         normalize_read_limit(-1)
     with pytest.raises(ValueError, match="必须是整数"):
         normalize_read_limit(1.5)
+    with pytest.raises(ValueError, match="不能是布尔值"):
+        normalize_read_limit(True)
+    with pytest.raises(ValueError, match="不能是布尔值"):
+        normalize_read_limit(False)
 
 
 def test_postgres_zero_limit_is_sent_to_database(monkeypatch):
