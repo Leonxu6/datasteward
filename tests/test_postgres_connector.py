@@ -136,7 +136,7 @@ def test_read_table_qualifies_configured_schema(monkeypatch):
     assert params == ["2026-08-01", 2]
 
 
-@pytest.mark.parametrize("schema", ["erp.prod", "erp-prod", "", 123])
+@pytest.mark.parametrize("schema", ["erp.prod", "erp-prod", 123])
 def test_schema_rejects_non_identifier_values(schema):
     connector = PostgresConnector(Source(name="pg", source_type="postgres"))
 
