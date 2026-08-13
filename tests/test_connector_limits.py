@@ -74,7 +74,7 @@ def test_postgres_zero_limit_is_sent_to_database(monkeypatch):
 
     assert columns == ["id"]
     assert rows == []
-    assert fake.cursor_obj.sql == 'SELECT * FROM "orders" LIMIT %s'
+    assert fake.cursor_obj.sql == 'SELECT * FROM "public"."orders" LIMIT %s'
     assert fake.cursor_obj.params == [0]
 
 
