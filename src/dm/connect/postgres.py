@@ -16,7 +16,8 @@ def default_pg_source() -> Source:
     """从 config 构建默认 PG 影子源（凭据只存 env 引用）。"""
     return Source(
         name="pg_shadow", source_type="postgres",
-        params={"host": SRC_PG_HOST, "port": SRC_PG_PORT, "user": SRC_PG_USER, "db": SRC_PG_DB},
+        params={"host": SRC_PG_HOST, "port": SRC_PG_PORT, "user": SRC_PG_USER,
+                "db": SRC_PG_DB, "schema": "public"},
         credential_env={"password": "DM_SRC_PG_PASSWORD"},
         markings=[], description="PostgreSQL 影子源（Flink CDC 源 / 模拟客户库）",
     )
@@ -35,6 +36,13 @@ class PostgresConnector(Connector):
             connect_timeout=15,
         )
 
+    def _schema(self, schema: Optional[str] = None) -> str:
+        """解析并校验 schema；读表与自省必须落在同一个命名空间。"""
+        value = schema or self.source.params.get("schema") or "public"
+        if not isinstance(value, str) or not _IDENT.fullmatch(value):
+            raise ValueError(f"非法 schema: {value}")
+        return value
+
     def test_connection(self) -> tuple:
         try:
             with self._connect() as c, c.cursor() as cur:
@@ -44,8 +52,9 @@ class PostgresConnector(Connector):
         except Exception as e:  # noqa: BLE001
             return False, str(e)
 
-    def introspect(self, schema: str = "public") -> list:
-        """自省指定 schema 下所有基表 → DatasetDef 列表。"""
+    def introspect(self, schema: Optional[str] = None) -> list:
+        """自省指定/配置 schema 下所有基表 → DatasetDef 列表。"""
+        schema = self._schema(schema)
         out = []
         with self._connect() as c, c.cursor() as cur:
             cur.execute(
@@ -80,13 +89,14 @@ class PostgresConnector(Connector):
 
     def read_table(self, name: str, limit: Optional[int] = None,
                    cursor_col: Optional[str] = None, since=None) -> tuple:
-        if not _IDENT.match(name):
+        if not _IDENT.fullmatch(name):
             raise ValueError(f"非法表名: {name}")
+        schema = self._schema()
         limit = normalize_read_limit(limit)
-        sql = f'SELECT * FROM "{name}"'
+        sql = f'SELECT * FROM "{schema}"."{name}"'
         params = []
         if cursor_col and since is not None:
-            if not _IDENT.match(cursor_col):
+            if not _IDENT.fullmatch(cursor_col):
                 raise ValueError(f"非法游标列: {cursor_col}")
             sql += f' WHERE "{cursor_col}" > %s'   # 对标 Palantir 单调游标 WHERE col > ?
             params.append(since)
