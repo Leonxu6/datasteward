@@ -1,5 +1,7 @@
 """PostgresConnector 的纯单元测试，不需要真实 PostgreSQL。"""
 
+import pytest
+
 from dm.connect.base import Source
 from dm.connect.postgres import PostgresConnector
 
@@ -132,3 +134,11 @@ def test_read_table_qualifies_configured_schema(monkeypatch):
         'WHERE "updated_at" > %s LIMIT %s'
     )
     assert params == ["2026-08-01", 2]
+
+
+@pytest.mark.parametrize("schema", ["erp.prod", "erp-prod", "", 123])
+def test_schema_rejects_non_identifier_values(schema):
+    connector = PostgresConnector(Source(name="pg", source_type="postgres"))
+
+    with pytest.raises(ValueError, match="非法 schema"):
+        connector._schema(schema)
