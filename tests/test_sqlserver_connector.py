@@ -3,7 +3,7 @@
 import pytest
 
 from dm.connect.base import Source
-from dm.connect.sqlserver import SqlServerConnector
+from dm.connect.sqlserver import SqlServerConnector, default_u8_source
 import dm.connect.sqlserver as sqlserver_module
 
 
@@ -91,13 +91,19 @@ class _ReadCursor:
         self.closed = True
 
 
-def test_introspect_scopes_tables_and_preserves_composite_pk_order(monkeypatch):
-    connector = SqlServerConnector(Source(name="u8", source_type="sqlserver"))
+def test_default_u8_source_pins_dbo_schema():
+    assert default_u8_source().params["schema"] == "dbo"
+
+
+def test_introspect_uses_configured_schema_and_preserves_composite_pk_order(monkeypatch):
+    connector = SqlServerConnector(
+        Source(name="u8", source_type="sqlserver", params={"schema": "erp"})
+    )
     fake = _IntrospectionConnection()
     monkeypatch.setattr(sqlserver_module, "_load_driver", lambda: (object(), "pymssql"))
     monkeypatch.setattr(connector, "_connect", lambda: fake)
 
-    datasets = connector.introspect(schema="erp")
+    datasets = connector.introspect()
 
     assert len(datasets) == 1
     assert datasets[0].name == "orders"
@@ -120,6 +126,35 @@ def test_introspect_scopes_tables_and_preserves_composite_pk_order(monkeypatch):
     assert column_params == ("erp", "orders")
     assert fake.cursor_obj.closed is True
     assert fake.closed is True
+
+
+def test_read_table_qualifies_configured_schema(monkeypatch):
+    connector = SqlServerConnector(
+        Source(name="u8", source_type="sqlserver", params={"schema": "erp"})
+    )
+    cursor = _ReadCursor()
+    fake = _IntrospectionConnection(cursor=cursor)
+    monkeypatch.setattr(sqlserver_module, "_load_driver", lambda: (object(), "pyodbc"))
+    monkeypatch.setattr(connector, "_connect", lambda: fake)
+
+    connector.read_table("orders", cursor_col="id", since=10)
+
+    assert cursor.sql == "SELECT * FROM [erp].[orders] WHERE [id] > ?"
+    assert cursor.params == (10,)
+
+
+def test_invalid_configured_schema_fails_before_loading_driver(monkeypatch):
+    connector = SqlServerConnector(
+        Source(name="u8", source_type="sqlserver", params={"schema": "erp;drop"})
+    )
+    monkeypatch.setattr(
+        sqlserver_module,
+        "_load_driver",
+        lambda: (_ for _ in ()).throw(AssertionError("driver should not be loaded")),
+    )
+
+    with pytest.raises(ValueError, match="非法 schema"):
+        connector.read_table("orders")
 
 
 def test_read_table_closes_cursor_and_connection_when_query_fails(monkeypatch):
