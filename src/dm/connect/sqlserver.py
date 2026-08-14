@@ -21,7 +21,7 @@ def default_u8_source() -> Source:
     return Source(
         name="u8_erp", source_type="sqlserver",
         params={"host": SRC_MSSQL_HOST, "port": SRC_MSSQL_PORT,
-                "user": SRC_MSSQL_USER, "db": SRC_MSSQL_DB},
+                "user": SRC_MSSQL_USER, "db": SRC_MSSQL_DB, "schema": "dbo"},
         credential_env={"password": "DM_SRC_MSSQL_PASSWORD"},
         markings=[], description="用友 U8 / SQL Server 真实 ERP 源（待真库接入）",
     )
@@ -61,6 +61,13 @@ class SqlServerConnector(Connector):
                     f"DATABASE={p.get('db', SRC_MSSQL_DB)};UID={p.get('user', SRC_MSSQL_USER)};PWD={pwd}")
         return drv.connect(conn_str, timeout=15)
 
+    def _schema(self, schema: Optional[str] = None) -> str:
+        """解析并校验 schema；读表与自省必须落在同一个 SQL Server 命名空间。"""
+        value = schema or self.source.params.get("schema") or "dbo"
+        if not isinstance(value, str) or not _IDENT.fullmatch(value):
+            raise ValueError(f"非法 schema: {value}")
+        return value
+
     @contextmanager
     def _cursor(self):
         """跨 pymssql/pyodbc 的轻量资源管理，异常时也保证释放 cursor/connection。"""
@@ -88,7 +95,8 @@ class SqlServerConnector(Connector):
         except Exception as e:  # noqa: BLE001
             return False, str(e)
 
-    def introspect(self, schema: str = "dbo") -> list:
+    def introspect(self, schema: Optional[str] = None) -> list:
+        schema = self._schema(schema)
         out = []
         _, style = _load_driver()
         ph = "%s" if style == "pymssql" else "?"
@@ -125,15 +133,16 @@ class SqlServerConnector(Connector):
 
     def read_table(self, name: str, limit: Optional[int] = None,
                    cursor_col: Optional[str] = None, since=None) -> tuple:
-        if not _IDENT.match(name):
+        if not _IDENT.fullmatch(name):
             raise ValueError(f"非法表名: {name}")
+        schema = self._schema()
         limit = normalize_read_limit(limit)
         ph = "%s" if _load_driver()[1] == "pymssql" else "?"
         top = f"TOP ({limit}) " if limit is not None else ""
-        sql = f"SELECT {top}* FROM [{name}]"
+        sql = f"SELECT {top}* FROM [{schema}].[{name}]"
         params = []
         if cursor_col and since is not None:
-            if not _IDENT.match(cursor_col):
+            if not _IDENT.fullmatch(cursor_col):
                 raise ValueError(f"非法游标列: {cursor_col}")
             sql += f" WHERE [{cursor_col}] > {ph}"
             params.append(since)
