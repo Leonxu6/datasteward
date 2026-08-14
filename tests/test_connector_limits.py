@@ -100,7 +100,7 @@ def test_sqlserver_zero_limit_uses_top_zero(monkeypatch):
 
     assert columns == ["id"]
     assert rows == []
-    assert fake.cursor_obj.sql == "SELECT TOP (0) * FROM [orders]"
+    assert fake.cursor_obj.sql == "SELECT TOP (0) * FROM [dbo].[orders]"
     assert fake.cursor_obj.params == ()
     assert fake.closed is True
 
