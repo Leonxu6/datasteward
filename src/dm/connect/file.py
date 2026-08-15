@@ -124,7 +124,9 @@ class FileConnector(Connector):
     def read_table(self, name: str, limit: Optional[int] = None,
                    cursor_col: Optional[str] = None, since=None) -> tuple:
         limit = normalize_read_limit(limit)
-        incremental = bool(cursor_col and since is not None)
+        incremental = since is not None
+        if incremental and (not isinstance(cursor_col, str) or not cursor_col.strip()):
+            raise ValueError("增量读取提供 since 时必须同时提供非空 cursor_col")
         # 普通预览可把 limit 下推到 pandas，避免为几十行预览把超大 CSV/Excel 整份读进内存。
         # 增量读取必须先看到全部候选行再按 cursor 过滤，不能提前截断。
         df = self._read_df(self._path(name), nrows=None if incremental else limit)
