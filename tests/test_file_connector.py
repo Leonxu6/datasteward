@@ -161,6 +161,14 @@ def test_negative_limit_is_rejected(tmp_path):
         connector.read_table("orders", limit=-1)
 
 
+@pytest.mark.parametrize("cursor_col", [None, "", "   ", 123])
+def test_incremental_read_requires_nonempty_cursor_column(tmp_path, cursor_col):
+    connector = _connector(tmp_path)
+
+    with pytest.raises(ValueError, match="非空 cursor_col"):
+        connector.read_table("orders", cursor_col=cursor_col, since="2026-07-01")
+
+
 def test_incremental_read_rejects_unknown_cursor_column(tmp_path):
     (tmp_path / "orders.csv").write_text("id,updated_at\n1,2026-08-01\n", encoding="utf-8")
     connector = _connector(tmp_path)
