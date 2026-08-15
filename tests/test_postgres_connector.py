@@ -136,6 +136,19 @@ def test_read_table_qualifies_configured_schema(monkeypatch):
     assert params == ["2026-08-01", 2]
 
 
+@pytest.mark.parametrize("cursor_col", [None, "", "   ", 123])
+def test_incremental_read_requires_nonempty_cursor_column_before_connect(monkeypatch, cursor_col):
+    connector = PostgresConnector(Source(name="pg", source_type="postgres"))
+    monkeypatch.setattr(
+        connector,
+        "_connect",
+        lambda: (_ for _ in ()).throw(AssertionError("database should not be contacted")),
+    )
+
+    with pytest.raises(ValueError, match="非空 cursor_col"):
+        connector.read_table("orders", cursor_col=cursor_col, since="2026-08-01")
+
+
 @pytest.mark.parametrize("schema", ["erp.prod", "erp-prod", 123])
 def test_schema_rejects_non_identifier_values(schema):
     connector = PostgresConnector(Source(name="pg", source_type="postgres"))
