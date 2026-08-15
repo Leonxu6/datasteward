@@ -91,11 +91,13 @@ class PostgresConnector(Connector):
                    cursor_col: Optional[str] = None, since=None) -> tuple:
         if not _IDENT.fullmatch(name):
             raise ValueError(f"非法表名: {name}")
+        if since is not None and (not isinstance(cursor_col, str) or not cursor_col.strip()):
+            raise ValueError("增量读取提供 since 时必须同时提供非空 cursor_col")
         schema = self._schema()
         limit = normalize_read_limit(limit)
         sql = f'SELECT * FROM "{schema}"."{name}"'
         params = []
-        if cursor_col and since is not None:
+        if since is not None:
             if not _IDENT.fullmatch(cursor_col):
                 raise ValueError(f"非法游标列: {cursor_col}")
             sql += f' WHERE "{cursor_col}" > %s'   # 对标 Palantir 单调游标 WHERE col > ?
