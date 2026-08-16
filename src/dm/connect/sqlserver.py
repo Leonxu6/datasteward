@@ -1,8 +1,4 @@
-"""SQL Server 连接器（用友 U8 的底层库）。
-
-真实客户源。接口与 PostgresConnector 对齐：自省 INFORMATION_SCHEMA + 抽数 + 增量游标。
-需可选驱动 `pymssql` 或 `pyodbc`（`pip install -e .[connectors]`）。
-"""
+"""SQL Server 连接器（用友 U8 的底层库）。"""
 from contextlib import contextmanager
 from typing import Optional
 
@@ -28,6 +24,11 @@ def _load_driver():
         return None, None
 
 
+def _odbc_value(value) -> str:
+    """把 ODBC connection-string 值安全包在花括号中，并转义值里的右花括号。"""
+    return "{" + str(value).replace("}", "}}") + "}"
+
+
 class SqlServerConnector(Connector):
     source_type = "sqlserver"
 
@@ -42,11 +43,15 @@ class SqlServerConnector(Connector):
         pwd = self.source.secret("password", SRC_MSSQL_PASSWORD)
         if style == "pymssql":
             return drv.connect(server=host, port=str(p.get("port", SRC_MSSQL_PORT)), user=p.get("user", SRC_MSSQL_USER), password=pwd, database=p.get("db", SRC_MSSQL_DB), login_timeout=15)
-        conn_str = (f"DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={host},{p.get('port', SRC_MSSQL_PORT)};" f"DATABASE={p.get('db', SRC_MSSQL_DB)};UID={p.get('user', SRC_MSSQL_USER)};PWD={pwd}")
+        server = f"{host},{p.get('port', SRC_MSSQL_PORT)}"
+        conn_str = (
+            "DRIVER={ODBC Driver 17 for SQL Server};"
+            f"SERVER={_odbc_value(server)};DATABASE={_odbc_value(p.get('db', SRC_MSSQL_DB))};"
+            f"UID={_odbc_value(p.get('user', SRC_MSSQL_USER))};PWD={_odbc_value(pwd)}"
+        )
         return drv.connect(conn_str, timeout=15)
 
     def _schema(self, schema: Optional[str] = None) -> str:
-        """解析并校验 schema；显式或配置的空值不能悄悄回退到 dbo。"""
         if schema is not None:
             value = schema
         elif "schema" in self.source.params:
@@ -59,68 +64,51 @@ class SqlServerConnector(Connector):
 
     @contextmanager
     def _cursor(self):
-        c = self._connect()
-        cur = None
+        c = self._connect(); cur = None
         try:
-            cur = c.cursor()
-            yield cur
+            cur = c.cursor(); yield cur
         finally:
             try:
                 if cur is not None:
                     close_cursor = getattr(cur, "close", None)
-                    if close_cursor is not None:
-                        close_cursor()
+                    if close_cursor is not None: close_cursor()
             finally:
                 c.close()
 
     def test_connection(self) -> tuple:
         try:
             with self._cursor() as cur:
-                cur.execute("SELECT 1")
-                cur.fetchone()
+                cur.execute("SELECT 1"); cur.fetchone()
             return True, "ok"
         except Exception as e:  # noqa: BLE001
             return False, str(e)
 
     def introspect(self, schema: Optional[str] = None) -> list:
-        schema = self._schema(schema)
-        out = []
-        _, style = _load_driver()
-        ph = "%s" if style == "pymssql" else "?"
+        schema = self._schema(schema); out = []
+        _, style = _load_driver(); ph = "%s" if style == "pymssql" else "?"
         with self._cursor() as cur:
             cur.execute("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES " f"WHERE TABLE_SCHEMA={ph} AND TABLE_TYPE='BASE TABLE' ORDER BY TABLE_NAME", (schema,))
             tables = [r[0] for r in cur.fetchall()]
-            cur.execute("SELECT tc.TABLE_NAME, kcu.COLUMN_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc " "JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu " "ON tc.CONSTRAINT_NAME=kcu.CONSTRAINT_NAME " "AND tc.CONSTRAINT_SCHEMA=kcu.CONSTRAINT_SCHEMA " f"WHERE tc.CONSTRAINT_TYPE='PRIMARY KEY' AND tc.TABLE_SCHEMA={ph} " "ORDER BY tc.TABLE_NAME, kcu.ORDINAL_POSITION", (schema,))
+            cur.execute("SELECT tc.TABLE_NAME, kcu.COLUMN_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu ON tc.CONSTRAINT_NAME=kcu.CONSTRAINT_NAME AND tc.CONSTRAINT_SCHEMA=kcu.CONSTRAINT_SCHEMA " f"WHERE tc.CONSTRAINT_TYPE='PRIMARY KEY' AND tc.TABLE_SCHEMA={ph} ORDER BY tc.TABLE_NAME, kcu.ORDINAL_POSITION", (schema,))
             pk_map: dict = {}
-            for tname, col in cur.fetchall():
-                pk_map.setdefault(tname, []).append(col)
+            for tname, col in cur.fetchall(): pk_map.setdefault(tname, []).append(col)
             for t in tables:
                 cur.execute("SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS " f"WHERE TABLE_SCHEMA={ph} AND TABLE_NAME={ph} ORDER BY ORDINAL_POSITION", (schema, t))
-                pks = set(pk_map.get(t, []))
-                cols = [ColumnDef(name=cn, data_type=dt, nullable=(nl == "YES"), is_primary_key=(cn in pks)) for cn, dt, nl in cur.fetchall()]
+                pks = set(pk_map.get(t, [])); cols = [ColumnDef(name=cn, data_type=dt, nullable=(nl == "YES"), is_primary_key=(cn in pks)) for cn, dt, nl in cur.fetchall()]
                 out.append(DatasetDef(name=t, columns=cols, primary_key=pk_map.get(t, [])))
         return out
 
     def read_table(self, name: str, limit: Optional[int] = None, cursor_col: Optional[str] = None, since=None) -> tuple:
-        if not _IDENT.fullmatch(name):
-            raise ValueError(f"非法表名: {name}")
-        if since is not None and (not isinstance(cursor_col, str) or not cursor_col.strip()):
-            raise ValueError("增量读取提供 since 时必须同时提供非空 cursor_col")
-        schema = self._schema()
-        limit = normalize_read_limit(limit)
-        ph = "%s" if _load_driver()[1] == "pymssql" else "?"
-        top = f"TOP ({limit}) " if limit is not None else ""
-        sql = f"SELECT {top}* FROM [{schema}].[{name}]"
-        params = []
+        if not _IDENT.fullmatch(name): raise ValueError(f"非法表名: {name}")
+        if since is not None and (not isinstance(cursor_col, str) or not cursor_col.strip()): raise ValueError("增量读取提供 since 时必须同时提供非空 cursor_col")
+        schema = self._schema(); limit = normalize_read_limit(limit)
+        ph = "%s" if _load_driver()[1] == "pymssql" else "?"; top = f"TOP ({limit}) " if limit is not None else ""
+        sql = f"SELECT {top}* FROM [{schema}].[{name}]"; params = []
         if since is not None:
-            if not _IDENT.fullmatch(cursor_col):
-                raise ValueError(f"非法游标列: {cursor_col}")
-            sql += f" WHERE [{cursor_col}] > {ph}"
-            params.append(since)
+            if not _IDENT.fullmatch(cursor_col): raise ValueError(f"非法游标列: {cursor_col}")
+            sql += f" WHERE [{cursor_col}] > {ph}"; params.append(since)
         with self._cursor() as cur:
-            cur.execute(sql, tuple(params) if params else ())
-            cols = [d[0] for d in cur.description]
-            rows = [tuple(row) for row in cur.fetchall()]
+            cur.execute(sql, tuple(params) if params else ()); cols = [d[0] for d in cur.description]; rows = [tuple(row) for row in cur.fetchall()]
         return cols, rows
 
     def capabilities(self) -> dict:
