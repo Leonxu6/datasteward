@@ -42,6 +42,27 @@ def test_read_table_resolves_case_insensitive_csv_names(tmp_path, requested_name
     assert columns == ["id", "name"] and rows == [(1, "alpha")]
 
 
+def test_exact_filename_disambiguates_case_collisions(tmp_path):
+    (tmp_path / "orders.csv").write_text("id\n1\n", encoding="utf-8")
+    (tmp_path / "Orders.csv").write_text("id\n2\n", encoding="utf-8")
+    columns, rows = _connector(tmp_path).read_table("Orders.csv")
+    assert columns == ["id"] and rows == [(2,)]
+
+
+def test_case_insensitive_filename_lookup_rejects_ambiguous_collisions(tmp_path):
+    (tmp_path / "orders.csv").write_text("id\n1\n", encoding="utf-8")
+    (tmp_path / "Orders.csv").write_text("id\n2\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="仅大小写不同的歧义"):
+        _connector(tmp_path).read_table("ORDERS.CSV")
+
+
+def test_case_insensitive_stem_lookup_rejects_ambiguous_best_format(tmp_path):
+    (tmp_path / "orders.csv").write_text("id\n1\n", encoding="utf-8")
+    (tmp_path / "Orders.csv").write_text("id\n2\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="stem 存在仅大小写不同的歧义"):
+        _connector(tmp_path).read_table("orders")
+
+
 def test_duplicate_stem_keeps_csv_priority(tmp_path):
     (tmp_path / "orders.csv").write_text("id\n7\n", encoding="utf-8"); (tmp_path / "orders.xlsx").write_text("not a real workbook", encoding="utf-8")
     columns, rows = _connector(tmp_path).read_table("orders")
