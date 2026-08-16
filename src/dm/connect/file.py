@@ -36,17 +36,14 @@ class FileConnector(Connector):
 
     @staticmethod
     def _validate_name(name: str) -> str:
-        if not isinstance(name, str) or not name.strip():
-            raise ValueError("文件源数据集名称不能为空")
-        if name != name.strip():
-            raise ValueError(f"文件源数据集名称不能包含首尾空白: {name!r}")
-        if Path(name).name != name or "/" in name or "\\" in name or name in {".", ".."}:
-            raise ValueError(f"文件源数据集名称只能是当前目录下的文件名或 stem: {name!r}")
+        if not isinstance(name, str) or not name.strip(): raise ValueError("文件源数据集名称不能为空")
+        if name != name.strip(): raise ValueError(f"文件源数据集名称不能包含首尾空白: {name!r}")
+        if Path(name).name != name or "/" in name or "\\" in name or name in {".", ".."}: raise ValueError(f"文件源数据集名称只能是当前目录下的文件名或 stem: {name!r}")
         return name
 
     def _supported_files(self, d: Optional[Path] = None) -> list[Path]:
         d = d or self._validated_dir()
-        return sorted((p for p in d.iterdir() if p.is_file() and p.suffix.lower() in _EXTS), key=lambda p: (p.stem.casefold(), _EXT_PRIORITY[p.suffix.lower()], p.name.casefold()))
+        return sorted((p for p in d.iterdir() if p.is_file() and p.suffix.lower() in _EXTS), key=lambda p: (p.stem.casefold(), _EXT_PRIORITY[p.suffix.lower()], p.name.casefold(), p.name))
 
     def _logical_files(self, d: Optional[Path] = None) -> list[Path]:
         chosen = []; seen = set()
@@ -56,12 +53,29 @@ class FileConnector(Connector):
             seen.add(key); chosen.append(p)
         return chosen
 
+    @staticmethod
+    def _single_casefold_match(paths: list[Path], requested: str, attr: str) -> Optional[Path]:
+        folded = requested.casefold()
+        matches = [p for p in paths if getattr(p, attr).casefold() == folded]
+        if len(matches) > 1:
+            names = ", ".join(sorted(p.name for p in matches))
+            raise ValueError(f"文件源名称存在仅大小写不同的歧义: {requested!r} -> {names}")
+        return matches[0] if matches else None
+
     def _path(self, name: str) -> Path:
         d = self._validated_dir(); name = self._validate_name(name); files = self._supported_files(d)
-        exact = next((p for p in files if p.name.casefold() == name.casefold()), None)
+        literal = next((p for p in files if p.name == name), None)
+        if literal is not None: return literal
+        exact = self._single_casefold_match(files, name, "name")
         if exact is not None: return exact
         by_stem = [p for p in files if p.stem.casefold() == name.casefold()]
-        if by_stem: return min(by_stem, key=lambda p: _EXT_PRIORITY[p.suffix.lower()])
+        if by_stem:
+            best_priority = min(_EXT_PRIORITY[p.suffix.lower()] for p in by_stem)
+            preferred = [p for p in by_stem if _EXT_PRIORITY[p.suffix.lower()] == best_priority]
+            if len(preferred) > 1:
+                names = ", ".join(sorted(p.name for p in preferred))
+                raise ValueError(f"文件源 stem 存在仅大小写不同的歧义: {name!r} -> {names}")
+            return preferred[0]
         raise FileNotFoundError(f"文件源未找到: {name}（目录 {d}）")
 
     def _read_df(self, path: Path, nrows: Optional[int] = None):
