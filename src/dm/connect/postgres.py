@@ -37,8 +37,13 @@ class PostgresConnector(Connector):
         )
 
     def _schema(self, schema: Optional[str] = None) -> str:
-        """解析并校验 schema；读表与自省必须落在同一个命名空间。"""
-        value = schema or self.source.params.get("schema") or "public"
+        """解析并校验 schema；显式或配置的空值不能悄悄回退到 public。"""
+        if schema is not None:
+            value = schema
+        elif "schema" in self.source.params:
+            value = self.source.params["schema"]
+        else:
+            value = "public"
         if not isinstance(value, str) or not _IDENT.fullmatch(value):
             raise ValueError(f"非法 schema: {value}")
         return value
@@ -61,7 +66,6 @@ class PostgresConnector(Connector):
                 "SELECT table_name FROM information_schema.tables "
                 "WHERE table_schema=%s AND table_type='BASE TABLE' ORDER BY table_name", (schema,))
             tables = [r[0] for r in cur.fetchall()]
-            # 主键：一次性拉全 schema，并按表身份隔离同名约束，保持复合主键列顺序。
             cur.execute(
                 "SELECT tc.table_name, kcu.column_name "
                 "FROM information_schema.table_constraints tc "
@@ -100,7 +104,7 @@ class PostgresConnector(Connector):
         if since is not None:
             if not _IDENT.fullmatch(cursor_col):
                 raise ValueError(f"非法游标列: {cursor_col}")
-            sql += f' WHERE "{cursor_col}" > %s'   # 对标 Palantir 单调游标 WHERE col > ?
+            sql += f' WHERE "{cursor_col}" > %s'
             params.append(since)
         if limit is not None:
             sql += " LIMIT %s"
