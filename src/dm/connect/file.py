@@ -102,6 +102,7 @@ class FileConnector(Connector):
 
     def read_table(self, name: str, limit: Optional[int] = None, cursor_col: Optional[str] = None, since=None) -> tuple:
         limit = normalize_read_limit(limit); incremental = since is not None
+        if cursor_col is not None and since is None: raise ValueError("增量读取提供 cursor_col 时必须同时提供 since")
         if incremental and (not isinstance(cursor_col, str) or not cursor_col.strip()): raise ValueError("增量读取提供 since 时必须同时提供非空 cursor_col")
         df = self._read_df(self._path(name), nrows=None if incremental else limit)
         if incremental:
