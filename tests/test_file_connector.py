@@ -24,6 +24,17 @@ def test_connection_rejects_regular_file(tmp_path):
     assert ok is False and "不是目录" in message
 
 
+def test_introspect_rejects_missing_source_directory(tmp_path):
+    with pytest.raises(FileNotFoundError, match="目录不存在"):
+        _connector(tmp_path / "missing").introspect()
+
+
+def test_introspect_rejects_regular_file_source(tmp_path):
+    source_path = tmp_path / "not-a-directory"; source_path.write_text("data", encoding="utf-8")
+    with pytest.raises(NotADirectoryError, match="不是目录"):
+        _connector(source_path).introspect()
+
+
 def test_read_table_rejects_path_traversal(tmp_path):
     (tmp_path / "orders.csv").write_text("id\n1\n", encoding="utf-8")
     with pytest.raises(ValueError, match="当前目录"): _connector(tmp_path).read_table("../orders")
