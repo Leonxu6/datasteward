@@ -100,6 +100,12 @@ def test_read_table_qualifies_configured_schema(monkeypatch):
     assert cursor.sql == "SELECT * FROM [erp].[orders] WHERE [id] > ?" and cursor.params == (10,)
 
 
+@pytest.mark.parametrize("name", [None, 123, ["orders"]])
+def test_read_table_rejects_non_string_table_names_before_loading_driver(monkeypatch, name):
+    connector = SqlServerConnector(Source(name="u8", source_type="sqlserver")); monkeypatch.setattr(sqlserver_module, "_load_driver", lambda: (_ for _ in ()).throw(AssertionError("driver should not be loaded")))
+    with pytest.raises(ValueError, match="非法表名"): connector.read_table(name)
+
+
 @pytest.mark.parametrize("cursor_col", [None, "", "   ", 123])
 def test_incremental_read_requires_nonempty_cursor_column_before_loading_driver(monkeypatch, cursor_col):
     connector = SqlServerConnector(Source(name="u8", source_type="sqlserver")); monkeypatch.setattr(sqlserver_module, "_load_driver", lambda: (_ for _ in ()).throw(AssertionError("driver should not be loaded")))
