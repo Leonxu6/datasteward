@@ -117,6 +117,14 @@ def test_read_table_qualifies_configured_schema(monkeypatch):
     assert params == ["2026-08-01", 2]
 
 
+@pytest.mark.parametrize("name", [None, 123, ["orders"]])
+def test_read_table_rejects_non_string_table_names_before_connect(monkeypatch, name):
+    connector = PostgresConnector(Source(name="pg", source_type="postgres"))
+    monkeypatch.setattr(connector, "_connect", lambda: (_ for _ in ()).throw(AssertionError("database should not be contacted")))
+    with pytest.raises(ValueError, match="非法表名"):
+        connector.read_table(name)
+
+
 @pytest.mark.parametrize("cursor_col", [None, "", "   ", 123])
 def test_incremental_read_requires_nonempty_cursor_column_before_connect(monkeypatch, cursor_col):
     connector = PostgresConnector(Source(name="pg", source_type="postgres"))
