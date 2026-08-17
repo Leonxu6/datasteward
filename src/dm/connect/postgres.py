@@ -93,7 +93,7 @@ class PostgresConnector(Connector):
 
     def read_table(self, name: str, limit: Optional[int] = None,
                    cursor_col: Optional[str] = None, since=None) -> tuple:
-        if not _IDENT.fullmatch(name):
+        if not isinstance(name, str) or not _IDENT.fullmatch(name):
             raise ValueError(f"非法表名: {name}")
         if cursor_col is not None and since is None:
             raise ValueError("增量读取提供 cursor_col 时必须同时提供 since")
