@@ -125,6 +125,13 @@ def test_incremental_read_requires_nonempty_cursor_column_before_connect(monkeyp
         connector.read_table("orders", cursor_col=cursor_col, since="2026-08-01")
 
 
+def test_incremental_read_rejects_cursor_without_since_before_connect(monkeypatch):
+    connector = PostgresConnector(Source(name="pg", source_type="postgres"))
+    monkeypatch.setattr(connector, "_connect", lambda: (_ for _ in ()).throw(AssertionError("database should not be contacted")))
+    with pytest.raises(ValueError, match="同时提供 since"):
+        connector.read_table("orders", cursor_col="updated_at")
+
+
 @pytest.mark.parametrize("schema", ["", "erp.prod", "erp-prod", 123])
 def test_schema_rejects_non_identifier_values(schema):
     connector = PostgresConnector(Source(name="pg", source_type="postgres"))
