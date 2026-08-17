@@ -46,11 +46,17 @@ class FileConnector(Connector):
         return sorted((p for p in d.iterdir() if p.is_file() and p.suffix.lower() in _EXTS), key=lambda p: (p.stem.casefold(), _EXT_PRIORITY[p.suffix.lower()], p.name.casefold(), p.name))
 
     def _logical_files(self, d: Optional[Path] = None) -> list[Path]:
-        chosen = []; seen = set()
+        groups: dict[str, list[Path]] = {}
         for p in self._supported_files(d):
-            key = p.stem.casefold()
-            if key in seen: continue
-            seen.add(key); chosen.append(p)
+            groups.setdefault(p.stem.casefold(), []).append(p)
+        chosen = []
+        for group in groups.values():
+            best_priority = min(_EXT_PRIORITY[p.suffix.lower()] for p in group)
+            preferred = [p for p in group if _EXT_PRIORITY[p.suffix.lower()] == best_priority]
+            if len(preferred) > 1:
+                names = ", ".join(sorted(p.name for p in preferred))
+                raise ValueError(f"文件源 stem 存在仅大小写不同的歧义: {preferred[0].stem!r} -> {names}")
+            chosen.append(preferred[0])
         return chosen
 
     @staticmethod
