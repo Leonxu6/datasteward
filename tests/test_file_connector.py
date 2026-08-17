@@ -74,6 +74,13 @@ def test_case_insensitive_stem_lookup_rejects_ambiguous_best_format(tmp_path):
         _connector(tmp_path).read_table("orders")
 
 
+def test_introspect_rejects_casefold_ambiguous_stems(tmp_path):
+    (tmp_path / "orders.csv").write_text("id\n1\n", encoding="utf-8")
+    (tmp_path / "Orders.csv").write_text("id\n2\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="stem 存在仅大小写不同的歧义"):
+        _connector(tmp_path).introspect()
+
+
 def test_duplicate_stem_keeps_csv_priority(tmp_path):
     (tmp_path / "orders.csv").write_text("id\n7\n", encoding="utf-8"); (tmp_path / "orders.xlsx").write_text("not a real workbook", encoding="utf-8")
     columns, rows = _connector(tmp_path).read_table("orders")
