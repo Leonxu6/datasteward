@@ -90,8 +90,7 @@ class FileConnector(Connector):
         return True, "ok"
 
     def introspect(self) -> list:
-        d = self._dir()
-        if not d.is_dir(): return []
+        d = self._validated_dir()
         out = []
         for p in self._logical_files(d):
             try: df = self._read_df(p, nrows=100)
