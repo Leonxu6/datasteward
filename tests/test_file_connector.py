@@ -114,6 +114,11 @@ def test_incremental_read_requires_nonempty_cursor_column(tmp_path, cursor_col):
     with pytest.raises(ValueError, match="非空 cursor_col"): _connector(tmp_path).read_table("orders", cursor_col=cursor_col, since="2026-07-01")
 
 
+def test_incremental_read_rejects_cursor_without_since(tmp_path):
+    with pytest.raises(ValueError, match="同时提供 since"):
+        _connector(tmp_path).read_table("orders", cursor_col="updated_at")
+
+
 def test_incremental_read_rejects_unknown_cursor_column(tmp_path):
     (tmp_path / "orders.csv").write_text("id,updated_at\n1,2026-08-01\n", encoding="utf-8")
     with pytest.raises(ValueError, match="游标列不存在"): _connector(tmp_path).read_table("orders", cursor_col="missing", since="2026-07-01")
