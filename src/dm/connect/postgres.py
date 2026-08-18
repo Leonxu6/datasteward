@@ -7,7 +7,7 @@ import re
 from typing import Optional
 
 from dm.config import SRC_PG_DB, SRC_PG_HOST, SRC_PG_PASSWORD, SRC_PG_PORT, SRC_PG_USER
-from dm.connect.base import ColumnDef, Connector, DatasetDef, Source, normalize_port, normalize_read_limit
+from dm.connect.base import ColumnDef, Connector, DatasetDef, Source, normalize_port, normalize_read_limit, normalize_timeout
 
 _IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -33,7 +33,7 @@ class PostgresConnector(Connector):
             host=p.get("host", SRC_PG_HOST), port=normalize_port(p.get("port"), default=SRC_PG_PORT),
             user=p.get("user", SRC_PG_USER), dbname=p.get("db", SRC_PG_DB),
             password=self.source.secret("password", SRC_PG_PASSWORD),
-            connect_timeout=15,
+            connect_timeout=normalize_timeout(p.get("connect_timeout"), default=15),
         )
 
     def _schema(self, schema: Optional[str] = None) -> str:
