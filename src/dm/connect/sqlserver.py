@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from typing import Optional
 
 from dm.config import SRC_MSSQL_DB, SRC_MSSQL_HOST, SRC_MSSQL_PASSWORD, SRC_MSSQL_PORT, SRC_MSSQL_USER
-from dm.connect.base import ColumnDef, Connector, DatasetDef, Source, normalize_port, normalize_read_limit
+from dm.connect.base import ColumnDef, Connector, DatasetDef, Source, normalize_port, normalize_read_limit, normalize_timeout
 from dm.connect.postgres import _IDENT
 
 _DEFAULT_ODBC_DRIVER = "ODBC Driver 17 for SQL Server"
@@ -36,6 +36,7 @@ class SqlServerConnector(Connector):
     def _connect(self):
         p = self.source.params
         port = normalize_port(p.get("port"), default=SRC_MSSQL_PORT)
+        timeout = normalize_timeout(p.get("connect_timeout"), default=15)
         drv, style = _load_driver()
         if drv is None:
             raise RuntimeError("未安装 SQL Server 驱动：pip install -e .[connectors]（pymssql 或 pyodbc）")
@@ -44,7 +45,7 @@ class SqlServerConnector(Connector):
             raise RuntimeError("SQL Server 主机未配置（DM_SRC_MSSQL_HOST）——真库到手后设置环境变量")
         pwd = self.source.secret("password", SRC_MSSQL_PASSWORD)
         if style == "pymssql":
-            return drv.connect(server=host, port=str(port), user=p.get("user", SRC_MSSQL_USER), password=pwd, database=p.get("db", SRC_MSSQL_DB), login_timeout=15)
+            return drv.connect(server=host, port=str(port), user=p.get("user", SRC_MSSQL_USER), password=pwd, database=p.get("db", SRC_MSSQL_DB), login_timeout=timeout)
         server = f"{host},{port}"
         odbc_driver = p.get("odbc_driver") or _DEFAULT_ODBC_DRIVER
         conn_str = (
@@ -52,7 +53,7 @@ class SqlServerConnector(Connector):
             f"SERVER={_odbc_value(server)};DATABASE={_odbc_value(p.get('db', SRC_MSSQL_DB))};"
             f"UID={_odbc_value(p.get('user', SRC_MSSQL_USER))};PWD={_odbc_value(pwd)}"
         )
-        return drv.connect(conn_str, timeout=15)
+        return drv.connect(conn_str, timeout=timeout)
 
     def _schema(self, schema: Optional[str] = None) -> str:
         if schema is not None: value = schema
