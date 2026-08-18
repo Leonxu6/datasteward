@@ -28,7 +28,6 @@ def normalize_read_limit(limit: Optional[int]) -> Optional[int]:
     """规范化 read_table 的行数上限；0 合法，负数、布尔值和非整数立即拒绝。"""
     if limit is None:
         return None
-    # bool 实现了 __index__，但 API 里的 true/false 不是有意义的行数上限，避免静默变成 1/0。
     if isinstance(limit, bool):
         raise ValueError(f"limit 必须是整数，不能是布尔值: {limit!r}")
     try:
@@ -40,30 +39,43 @@ def normalize_read_limit(limit: Optional[int]) -> Optional[int]:
     return value
 
 
-def normalize_port(port, *, default=None) -> int:
-    """规范化 TCP 端口，允许整数或纯数字字符串，并拒绝隐式截断与越界值。"""
-    value = default if port is None else port
+def _normalize_positive_int(value, *, default=None, field_name: str) -> int:
+    """解析配置中的正整数，接受 int / 纯数字字符串，拒绝布尔值、截断和首尾空白。"""
+    value = default if value is None else value
     if isinstance(value, bool):
-        raise ValueError(f"port 必须是 1-65535 的整数，不能是布尔值: {value!r}")
+        raise ValueError(f"{field_name} 必须是正整数，不能是布尔值: {value!r}")
     if isinstance(value, str):
         if not value or value != value.strip() or not value.isdecimal():
-            raise ValueError(f"port 必须是 1-65535 的整数: {value!r}")
+            raise ValueError(f"{field_name} 必须是正整数: {value!r}")
         parsed = int(value)
     else:
         try:
             parsed = operator.index(value)
         except TypeError as exc:
-            raise ValueError(f"port 必须是 1-65535 的整数: {value!r}") from exc
-    if not 1 <= parsed <= 65535:
+            raise ValueError(f"{field_name} 必须是正整数: {value!r}") from exc
+    if parsed <= 0:
+        raise ValueError(f"{field_name} 必须大于 0: {parsed}")
+    return parsed
+
+
+def normalize_port(port, *, default=None) -> int:
+    """规范化 TCP 端口，允许整数或纯数字字符串，并拒绝隐式截断与越界值。"""
+    parsed = _normalize_positive_int(port, default=default, field_name="port")
+    if parsed > 65535:
         raise ValueError(f"port 超出范围 1-65535: {parsed}")
     return parsed
+
+
+def normalize_timeout(timeout, *, default=15) -> int:
+    """规范化连接超时秒数，要求正整数，避免 bool/float 被驱动静默解释。"""
+    return _normalize_positive_int(timeout, default=default, field_name="connect_timeout")
 
 
 @dataclass
 class ColumnDef:
     """自省得到的一列。"""
     name: str
-    data_type: str               # 源系统原始类型（如 varchar / int4 / datetime）
+    data_type: str
     nullable: bool = True
     is_primary_key: bool = False
 
@@ -72,8 +84,8 @@ class ColumnDef:
 class DatasetDef:
     """自省得到的一张源表定义 —— 将落为一个 **raw 数据集**。"""
     name: str
-    columns: list = field(default_factory=list)      # list[ColumnDef]
-    primary_key: list = field(default_factory=list)   # 列名列表
+    columns: list = field(default_factory=list)
+    primary_key: list = field(default_factory=list)
     row_estimate: Optional[int] = None
 
     def col_names(self):
@@ -84,10 +96,10 @@ class DatasetDef:
 class Source:
     """治理化的连接源。凭据不内联——`credential_env` 只存环境变量名。"""
     name: str
-    source_type: str                                  # postgres / sqlserver / file
-    params: dict = field(default_factory=dict)        # host/port/db/path 等（非敏感）
-    credential_env: dict = field(default_factory=dict)  # {"password": "DM_SRC_PG_PASSWORD"}
-    markings: list = field(default_factory=list)      # 源打标 → 传播到下游数据集
+    source_type: str
+    params: dict = field(default_factory=dict)
+    credential_env: dict = field(default_factory=dict)
+    markings: list = field(default_factory=list)
     description: str = ""
 
     def secret(self, key: str, default: str = "") -> str:
