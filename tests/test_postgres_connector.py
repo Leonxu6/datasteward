@@ -182,3 +182,31 @@ def test_connect_rejects_invalid_ports_before_driver_connect(monkeypatch, port):
     connector = PostgresConnector(Source(name="pg", source_type="postgres", params={"port": port}))
     with pytest.raises(ValueError, match="port"):
         connector._connect()
+
+
+def test_connect_uses_configured_timeout(monkeypatch):
+    captured = {}
+
+    class _FakePsycopg:
+        @staticmethod
+        def connect(**kwargs):
+            captured.update(kwargs)
+            return object()
+
+    monkeypatch.setitem(sys.modules, "psycopg", _FakePsycopg)
+    connector = PostgresConnector(Source(name="pg", source_type="postgres", params={"connect_timeout": "30"}))
+    connector._connect()
+    assert captured["connect_timeout"] == 30
+
+
+@pytest.mark.parametrize("timeout", [True, 0, -1, 15.5, " 15"])
+def test_connect_rejects_invalid_timeouts_before_driver_connect(monkeypatch, timeout):
+    class _FakePsycopg:
+        @staticmethod
+        def connect(**kwargs):
+            raise AssertionError("psycopg.connect should not be called")
+
+    monkeypatch.setitem(sys.modules, "psycopg", _FakePsycopg)
+    connector = PostgresConnector(Source(name="pg", source_type="postgres", params={"connect_timeout": timeout}))
+    with pytest.raises(ValueError, match="connect_timeout"):
+        connector._connect()
