@@ -24,6 +24,20 @@ def test_connection_rejects_regular_file(tmp_path):
     assert ok is False and "不是目录" in message
 
 
+@pytest.mark.parametrize("configured_dir", [None, "", "   ", 123, True])
+def test_connection_rejects_invalid_directory_config(configured_dir):
+    connector = FileConnector(Source(name="files", source_type="file", params={"dir": configured_dir}))
+    ok, message = connector.test_connection()
+    assert ok is False and "目录" in message
+
+
+@pytest.mark.parametrize("configured_dir", [None, "", "   ", 123, True])
+def test_introspect_rejects_invalid_directory_config(configured_dir):
+    connector = FileConnector(Source(name="files", source_type="file", params={"dir": configured_dir}))
+    with pytest.raises(ValueError, match="目录"):
+        connector.introspect()
+
+
 def test_introspect_rejects_missing_source_directory(tmp_path):
     with pytest.raises(FileNotFoundError, match="目录不存在"):
         _connector(tmp_path / "missing").introspect()
