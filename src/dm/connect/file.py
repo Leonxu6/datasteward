@@ -1,4 +1,5 @@
 """文件连接器：CSV / Excel（接 MES 导出、线下台账）。"""
+from os import PathLike
 from pathlib import Path
 from typing import Optional
 
@@ -26,7 +27,12 @@ class FileConnector(Connector):
     source_type = "file"
 
     def _dir(self) -> Path:
-        return Path(self.source.params.get("dir", FILE_SOURCE_DIR))
+        raw = self.source.params.get("dir", FILE_SOURCE_DIR)
+        if not isinstance(raw, (str, PathLike)):
+            raise ValueError(f"文件源目录必须是路径字符串: {raw!r}")
+        if isinstance(raw, str) and not raw.strip():
+            raise ValueError("文件源目录不能为空")
+        return Path(raw)
 
     def _validated_dir(self) -> Path:
         d = self._dir()
@@ -90,7 +96,10 @@ class FileConnector(Connector):
         return pd.read_excel(path, nrows=nrows)
 
     def test_connection(self) -> tuple:
-        d = self._dir()
+        try:
+            d = self._dir()
+        except ValueError as exc:
+            return False, str(exc)
         if not d.exists(): return False, f"目录不存在: {d}"
         if not d.is_dir(): return False, f"路径不是目录: {d}"
         return True, "ok"
