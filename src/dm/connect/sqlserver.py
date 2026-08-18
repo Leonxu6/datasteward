@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from typing import Optional
 
 from dm.config import SRC_MSSQL_DB, SRC_MSSQL_HOST, SRC_MSSQL_PASSWORD, SRC_MSSQL_PORT, SRC_MSSQL_USER
-from dm.connect.base import ColumnDef, Connector, DatasetDef, Source, normalize_read_limit
+from dm.connect.base import ColumnDef, Connector, DatasetDef, Source, normalize_port, normalize_read_limit
 from dm.connect.postgres import _IDENT
 
 _DEFAULT_ODBC_DRIVER = "ODBC Driver 17 for SQL Server"
@@ -34,17 +34,18 @@ class SqlServerConnector(Connector):
     source_type = "sqlserver"
 
     def _connect(self):
+        p = self.source.params
+        port = normalize_port(p.get("port"), default=SRC_MSSQL_PORT)
         drv, style = _load_driver()
         if drv is None:
             raise RuntimeError("未安装 SQL Server 驱动：pip install -e .[connectors]（pymssql 或 pyodbc）")
-        p = self.source.params
         host = p.get("host") or SRC_MSSQL_HOST
         if not host:
             raise RuntimeError("SQL Server 主机未配置（DM_SRC_MSSQL_HOST）——真库到手后设置环境变量")
         pwd = self.source.secret("password", SRC_MSSQL_PASSWORD)
         if style == "pymssql":
-            return drv.connect(server=host, port=str(p.get("port", SRC_MSSQL_PORT)), user=p.get("user", SRC_MSSQL_USER), password=pwd, database=p.get("db", SRC_MSSQL_DB), login_timeout=15)
-        server = f"{host},{p.get('port', SRC_MSSQL_PORT)}"
+            return drv.connect(server=host, port=str(port), user=p.get("user", SRC_MSSQL_USER), password=pwd, database=p.get("db", SRC_MSSQL_DB), login_timeout=15)
+        server = f"{host},{port}"
         odbc_driver = p.get("odbc_driver") or _DEFAULT_ODBC_DRIVER
         conn_str = (
             f"DRIVER={_odbc_value(odbc_driver)};"
