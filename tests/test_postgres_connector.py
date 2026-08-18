@@ -1,5 +1,7 @@
 """PostgresConnector 的纯单元测试，不需要真实 PostgreSQL。"""
 
+import sys
+
 import pytest
 
 from dm.connect.base import Source
@@ -152,3 +154,31 @@ def test_configured_empty_schema_is_rejected_before_connect(monkeypatch):
     monkeypatch.setattr(connector, "_connect", lambda: (_ for _ in ()).throw(AssertionError("database should not be contacted")))
     with pytest.raises(ValueError, match="非法 schema"):
         connector.read_table("orders")
+
+
+def test_connect_normalizes_numeric_string_port(monkeypatch):
+    captured = {}
+
+    class _FakePsycopg:
+        @staticmethod
+        def connect(**kwargs):
+            captured.update(kwargs)
+            return object()
+
+    monkeypatch.setitem(sys.modules, "psycopg", _FakePsycopg)
+    connector = PostgresConnector(Source(name="pg", source_type="postgres", params={"port": "5433"}))
+    connector._connect()
+    assert captured["port"] == 5433
+
+
+@pytest.mark.parametrize("port", [True, 0, 65536, 5432.5, " 5432"])
+def test_connect_rejects_invalid_ports_before_driver_connect(monkeypatch, port):
+    class _FakePsycopg:
+        @staticmethod
+        def connect(**kwargs):
+            raise AssertionError("psycopg.connect should not be called")
+
+    monkeypatch.setitem(sys.modules, "psycopg", _FakePsycopg)
+    connector = PostgresConnector(Source(name="pg", source_type="postgres", params={"port": port}))
+    with pytest.raises(ValueError, match="port"):
+        connector._connect()
