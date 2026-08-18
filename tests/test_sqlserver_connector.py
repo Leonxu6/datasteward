@@ -82,6 +82,19 @@ def test_pyodbc_connection_allows_driver_override(monkeypatch):
     assert driver.connection_string.startswith("DRIVER={ODBC Driver 18 for SQL Server};")
 
 
+def test_pyodbc_connection_normalizes_numeric_string_port(monkeypatch):
+    driver = _FakePyodbc(); monkeypatch.setenv("TEST_SQL_PASSWORD", "secret"); monkeypatch.setattr(sqlserver_module, "_load_driver", lambda: (driver, "pyodbc"))
+    SqlServerConnector(_pyodbc_source(port="1444"))._connect()
+    assert "SERVER={db;node,1444}" in driver.connection_string
+
+
+@pytest.mark.parametrize("port", [True, 0, 65536, 1433.5, " 1433"])
+def test_connect_rejects_invalid_ports_before_loading_driver(monkeypatch, port):
+    monkeypatch.setattr(sqlserver_module, "_load_driver", lambda: (_ for _ in ()).throw(AssertionError("driver should not be loaded")))
+    with pytest.raises(ValueError, match="port"):
+        SqlServerConnector(_pyodbc_source(port=port))._connect()
+
+
 def test_introspect_uses_configured_schema_and_preserves_composite_pk_order(monkeypatch):
     connector = SqlServerConnector(Source(name="u8", source_type="sqlserver", params={"schema": "erp"})); fake = _IntrospectionConnection(); monkeypatch.setattr(sqlserver_module, "_load_driver", lambda: (object(), "pymssql")); monkeypatch.setattr(connector, "_connect", lambda: fake)
     datasets = connector.introspect()
