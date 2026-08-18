@@ -108,8 +108,10 @@ class FileConnector(Connector):
         d = self._validated_dir()
         out = []
         for p in self._logical_files(d):
-            try: df = self._read_df(p, nrows=100)
-            except Exception: continue  # noqa: BLE001
+            try:
+                df = self._read_df(p, nrows=100)
+            except Exception as exc:  # noqa: BLE001
+                raise ValueError(f"读取文件元数据失败: {p.name}: {exc}") from exc
             cols = [ColumnDef(name=str(c), data_type=_dtype_to_base(df[c].dtype)) for c in df.columns]
             out.append(DatasetDef(name=p.stem, columns=cols))
         return out
