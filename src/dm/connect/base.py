@@ -40,6 +40,25 @@ def normalize_read_limit(limit: Optional[int]) -> Optional[int]:
     return value
 
 
+def normalize_port(port, *, default=None) -> int:
+    """规范化 TCP 端口，允许整数或纯数字字符串，并拒绝隐式截断与越界值。"""
+    value = default if port is None else port
+    if isinstance(value, bool):
+        raise ValueError(f"port 必须是 1-65535 的整数，不能是布尔值: {value!r}")
+    if isinstance(value, str):
+        if not value or value != value.strip() or not value.isdecimal():
+            raise ValueError(f"port 必须是 1-65535 的整数: {value!r}")
+        parsed = int(value)
+    else:
+        try:
+            parsed = operator.index(value)
+        except TypeError as exc:
+            raise ValueError(f"port 必须是 1-65535 的整数: {value!r}") from exc
+    if not 1 <= parsed <= 65535:
+        raise ValueError(f"port 超出范围 1-65535: {parsed}")
+    return parsed
+
+
 @dataclass
 class ColumnDef:
     """自省得到的一列。"""
