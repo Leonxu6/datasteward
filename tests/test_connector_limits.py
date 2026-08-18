@@ -2,7 +2,7 @@
 
 import pytest
 
-from dm.connect.base import Source, normalize_read_limit
+from dm.connect.base import Source, normalize_port, normalize_read_limit
 from dm.connect.postgres import PostgresConnector
 from dm.connect.sqlserver import SqlServerConnector
 import dm.connect.sqlserver as sqlserver_module
@@ -63,6 +63,16 @@ def test_normalize_read_limit_accepts_zero_and_rejects_invalid_values():
         normalize_read_limit(True)
     with pytest.raises(ValueError, match="不能是布尔值"):
         normalize_read_limit(False)
+
+
+def test_normalize_port_accepts_numeric_strings_and_rejects_unsafe_values():
+    assert normalize_port(None, default=5432) == 5432
+    assert normalize_port(1433) == 1433
+    assert normalize_port("5432") == 5432
+
+    for invalid in (True, False, 0, 65536, 5432.5, " 5432", "5432 ", "54x2", ""):
+        with pytest.raises(ValueError, match="port"):
+            normalize_port(invalid)
 
 
 def test_postgres_zero_limit_is_sent_to_database(monkeypatch):
