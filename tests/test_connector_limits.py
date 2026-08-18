@@ -2,7 +2,7 @@
 
 import pytest
 
-from dm.connect.base import Source, normalize_port, normalize_read_limit
+from dm.connect.base import Source, normalize_port, normalize_read_limit, normalize_timeout
 from dm.connect.postgres import PostgresConnector
 from dm.connect.sqlserver import SqlServerConnector
 import dm.connect.sqlserver as sqlserver_module
@@ -73,6 +73,16 @@ def test_normalize_port_accepts_numeric_strings_and_rejects_unsafe_values():
     for invalid in (True, False, 0, 65536, 5432.5, " 5432", "5432 ", "54x2", ""):
         with pytest.raises(ValueError, match="port"):
             normalize_port(invalid)
+
+
+def test_normalize_timeout_accepts_numeric_strings_and_rejects_unsafe_values():
+    assert normalize_timeout(None) == 15
+    assert normalize_timeout(30) == 30
+    assert normalize_timeout("45") == 45
+
+    for invalid in (True, False, 0, -1, 15.5, " 15", "15 ", "15s", ""):
+        with pytest.raises(ValueError, match="connect_timeout"):
+            normalize_timeout(invalid)
 
 
 def test_postgres_zero_limit_is_sent_to_database(monkeypatch):
