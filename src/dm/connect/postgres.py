@@ -7,7 +7,7 @@ import re
 from typing import Optional
 
 from dm.config import SRC_PG_DB, SRC_PG_HOST, SRC_PG_PASSWORD, SRC_PG_PORT, SRC_PG_USER
-from dm.connect.base import ColumnDef, Connector, DatasetDef, Source, normalize_read_limit
+from dm.connect.base import ColumnDef, Connector, DatasetDef, Source, normalize_port, normalize_read_limit
 
 _IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -30,7 +30,7 @@ class PostgresConnector(Connector):
         import psycopg
         p = self.source.params
         return psycopg.connect(
-            host=p.get("host", SRC_PG_HOST), port=int(p.get("port", SRC_PG_PORT)),
+            host=p.get("host", SRC_PG_HOST), port=normalize_port(p.get("port"), default=SRC_PG_PORT),
             user=p.get("user", SRC_PG_USER), dbname=p.get("db", SRC_PG_DB),
             password=self.source.secret("password", SRC_PG_PASSWORD),
             connect_timeout=15,
