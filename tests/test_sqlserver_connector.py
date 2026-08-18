@@ -95,6 +95,19 @@ def test_connect_rejects_invalid_ports_before_loading_driver(monkeypatch, port):
         SqlServerConnector(_pyodbc_source(port=port))._connect()
 
 
+def test_pyodbc_connection_uses_configured_timeout(monkeypatch):
+    driver = _FakePyodbc(); monkeypatch.setenv("TEST_SQL_PASSWORD", "secret"); monkeypatch.setattr(sqlserver_module, "_load_driver", lambda: (driver, "pyodbc"))
+    SqlServerConnector(_pyodbc_source(connect_timeout="30"))._connect()
+    assert driver.timeout == 30
+
+
+@pytest.mark.parametrize("timeout", [True, 0, -1, 15.5, " 15"])
+def test_connect_rejects_invalid_timeouts_before_loading_driver(monkeypatch, timeout):
+    monkeypatch.setattr(sqlserver_module, "_load_driver", lambda: (_ for _ in ()).throw(AssertionError("driver should not be loaded")))
+    with pytest.raises(ValueError, match="connect_timeout"):
+        SqlServerConnector(_pyodbc_source(connect_timeout=timeout))._connect()
+
+
 def test_introspect_uses_configured_schema_and_preserves_composite_pk_order(monkeypatch):
     connector = SqlServerConnector(Source(name="u8", source_type="sqlserver", params={"schema": "erp"})); fake = _IntrospectionConnection(); monkeypatch.setattr(sqlserver_module, "_load_driver", lambda: (object(), "pymssql")); monkeypatch.setattr(connector, "_connect", lambda: fake)
     datasets = connector.introspect()
