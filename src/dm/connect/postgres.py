@@ -8,6 +8,7 @@ from typing import Optional
 
 from dm.config import SRC_PG_DB, SRC_PG_HOST, SRC_PG_PASSWORD, SRC_PG_PORT, SRC_PG_USER
 from dm.connect.base import ColumnDef, Connector, DatasetDef, Source, normalize_port, normalize_read_limit, normalize_timeout
+from dm.connect.validation import normalize_required_text
 
 _IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -27,10 +28,11 @@ class PostgresConnector(Connector):
     source_type = "postgres"
 
     def _connect(self):
-        import psycopg
         p = self.source.params
+        host = normalize_required_text(p["host"] if "host" in p else SRC_PG_HOST, field_name="host")
+        import psycopg
         return psycopg.connect(
-            host=p.get("host", SRC_PG_HOST), port=normalize_port(p.get("port"), default=SRC_PG_PORT),
+            host=host, port=normalize_port(p.get("port"), default=SRC_PG_PORT),
             user=p.get("user", SRC_PG_USER), dbname=p.get("db", SRC_PG_DB),
             password=self.source.secret("password", SRC_PG_PASSWORD),
             connect_timeout=normalize_timeout(p.get("connect_timeout"), default=15),
