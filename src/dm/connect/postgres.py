@@ -30,10 +30,12 @@ class PostgresConnector(Connector):
     def _connect(self):
         p = self.source.params
         host = normalize_required_text(p["host"] if "host" in p else SRC_PG_HOST, field_name="host")
+        user = normalize_required_text(p["user"] if "user" in p else SRC_PG_USER, field_name="user")
+        database = normalize_required_text(p["db"] if "db" in p else SRC_PG_DB, field_name="db")
         import psycopg
         return psycopg.connect(
             host=host, port=normalize_port(p.get("port"), default=SRC_PG_PORT),
-            user=p.get("user", SRC_PG_USER), dbname=p.get("db", SRC_PG_DB),
+            user=user, dbname=database,
             password=self.source.secret("password", SRC_PG_PASSWORD),
             connect_timeout=normalize_timeout(p.get("connect_timeout"), default=15),
         )
