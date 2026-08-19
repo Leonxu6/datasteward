@@ -39,18 +39,23 @@ class SqlServerConnector(Connector):
         port = normalize_port(p.get("port"), default=SRC_MSSQL_PORT)
         timeout = normalize_timeout(p.get("connect_timeout"), default=15)
         host = normalize_required_text(p["host"] if "host" in p else SRC_MSSQL_HOST, field_name="host")
+        user = normalize_required_text(p["user"] if "user" in p else SRC_MSSQL_USER, field_name="user")
+        database = normalize_required_text(p["db"] if "db" in p else SRC_MSSQL_DB, field_name="db")
         drv, style = _load_driver()
         if drv is None:
             raise RuntimeError("未安装 SQL Server 驱动：pip install -e .[connectors]（pymssql 或 pyodbc）")
         pwd = self.source.secret("password", SRC_MSSQL_PASSWORD)
         if style == "pymssql":
-            return drv.connect(server=host, port=str(port), user=p.get("user", SRC_MSSQL_USER), password=pwd, database=p.get("db", SRC_MSSQL_DB), login_timeout=timeout)
+            return drv.connect(server=host, port=str(port), user=user, password=pwd, database=database, login_timeout=timeout)
         server = f"{host},{port}"
-        odbc_driver = p.get("odbc_driver") or _DEFAULT_ODBC_DRIVER
+        odbc_driver = normalize_required_text(
+            p["odbc_driver"] if "odbc_driver" in p else _DEFAULT_ODBC_DRIVER,
+            field_name="odbc_driver",
+        )
         conn_str = (
             f"DRIVER={_odbc_value(odbc_driver)};"
-            f"SERVER={_odbc_value(server)};DATABASE={_odbc_value(p.get('db', SRC_MSSQL_DB))};"
-            f"UID={_odbc_value(p.get('user', SRC_MSSQL_USER))};PWD={_odbc_value(pwd)}"
+            f"SERVER={_odbc_value(server)};DATABASE={_odbc_value(database)};"
+            f"UID={_odbc_value(user)};PWD={_odbc_value(pwd)}"
         )
         return drv.connect(conn_str, timeout=timeout)
 
