@@ -210,3 +210,25 @@ def test_connect_rejects_invalid_timeouts_before_driver_connect(monkeypatch, tim
     connector = PostgresConnector(Source(name="pg", source_type="postgres", params={"connect_timeout": timeout}))
     with pytest.raises(ValueError, match="connect_timeout"):
         connector._connect()
+
+
+def test_connect_passes_validated_host_to_driver(monkeypatch):
+    captured = {}
+
+    class _FakePsycopg:
+        @staticmethod
+        def connect(**kwargs):
+            captured.update(kwargs)
+            return object()
+
+    monkeypatch.setitem(sys.modules, "psycopg", _FakePsycopg)
+    connector = PostgresConnector(Source(name="pg", source_type="postgres", params={"host": "pg.internal"}))
+    connector._connect()
+    assert captured["host"] == "pg.internal"
+
+
+@pytest.mark.parametrize("host", [None, 123, "", " pg.internal", "pg.internal "])
+def test_connect_rejects_invalid_hosts_before_driver_import(host):
+    connector = PostgresConnector(Source(name="pg", source_type="postgres", params={"host": host}))
+    with pytest.raises(ValueError, match="host"):
+        connector._connect()
