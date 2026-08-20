@@ -114,8 +114,8 @@ def chat(messages: list, model: str | None = None, temperature: float = 0.2,
                 break
             try:
                 obj = json.loads(data)
-            except ValueError:
-                continue
+            except ValueError as exc:
+                raise RuntimeError(f"LLM 流式响应包含无效 JSON: {data[:200]}") from exc
             if obj.get("error"):
                 raise RuntimeError(f"LLM 流式响应报错: {str(obj)[:300]}")
             choices = obj.get("choices") or []
