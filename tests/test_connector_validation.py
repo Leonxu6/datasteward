@@ -2,7 +2,7 @@
 
 import pytest
 
-from dm.connect.validation import normalize_required_text
+from dm.connect.validation import normalize_env_name, normalize_required_text
 
 
 def test_required_text_accepts_nonempty_values_without_padding():
@@ -20,3 +20,14 @@ def test_required_text_rejects_missing_nonstring_and_padded_values(value):
 def test_required_text_rejects_embedded_control_characters(value):
     with pytest.raises(ValueError, match="控制字符"):
         normalize_required_text(value, field_name="host")
+
+
+def test_env_name_accepts_normal_environment_references():
+    assert normalize_env_name("DM_SRC_PG_PASSWORD") == "DM_SRC_PG_PASSWORD"
+    assert normalize_env_name("vendor.secret-name") == "vendor.secret-name"
+
+
+@pytest.mark.parametrize("value", [None, "", " DM_SECRET", "DM_SECRET ", "DM=SECRET", "DM\x00SECRET"])
+def test_env_name_rejects_invalid_environment_references(value):
+    with pytest.raises(ValueError):
+        normalize_env_name(value)
