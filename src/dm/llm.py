@@ -45,6 +45,20 @@ def _optional_positive_int(value, *, field_name: str):
     return parsed
 
 
+def _validate_messages(messages):
+    if not isinstance(messages, list) or not messages:
+        raise ValueError("messages 必须是非空列表")
+    for index, message in enumerate(messages):
+        if not isinstance(message, dict):
+            raise ValueError(f"messages[{index}] 必须是对象")
+        role = message.get("role")
+        if not isinstance(role, str) or not role.strip():
+            raise ValueError(f"messages[{index}].role 必须是非空字符串")
+        if "content" not in message:
+            raise ValueError(f"messages[{index}] 缺少 content")
+    return messages
+
+
 def chat(messages: list, model: str | None = None, temperature: float = 0.2,
          timeout: int = 180, max_tokens: int | None = None) -> str:
     """一次 chat.completions 调用，返回助手文本内容。
@@ -53,6 +67,7 @@ def chat(messages: list, model: str | None = None, temperature: float = 0.2,
     timeout: 整次调用的墙钟上限（秒）；流式下另有 connect/token 间隔分层超时。
     失败抛 RuntimeError（带网关/模型报错摘要），由调用方决定兜底。
     """
+    messages = _validate_messages(messages)
     timeout = _positive_number(timeout, field_name="timeout")
     max_tokens = _optional_positive_int(max_tokens, field_name="max_tokens")
     temperature = _finite_number(temperature, field_name="temperature")
@@ -70,7 +85,6 @@ def chat(messages: list, model: str | None = None, temperature: float = 0.2,
         if not LLM_STREAMING:
             r = requests.post(url, json=payload, headers=headers, timeout=timeout)
         else:
-            # 流式：(connect, read) 分层超时——stream 模式下 read 按相邻两次读计，即 token 间隔上限
             r = requests.post(url, json=payload, headers=headers, stream=True,
                               timeout=(LLM_CONNECT_TIMEOUT, LLM_READ_TIMEOUT))
     except requests.RequestException as e:
@@ -83,7 +97,6 @@ def chat(messages: list, model: str | None = None, temperature: float = 0.2,
             return data["choices"][0]["message"].get("content") or ""
         except (KeyError, IndexError) as e:
             raise RuntimeError(f"LLM 响应结构异常: {str(data)[:300]}") from e
-    # 流式收集：只拼 delta.content（judge/抽取只用终答文本，与非流式取 message.content 等价）
     parts: list[str] = []
     deadline = time.monotonic() + timeout
     try:
@@ -107,5 +120,5 @@ def chat(messages: list, model: str | None = None, temperature: float = 0.2,
     except requests.RequestException as e:
         raise RuntimeError(f"LLM 流式读取中断: {e}") from e
     finally:
-        r.close()  # 断开连接：网关据此取消上游生成（僵尸根治点）
+        r.close()
     return "".join(parts)
