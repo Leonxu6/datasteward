@@ -65,6 +65,14 @@ class FileConnector(Connector):
             raise ValueError(f"cursor_col 不能包含控制字符: {cursor_col!r}")
         return cursor_col
 
+    @staticmethod
+    def _normalize_columns(df):
+        names = [str(column) for column in df.columns]
+        if len(names) != len(set(names)):
+            raise ValueError(f"文件列名字符串化后存在重复: {names!r}")
+        df.columns = names
+        return df
+
     def _supported_files(self, d: Optional[Path] = None) -> list[Path]:
         d = d or self._validated_dir()
         return sorted(
@@ -136,10 +144,10 @@ class FileConnector(Connector):
         out = []
         for p in self._logical_files(d):
             try:
-                df = self._read_df(p, nrows=100)
+                df = self._normalize_columns(self._read_df(p, nrows=100))
             except Exception as exc:  # noqa: BLE001
                 raise ValueError(f"读取文件元数据失败: {p.name}: {exc}") from exc
-            cols = [ColumnDef(name=str(c), data_type=_dtype_to_base(df[c].dtype)) for c in df.columns]
+            cols = [ColumnDef(name=c, data_type=_dtype_to_base(df[c].dtype)) for c in df.columns]
             out.append(DatasetDef(name=p.stem, columns=cols))
         return out
 
@@ -147,12 +155,12 @@ class FileConnector(Connector):
         limit = normalize_read_limit(limit); incremental = since is not None
         if cursor_col is not None and since is None: raise ValueError("增量读取提供 cursor_col 时必须同时提供 since")
         if incremental: cursor_col = self._validate_cursor(cursor_col)
-        df = self._read_df(self._path(name), nrows=None if incremental else limit)
+        df = self._normalize_columns(self._read_df(self._path(name), nrows=None if incremental else limit))
         if incremental:
             if cursor_col not in df.columns: raise ValueError(f"增量游标列不存在: {cursor_col}")
             df = df[df[cursor_col] > since]
             if limit is not None: df = df.head(limit)
-        cols = [str(c) for c in df.columns]; rows = [tuple(r) for r in df.itertuples(index=False, name=None)]
+        cols = list(df.columns); rows = [tuple(r) for r in df.itertuples(index=False, name=None)]
         return cols, rows
 
     def capabilities(self) -> dict:
