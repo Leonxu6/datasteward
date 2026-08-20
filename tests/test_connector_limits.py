@@ -70,7 +70,7 @@ def test_normalize_port_accepts_numeric_strings_and_rejects_unsafe_values():
     assert normalize_port(1433) == 1433
     assert normalize_port("5432") == 5432
 
-    for invalid in (True, False, 0, 65536, 5432.5, " 5432", "5432 ", "54x2", ""):
+    for invalid in (True, False, 0, 65536, 5432.5, " 5432", "5432 ", "54x2", "", "５４３２"):
         with pytest.raises(ValueError, match="port"):
             normalize_port(invalid)
 
@@ -80,7 +80,7 @@ def test_normalize_timeout_accepts_numeric_strings_and_rejects_unsafe_values():
     assert normalize_timeout(30) == 30
     assert normalize_timeout("45") == 45
 
-    for invalid in (True, False, 0, -1, 15.5, " 15", "15 ", "15s", ""):
+    for invalid in (True, False, 0, -1, 15.5, " 15", "15 ", "15s", "", "４５"):
         with pytest.raises(ValueError, match="connect_timeout"):
             normalize_timeout(invalid)
 
