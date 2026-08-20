@@ -58,7 +58,10 @@ class FileConnector(Connector):
         return sorted(
             (
                 p for p in d.iterdir()
-                if not p.is_symlink() and p.is_file() and p.suffix.lower() in _EXTS
+                if not p.is_symlink()
+                and not p.name.startswith("~$")
+                and p.is_file()
+                and p.suffix.lower() in _EXTS
             ),
             key=lambda p: (p.stem.casefold(), _EXT_PRIORITY[p.suffix.lower()], p.name.casefold(), p.name),
         )
