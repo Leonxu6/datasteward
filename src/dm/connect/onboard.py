@@ -20,8 +20,16 @@ def onboard(source_name: str) -> dict:
     conn = get_connector(source_name)
     ok, msg = conn.test_connection()
     if not ok:
-        return {"source": source_name, "ok": False, "error": msg}
-    dsets = conn.introspect()
+        return {"source": source_name, "ok": False, "stage": "connect", "error": msg}
+    try:
+        dsets = conn.introspect()
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "source": source_name,
+            "ok": False,
+            "stage": "introspect",
+            "error": str(exc),
+        }
     known = set(ONTOLOGY.keys())
     mapped = [d.name for d in dsets if d.name in known]
     unmapped = [d.name for d in dsets if d.name not in known]
@@ -52,7 +60,7 @@ def main():
     if cmd == "onboard" and len(argv) >= 2:
         r = onboard(argv[1])
         if not r["ok"]:
-            print(f"❌ {argv[1]} 不可连：{r['error']}")
+            print(f"❌ {argv[1]} 接入失败（{r.get('stage', 'unknown')}）：{r['error']}")
             return
         print(f"=== 接入就绪报告：{r['source']} ===")
         print(f"自省到 {r['n_tables']} 张表；{r['readiness']}")
