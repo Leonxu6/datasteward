@@ -14,3 +14,9 @@ def test_required_text_accepts_nonempty_values_without_padding():
 def test_required_text_rejects_missing_nonstring_and_padded_values(value):
     with pytest.raises(ValueError):
         normalize_required_text(value, field_name="host")
+
+
+@pytest.mark.parametrize("value", ["db\x00internal", "db\tinternal", "db\ninternal", "db\rinternal", "db\x7finternal"])
+def test_required_text_rejects_embedded_control_characters(value):
+    with pytest.raises(ValueError, match="控制字符"):
+        normalize_required_text(value, field_name="host")
