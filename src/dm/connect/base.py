@@ -17,6 +17,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
+from dm.connect.validation import normalize_env_name
+
 
 class SyncMode(str, Enum):
     SNAPSHOT = "snapshot"        # 全量替换（源不支持增量时）
@@ -104,8 +106,12 @@ class Source:
 
     def secret(self, key: str, default: str = "") -> str:
         """按引用从环境变量解析一个凭据（值绝不落在 Source 对象里）。"""
-        env_name = self.credential_env.get(key)
-        return os.environ.get(env_name, default) if env_name else default
+        if key not in self.credential_env:
+            return default
+        env_name = normalize_env_name(
+            self.credential_env[key], field_name=f"credential_env[{key!r}]"
+        )
+        return os.environ.get(env_name, default)
 
 
 class Connector(ABC):
