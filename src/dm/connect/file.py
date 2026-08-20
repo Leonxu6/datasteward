@@ -158,7 +158,13 @@ class FileConnector(Connector):
         df = self._normalize_columns(self._read_df(self._path(name), nrows=None if incremental else limit))
         if incremental:
             if cursor_col not in df.columns: raise ValueError(f"增量游标列不存在: {cursor_col}")
-            df = df[df[cursor_col] > since]
+            try:
+                mask = df[cursor_col] > since
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"增量游标比较失败: {cursor_col!r} dtype={df[cursor_col].dtype}, since={since!r}"
+                ) from exc
+            df = df[mask]
             if limit is not None: df = df.head(limit)
         cols = list(df.columns); rows = [tuple(r) for r in df.itertuples(index=False, name=None)]
         return cols, rows
