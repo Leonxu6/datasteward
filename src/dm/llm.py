@@ -101,13 +101,14 @@ def chat(messages: list, model: str | None = None, temperature: float = 0.2,
          timeout: int = 180, max_tokens: int | None = None) -> str:
     messages = _validate_messages(messages)
     model = _required_text(LLM_MODEL if model is None else model, field_name="model")
+    base_url = _required_text(LLM_BASE_URL, field_name="LLM_BASE_URL")
     timeout = _positive_number(timeout, field_name="timeout")
     max_tokens = _optional_positive_int(max_tokens, field_name="max_tokens")
     temperature = _finite_number(temperature, field_name="temperature")
     payload = {"model": model, "messages": messages, "temperature": temperature, "stream": bool(LLM_STREAMING)}
     if max_tokens is not None:
         payload["max_tokens"] = max_tokens
-    url = f"{LLM_BASE_URL.rstrip('/')}/chat/completions"
+    url = f"{base_url.rstrip('/')}/chat/completions"
     headers = {"Authorization": f"Bearer {LLM_API_KEY}"}
     try:
         if not LLM_STREAMING:
@@ -118,7 +119,7 @@ def chat(messages: list, model: str | None = None, temperature: float = 0.2,
             r = requests.post(url, json=payload, headers=headers, stream=True,
                               timeout=(connect_timeout, read_timeout))
     except requests.RequestException as e:
-        raise RuntimeError(f"LLM 网关不可达（{LLM_BASE_URL}）: {e}") from e
+        raise RuntimeError(f"LLM 网关不可达（{base_url}）: {e}") from e
     if r.status_code != 200:
         try:
             detail = r.text[:300]
