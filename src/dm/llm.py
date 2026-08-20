@@ -61,6 +61,18 @@ def _validate_messages(messages):
     return messages
 
 
+def _nonstream_content(data) -> str:
+    try:
+        content = data["choices"][0]["message"].get("content")
+    except (KeyError, IndexError, TypeError, AttributeError) as exc:
+        raise RuntimeError(f"LLM 响应结构异常: {str(data)[:300]}") from exc
+    if content is None:
+        return ""
+    if not isinstance(content, str):
+        raise RuntimeError(f"LLM 响应 content 不是文本: {type(content).__name__}")
+    return content
+
+
 def chat(messages: list, model: str | None = None, temperature: float = 0.2,
          timeout: int = 180, max_tokens: int | None = None) -> str:
     messages = _validate_messages(messages)
@@ -88,10 +100,7 @@ def chat(messages: list, model: str | None = None, temperature: float = 0.2,
             data = r.json()
         except ValueError as exc:
             raise RuntimeError("LLM 响应不是有效 JSON") from exc
-        try:
-            return data["choices"][0]["message"].get("content") or ""
-        except (KeyError, IndexError, TypeError, AttributeError) as exc:
-            raise RuntimeError(f"LLM 响应结构异常: {str(data)[:300]}") from exc
+        return _nonstream_content(data)
     parts: list[str] = []
     deadline = time.monotonic() + timeout
     try:
