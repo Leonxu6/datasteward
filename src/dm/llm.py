@@ -9,6 +9,7 @@
 """
 import json
 import math
+import operator
 import time
 
 import requests
@@ -25,6 +26,20 @@ def _positive_number(value, *, field_name: str):
     return value
 
 
+def _optional_positive_int(value, *, field_name: str):
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise ValueError(f"{field_name} 必须是正整数，不能是布尔值: {value!r}")
+    try:
+        parsed = operator.index(value)
+    except TypeError as exc:
+        raise ValueError(f"{field_name} 必须是正整数: {value!r}") from exc
+    if parsed <= 0:
+        raise ValueError(f"{field_name} 必须大于 0: {parsed}")
+    return parsed
+
+
 def chat(messages: list, model: str | None = None, temperature: float = 0.2,
          timeout: int = 180, max_tokens: int | None = None) -> str:
     """一次 chat.completions 调用，返回助手文本内容。
@@ -34,13 +49,14 @@ def chat(messages: list, model: str | None = None, temperature: float = 0.2,
     失败抛 RuntimeError（带网关/模型报错摘要），由调用方决定兜底。
     """
     timeout = _positive_number(timeout, field_name="timeout")
+    max_tokens = _optional_positive_int(max_tokens, field_name="max_tokens")
     payload = {
         "model": model or LLM_MODEL,
         "messages": messages,
         "temperature": temperature,
         "stream": bool(LLM_STREAMING),
     }
-    if max_tokens:
+    if max_tokens is not None:
         payload["max_tokens"] = max_tokens
     url = f"{LLM_BASE_URL.rstrip('/')}/chat/completions"
     headers = {"Authorization": f"Bearer {LLM_API_KEY}"}
