@@ -55,7 +55,13 @@ class FileConnector(Connector):
 
     def _supported_files(self, d: Optional[Path] = None) -> list[Path]:
         d = d or self._validated_dir()
-        return sorted((p for p in d.iterdir() if p.is_file() and p.suffix.lower() in _EXTS), key=lambda p: (p.stem.casefold(), _EXT_PRIORITY[p.suffix.lower()], p.name.casefold(), p.name))
+        return sorted(
+            (
+                p for p in d.iterdir()
+                if not p.is_symlink() and p.is_file() and p.suffix.lower() in _EXTS
+            ),
+            key=lambda p: (p.stem.casefold(), _EXT_PRIORITY[p.suffix.lower()], p.name.casefold(), p.name),
+        )
 
     def _logical_files(self, d: Optional[Path] = None) -> list[Path]:
         groups: dict[str, list[Path]] = {}
