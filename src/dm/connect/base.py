@@ -42,12 +42,12 @@ def normalize_read_limit(limit: Optional[int]) -> Optional[int]:
 
 
 def _normalize_positive_int(value, *, default=None, field_name: str) -> int:
-    """解析配置中的正整数，接受 int / 纯数字字符串，拒绝布尔值、截断和首尾空白。"""
+    """解析配置中的正整数，接受 int / ASCII 数字字符串，拒绝布尔值、截断和首尾空白。"""
     value = default if value is None else value
     if isinstance(value, bool):
         raise ValueError(f"{field_name} 必须是正整数，不能是布尔值: {value!r}")
     if isinstance(value, str):
-        if not value or value != value.strip() or not value.isdecimal():
+        if not value or value != value.strip() or not value.isascii() or not value.isdecimal():
             raise ValueError(f"{field_name} 必须是正整数: {value!r}")
         parsed = int(value)
     else:
@@ -61,7 +61,7 @@ def _normalize_positive_int(value, *, default=None, field_name: str) -> int:
 
 
 def normalize_port(port, *, default=None) -> int:
-    """规范化 TCP 端口，允许整数或纯数字字符串，并拒绝隐式截断与越界值。"""
+    """规范化 TCP 端口，允许整数或 ASCII 数字字符串，并拒绝隐式截断与越界值。"""
     parsed = _normalize_positive_int(port, default=default, field_name="port")
     if parsed > 65535:
         raise ValueError(f"port 超出范围 1-65535: {parsed}")
