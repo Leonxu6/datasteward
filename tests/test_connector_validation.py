@@ -2,7 +2,7 @@
 
 import pytest
 
-from dm.connect.validation import normalize_env_name, normalize_required_text
+from dm.connect.validation import normalize_env_name, normalize_identifier, normalize_required_text
 
 
 def test_required_text_accepts_nonempty_values_without_padding():
@@ -31,3 +31,14 @@ def test_env_name_accepts_normal_environment_references():
 def test_env_name_rejects_invalid_environment_references(value):
     with pytest.raises(ValueError):
         normalize_env_name(value)
+
+
+@pytest.mark.parametrize("value", ["Order Items", "order-items", "select", "库存 明细", 'quoted"name', "bracket]name"])
+def test_identifier_accepts_values_that_can_be_safely_quoted(value):
+    assert normalize_identifier(value, field_name="table") == value
+
+
+@pytest.mark.parametrize("value", [None, 123, "", " table", "table ", "table\x00name", "table\nname"])
+def test_identifier_rejects_unusable_values(value):
+    with pytest.raises(ValueError):
+        normalize_identifier(value, field_name="table")
