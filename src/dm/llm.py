@@ -146,6 +146,8 @@ def chat(messages: list, model: str | None = None, temperature: float = 0.2,
             if not line or not line.startswith("data:"):
                 continue
             data = line[len("data:"):].strip()
+            if not data:
+                continue
             if data == "[DONE]":
                 break
             try:
