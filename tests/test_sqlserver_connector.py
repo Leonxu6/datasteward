@@ -126,8 +126,8 @@ def test_read_table_qualifies_configured_schema(monkeypatch):
     assert cursor.sql == "SELECT * FROM [erp].[orders] WHERE [id] > ?" and cursor.params == (10,)
 
 
-@pytest.mark.parametrize("name", [None, 123, ["orders"]])
-def test_read_table_rejects_non_string_table_names_before_loading_driver(monkeypatch, name):
+@pytest.mark.parametrize("name", [None, 123, ["orders"], "", " orders", "orders ", "orders\x00raw"])
+def test_read_table_rejects_unusable_table_names_before_loading_driver(monkeypatch, name):
     connector = SqlServerConnector(Source(name="u8", source_type="sqlserver")); monkeypatch.setattr(sqlserver_module, "_load_driver", lambda: (_ for _ in ()).throw(AssertionError("driver should not be loaded")))
     with pytest.raises(ValueError, match="非法表名"): connector.read_table(name)
 
@@ -143,13 +143,8 @@ def test_incremental_read_rejects_cursor_without_since_before_loading_driver(mon
     with pytest.raises(ValueError, match="同时提供 since"): connector.read_table("orders", cursor_col="id")
 
 
-def test_invalid_configured_schema_fails_before_loading_driver(monkeypatch):
-    connector = SqlServerConnector(Source(name="u8", source_type="sqlserver", params={"schema": "erp;drop"})); monkeypatch.setattr(sqlserver_module, "_load_driver", lambda: (_ for _ in ()).throw(AssertionError("driver should not be loaded")))
-    with pytest.raises(ValueError, match="非法 schema"): connector.read_table("orders")
-
-
-@pytest.mark.parametrize("schema", ["", None])
-def test_empty_or_none_configured_schema_is_rejected_before_loading_driver(monkeypatch, schema):
+@pytest.mark.parametrize("schema", ["", None, " erp", "erp ", "erp\x00prod"])
+def test_invalid_configured_schema_fails_before_loading_driver(monkeypatch, schema):
     connector = SqlServerConnector(Source(name="u8", source_type="sqlserver", params={"schema": schema})); monkeypatch.setattr(sqlserver_module, "_load_driver", lambda: (_ for _ in ()).throw(AssertionError("driver should not be loaded")))
     with pytest.raises(ValueError, match="非法 schema"): connector.read_table("orders")
 
