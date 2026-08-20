@@ -45,6 +45,16 @@ def _optional_positive_int(value, *, field_name: str):
     return parsed
 
 
+def _required_text(value, *, field_name: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{field_name} 必须是非空字符串: {value!r}")
+    if value != value.strip():
+        raise ValueError(f"{field_name} 不能包含首尾空白: {value!r}")
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+        raise ValueError(f"{field_name} 不能包含控制字符: {value!r}")
+    return value
+
+
 def _validate_messages(messages):
     if not isinstance(messages, list) or not messages:
         raise ValueError("messages 必须是非空列表")
@@ -61,18 +71,14 @@ def _validate_messages(messages):
 
 def chat(messages: list, model: str | None = None, temperature: float = 0.2,
          timeout: int = 180, max_tokens: int | None = None) -> str:
-    """一次 chat.completions 调用，返回助手文本内容。
-
-    messages: [{"role": "user"|"system"|"assistant", "content": "..."}]
-    timeout: 整次调用的墙钟上限（秒）；流式下另有 connect/token 间隔分层超时。
-    失败抛 RuntimeError（带网关/模型报错摘要），由调用方决定兜底。
-    """
+    """一次 chat.completions 调用，返回助手文本内容。"""
     messages = _validate_messages(messages)
+    model = _required_text(LLM_MODEL if model is None else model, field_name="model")
     timeout = _positive_number(timeout, field_name="timeout")
     max_tokens = _optional_positive_int(max_tokens, field_name="max_tokens")
     temperature = _finite_number(temperature, field_name="temperature")
     payload = {
-        "model": model or LLM_MODEL,
+        "model": model,
         "messages": messages,
         "temperature": temperature,
         "stream": bool(LLM_STREAMING),
