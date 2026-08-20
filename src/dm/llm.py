@@ -143,7 +143,12 @@ def chat(messages: list, model: str | None = None, temperature: float = 0.2,
         for line in r.iter_lines(decode_unicode=True):
             if time.monotonic() > deadline:
                 raise RuntimeError(f"LLM 调用超墙钟 {timeout}s，已断开连接止损")
-            if not line or not line.startswith("data:"):
+            if isinstance(line, bytes):
+                try:
+                    line = line.decode("utf-8")
+                except UnicodeDecodeError as exc:
+                    raise RuntimeError("LLM 流式响应不是有效 UTF-8") from exc
+            if not line or not isinstance(line, str) or not line.startswith("data:"):
                 continue
             data = line[len("data:"):].strip()
             if not data:
