@@ -32,3 +32,12 @@ def test_file_connector_ignores_office_lock_files(tmp_path: Path):
     datasets = _connector(tmp_path).introspect()
 
     assert [dataset.name for dataset in datasets] == ["orders"]
+
+
+def test_file_connector_ignores_macos_appledouble_files(tmp_path: Path):
+    (tmp_path / "._orders.xlsx").write_bytes(b"metadata, not a workbook")
+    (tmp_path / "orders.csv").write_text("id\n1\n", encoding="utf-8")
+
+    datasets = _connector(tmp_path).introspect()
+
+    assert [dataset.name for dataset in datasets] == ["orders"]
