@@ -8,12 +8,21 @@
 生成当场中止、并发槽立即释放；非流式请求死后会留下占死槽位的孤儿（DEVLOG 坑27）。
 """
 import json
+import math
 import time
 
 import requests
 
 from dm.config import (LLM_API_KEY, LLM_BASE_URL, LLM_CONNECT_TIMEOUT, LLM_MODEL,
                        LLM_READ_TIMEOUT, LLM_STREAMING)
+
+
+def _positive_number(value, *, field_name: str):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{field_name} 必须是正数: {value!r}")
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError(f"{field_name} 必须是有限正数: {value!r}")
+    return value
 
 
 def chat(messages: list, model: str | None = None, temperature: float = 0.2,
@@ -24,6 +33,7 @@ def chat(messages: list, model: str | None = None, temperature: float = 0.2,
     timeout: 整次调用的墙钟上限（秒）；流式下另有 connect/token 间隔分层超时。
     失败抛 RuntimeError（带网关/模型报错摘要），由调用方决定兜底。
     """
+    timeout = _positive_number(timeout, field_name="timeout")
     payload = {
         "model": model or LLM_MODEL,
         "messages": messages,
