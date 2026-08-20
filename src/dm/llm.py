@@ -18,11 +18,16 @@ from dm.config import (LLM_API_KEY, LLM_BASE_URL, LLM_CONNECT_TIMEOUT, LLM_MODEL
                        LLM_READ_TIMEOUT, LLM_STREAMING)
 
 
+def _finite_number(value, *, field_name: str):
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        raise ValueError(f"{field_name} 必须是有限数字: {value!r}")
+    return value
+
+
 def _positive_number(value, *, field_name: str):
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ValueError(f"{field_name} 必须是正数: {value!r}")
-    if not math.isfinite(value) or value <= 0:
-        raise ValueError(f"{field_name} 必须是有限正数: {value!r}")
+    value = _finite_number(value, field_name=field_name)
+    if value <= 0:
+        raise ValueError(f"{field_name} 必须大于 0: {value!r}")
     return value
 
 
@@ -50,6 +55,7 @@ def chat(messages: list, model: str | None = None, temperature: float = 0.2,
     """
     timeout = _positive_number(timeout, field_name="timeout")
     max_tokens = _optional_positive_int(max_tokens, field_name="max_tokens")
+    temperature = _finite_number(temperature, field_name="temperature")
     payload = {
         "model": model or LLM_MODEL,
         "messages": messages,
