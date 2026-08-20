@@ -4,8 +4,7 @@ from typing import Optional
 
 from dm.config import SRC_MSSQL_DB, SRC_MSSQL_HOST, SRC_MSSQL_PASSWORD, SRC_MSSQL_PORT, SRC_MSSQL_USER
 from dm.connect.base import ColumnDef, Connector, DatasetDef, Source, normalize_port, normalize_read_limit, normalize_timeout
-from dm.connect.postgres import _IDENT
-from dm.connect.validation import normalize_required_text
+from dm.connect.validation import normalize_identifier, normalize_required_text
 
 _DEFAULT_ODBC_DRIVER = "ODBC Driver 17 for SQL Server"
 
@@ -29,6 +28,12 @@ def _load_driver():
 
 def _odbc_value(value) -> str:
     return "{" + str(value).replace("}", "}}") + "}"
+
+
+def _quote_ident(value, *, field_name: str) -> str:
+    """按 SQL Server 方括号规则安全引用 schema/table/column 标识符。"""
+    value = normalize_identifier(value, field_name=field_name)
+    return "[" + value.replace("]", "]]" ) + "]"
 
 
 class SqlServerConnector(Connector):
@@ -60,11 +65,16 @@ class SqlServerConnector(Connector):
         return drv.connect(conn_str, timeout=timeout)
 
     def _schema(self, schema: Optional[str] = None) -> str:
-        if schema is not None: value = schema
-        elif "schema" in self.source.params: value = self.source.params["schema"]
-        else: value = "dbo"
-        if not isinstance(value, str) or not _IDENT.fullmatch(value): raise ValueError(f"非法 schema: {value}")
-        return value
+        if schema is not None:
+            value = schema
+        elif "schema" in self.source.params:
+            value = self.source.params["schema"]
+        else:
+            value = "dbo"
+        try:
+            return normalize_identifier(value, field_name="schema")
+        except ValueError as exc:
+            raise ValueError(f"非法 schema: {value!r}") from exc
 
     @contextmanager
     def _cursor(self):
@@ -98,13 +108,19 @@ class SqlServerConnector(Connector):
         return out
 
     def read_table(self, name: str, limit: Optional[int] = None, cursor_col: Optional[str] = None, since=None) -> tuple:
-        if not isinstance(name, str) or not _IDENT.fullmatch(name): raise ValueError(f"非法表名: {name}")
+        try:
+            table_sql = _quote_ident(name, field_name="table")
+        except ValueError as exc:
+            raise ValueError(f"非法表名: {name!r}") from exc
         if cursor_col is not None and since is None: raise ValueError("增量读取提供 cursor_col 时必须同时提供 since")
         if since is not None and (not isinstance(cursor_col, str) or not cursor_col.strip()): raise ValueError("增量读取提供 since 时必须同时提供非空 cursor_col")
-        schema = self._schema(); limit = normalize_read_limit(limit); ph = "%s" if _load_driver()[1] == "pymssql" else "?"; top = f"TOP ({limit}) " if limit is not None else ""; sql = f"SELECT {top}* FROM [{schema}].[{name}]"; params = []
+        schema = self._schema(); limit = normalize_read_limit(limit); ph = "%s" if _load_driver()[1] == "pymssql" else "?"; top = f"TOP ({limit}) " if limit is not None else ""; sql = f"SELECT {top}* FROM {_quote_ident(schema, field_name='schema')}.{table_sql}"; params = []
         if since is not None:
-            if not _IDENT.fullmatch(cursor_col): raise ValueError(f"非法游标列: {cursor_col}")
-            sql += f" WHERE [{cursor_col}] > {ph}"; params.append(since)
+            try:
+                cursor_sql = _quote_ident(cursor_col, field_name="cursor_col")
+            except ValueError as exc:
+                raise ValueError(f"非法游标列: {cursor_col!r}") from exc
+            sql += f" WHERE {cursor_sql} > {ph}"; params.append(since)
         with self._cursor() as cur: cur.execute(sql, tuple(params) if params else ()); cols = [d[0] for d in cur.description]; rows = [tuple(row) for row in cur.fetchall()]
         return cols, rows
 
