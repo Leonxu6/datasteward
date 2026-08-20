@@ -77,12 +77,7 @@ def chat(messages: list, model: str | None = None, temperature: float = 0.2,
     timeout = _positive_number(timeout, field_name="timeout")
     max_tokens = _optional_positive_int(max_tokens, field_name="max_tokens")
     temperature = _finite_number(temperature, field_name="temperature")
-    payload = {
-        "model": model,
-        "messages": messages,
-        "temperature": temperature,
-        "stream": bool(LLM_STREAMING),
-    }
+    payload = {"model": model, "messages": messages, "temperature": temperature, "stream": bool(LLM_STREAMING)}
     if max_tokens is not None:
         payload["max_tokens"] = max_tokens
     url = f"{LLM_BASE_URL.rstrip('/')}/chat/completions"
@@ -98,7 +93,10 @@ def chat(messages: list, model: str | None = None, temperature: float = 0.2,
     if r.status_code != 200:
         raise RuntimeError(f"LLM 调用失败 HTTP {r.status_code}: {r.text[:300]}")
     if not LLM_STREAMING:
-        data = r.json()
+        try:
+            data = r.json()
+        except ValueError as exc:
+            raise RuntimeError("LLM 响应不是有效 JSON") from exc
         try:
             return data["choices"][0]["message"].get("content") or ""
         except (KeyError, IndexError) as e:
