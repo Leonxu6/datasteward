@@ -56,3 +56,16 @@ def test_file_columns_reject_stringification_collisions(tmp_path: Path, monkeypa
 
     with pytest.raises(ValueError, match="字符串化后存在重复"):
         connector.read_table("orders")
+
+
+def test_file_incremental_cursor_reports_incompatible_since_values(tmp_path: Path, monkeypatch):
+    (tmp_path / "orders.csv").write_text("placeholder\n1\n", encoding="utf-8")
+    connector = _connector(tmp_path)
+    monkeypatch.setattr(
+        connector,
+        "_read_df",
+        lambda path, nrows=None: pd.DataFrame({"id": [1, 2], "updated_at": [10, 20]}),
+    )
+
+    with pytest.raises(ValueError, match="增量游标比较失败.*updated_at"):
+        connector.read_table("orders", cursor_col="updated_at", since="not-a-number")
