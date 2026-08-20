@@ -73,6 +73,25 @@ def _nonstream_content(data) -> str:
     return content
 
 
+def _stream_content(obj):
+    if not isinstance(obj, dict):
+        raise RuntimeError(f"LLM 流式响应结构异常: {str(obj)[:300]}")
+    if obj.get("error"):
+        raise RuntimeError(f"LLM 流式响应报错: {str(obj)[:300]}")
+    choices = obj.get("choices") or []
+    if not isinstance(choices, list):
+        raise RuntimeError(f"LLM 流式 choices 结构异常: {str(obj)[:300]}")
+    if not choices:
+        return None
+    choice = choices[0]
+    if not isinstance(choice, dict):
+        raise RuntimeError(f"LLM 流式 choice 结构异常: {str(choice)[:300]}")
+    delta = choice.get("delta") or {}
+    if not isinstance(delta, dict):
+        raise RuntimeError(f"LLM 流式 delta 结构异常: {str(delta)[:300]}")
+    return delta.get("content")
+
+
 def chat(messages: list, model: str | None = None, temperature: float = 0.2,
          timeout: int = 180, max_tokens: int | None = None) -> str:
     messages = _validate_messages(messages)
@@ -116,11 +135,9 @@ def chat(messages: list, model: str | None = None, temperature: float = 0.2,
                 obj = json.loads(data)
             except ValueError as exc:
                 raise RuntimeError(f"LLM 流式响应包含无效 JSON: {data[:200]}") from exc
-            if obj.get("error"):
-                raise RuntimeError(f"LLM 流式响应报错: {str(obj)[:300]}")
-            choices = obj.get("choices") or []
-            if choices:
-                parts.append((choices[0].get("delta") or {}).get("content") or "")
+            content = _stream_content(obj)
+            if content is not None:
+                parts.append(content)
     except requests.RequestException as e:
         raise RuntimeError(f"LLM 流式读取中断: {e}") from e
     finally:
