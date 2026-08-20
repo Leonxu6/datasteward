@@ -53,9 +53,7 @@ def _validate_messages(messages):
     for index, message in enumerate(messages):
         if not isinstance(message, dict):
             raise ValueError(f"messages[{index}] 必须是对象")
-        role = message.get("role")
-        if not isinstance(role, str) or not role.strip():
-            raise ValueError(f"messages[{index}].role 必须是非空字符串")
+        _required_text(message.get("role"), field_name=f"messages[{index}].role")
         if "content" not in message:
             raise ValueError(f"messages[{index}] 缺少 content")
     return messages
