@@ -8,6 +8,7 @@ from dm.connect.base import ColumnDef, Connector, DatasetDef, Source, normalize_
 
 _EXTS = (".csv", ".xlsx", ".xls")
 _EXT_PRIORITY = {ext: idx for idx, ext in enumerate(_EXTS)}
+_TEMP_PREFIXES = ("~$", "._")
 
 
 def default_file_source() -> Source:
@@ -59,7 +60,7 @@ class FileConnector(Connector):
             (
                 p for p in d.iterdir()
                 if not p.is_symlink()
-                and not p.name.startswith("~$")
+                and not p.name.startswith(_TEMP_PREFIXES)
                 and p.is_file()
                 and p.suffix.lower() in _EXTS
             ),
