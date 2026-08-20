@@ -113,8 +113,10 @@ def chat(messages: list, model: str | None = None, temperature: float = 0.2,
         if not LLM_STREAMING:
             r = requests.post(url, json=payload, headers=headers, timeout=timeout)
         else:
+            connect_timeout = min(_positive_number(LLM_CONNECT_TIMEOUT, field_name="LLM_CONNECT_TIMEOUT"), timeout)
+            read_timeout = min(_positive_number(LLM_READ_TIMEOUT, field_name="LLM_READ_TIMEOUT"), timeout)
             r = requests.post(url, json=payload, headers=headers, stream=True,
-                              timeout=(LLM_CONNECT_TIMEOUT, LLM_READ_TIMEOUT))
+                              timeout=(connect_timeout, read_timeout))
     except requests.RequestException as e:
         raise RuntimeError(f"LLM 网关不可达（{LLM_BASE_URL}）: {e}") from e
     if r.status_code != 200:
