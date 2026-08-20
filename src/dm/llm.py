@@ -89,7 +89,12 @@ def _stream_content(obj):
     delta = choice.get("delta") or {}
     if not isinstance(delta, dict):
         raise RuntimeError(f"LLM 流式 delta 结构异常: {str(delta)[:300]}")
-    return delta.get("content")
+    content = delta.get("content")
+    if content is None:
+        return None
+    if not isinstance(content, str):
+        raise RuntimeError(f"LLM 流式 content 不是文本: {type(content).__name__}")
+    return content
 
 
 def chat(messages: list, model: str | None = None, temperature: float = 0.2,
