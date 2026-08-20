@@ -120,13 +120,20 @@ def chat(messages: list, model: str | None = None, temperature: float = 0.2,
     except requests.RequestException as e:
         raise RuntimeError(f"LLM 网关不可达（{LLM_BASE_URL}）: {e}") from e
     if r.status_code != 200:
-        raise RuntimeError(f"LLM 调用失败 HTTP {r.status_code}: {r.text[:300]}")
+        try:
+            detail = r.text[:300]
+        finally:
+            r.close()
+        raise RuntimeError(f"LLM 调用失败 HTTP {r.status_code}: {detail}")
     if not LLM_STREAMING:
         try:
-            data = r.json()
-        except ValueError as exc:
-            raise RuntimeError("LLM 响应不是有效 JSON") from exc
-        return _nonstream_content(data)
+            try:
+                data = r.json()
+            except ValueError as exc:
+                raise RuntimeError("LLM 响应不是有效 JSON") from exc
+            return _nonstream_content(data)
+        finally:
+            r.close()
     parts: list[str] = []
     deadline = time.monotonic() + timeout
     try:
