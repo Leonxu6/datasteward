@@ -119,6 +119,12 @@ class Connector(ABC):
     source_type = "base"
 
     def __init__(self, source: Source):
+        if not isinstance(source, Source):
+            raise TypeError(f"source 必须是 Source，实际为 {type(source).__name__}")
+        if self.source_type != "base" and source.source_type != self.source_type:
+            raise ValueError(
+                f"连接器类型 {self.source_type!r} 与 Source.source_type {source.source_type!r} 不匹配"
+            )
         self.source = source
 
     @abstractmethod
