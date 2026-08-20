@@ -20,3 +20,8 @@ def normalize_env_name(value, *, field_name: str = "credential_env") -> str:
     if "=" in value:
         raise ValueError(f"{field_name} 不能包含 '=': {value!r}")
     return value
+
+
+def normalize_identifier(value, *, field_name: str) -> str:
+    """校验数据库标识符文本；允许空格、连字符和 Unicode，由各驱动负责安全引用。"""
+    return normalize_required_text(value, field_name=field_name)
