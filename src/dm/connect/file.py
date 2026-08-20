@@ -30,8 +30,11 @@ class FileConnector(Connector):
         raw = self.source.params.get("dir", FILE_SOURCE_DIR)
         if not isinstance(raw, (str, PathLike)):
             raise ValueError(f"文件源目录必须是路径字符串: {raw!r}")
-        if isinstance(raw, str) and not raw.strip():
-            raise ValueError("文件源目录不能为空")
+        if isinstance(raw, str):
+            if not raw.strip():
+                raise ValueError("文件源目录不能为空")
+            if raw != raw.strip():
+                raise ValueError(f"文件源目录不能包含首尾空白: {raw!r}")
         return Path(raw)
 
     def _validated_dir(self) -> Path:
