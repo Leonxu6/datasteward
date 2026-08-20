@@ -12,3 +12,11 @@ def normalize_required_text(value, *, field_name: str) -> str:
     if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
         raise ValueError(f"{field_name} 不能包含控制字符: {value!r}")
     return value
+
+
+def normalize_env_name(value, *, field_name: str = "credential_env") -> str:
+    """校验环境变量引用名，避免无效键在 ``os.environ`` 访问时才以底层异常失败。"""
+    value = normalize_required_text(value, field_name=field_name)
+    if "=" in value:
+        raise ValueError(f"{field_name} 不能包含 '=': {value!r}")
+    return value
