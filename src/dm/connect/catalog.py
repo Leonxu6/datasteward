@@ -28,13 +28,22 @@ def list_sources() -> list:
     return list(SOURCES.values())
 
 
-def get_source(name: str) -> Source:
+def get_source(name: str) -> Source | None:
+    if not isinstance(name, str):
+        raise TypeError(f"源名称必须是字符串，实际为 {type(name).__name__}")
     return SOURCES.get(name)
 
 
 def get_connector(name_or_source) -> Connector:
     """按源名或 Source 对象返回连接器实例。"""
-    src = get_source(name_or_source) if isinstance(name_or_source, str) else name_or_source
+    if isinstance(name_or_source, str):
+        src = get_source(name_or_source)
+    elif isinstance(name_or_source, Source):
+        src = name_or_source
+    else:
+        raise TypeError(
+            f"连接器参数必须是源名称或 Source，实际为 {type(name_or_source).__name__}"
+        )
     if src is None:
         raise KeyError(f"未知源: {name_or_source}")
     cls = _CONNECTORS.get(src.source_type)
