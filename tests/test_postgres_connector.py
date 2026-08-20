@@ -119,8 +119,19 @@ def test_read_table_qualifies_configured_schema(monkeypatch):
     assert params == ["2026-08-01", 2]
 
 
-@pytest.mark.parametrize("name", [None, 123, ["orders"]])
-def test_read_table_rejects_non_string_table_names_before_connect(monkeypatch, name):
+def test_read_table_safely_quotes_complex_identifiers(monkeypatch):
+    connector = PostgresConnector(Source(name="pg", source_type="postgres", params={"schema": "ERP Data"}))
+    cursor = _ReadCursor()
+    fake = _Connection(cursor=cursor)
+    monkeypatch.setattr(connector, "_connect", lambda: fake)
+    connector.read_table('Order "Items"', cursor_col="updated at", since="2026-08-01")
+    sql, params = cursor.calls[0]
+    assert sql == 'SELECT * FROM "ERP Data"."Order ""Items""" WHERE "updated at" > %s'
+    assert params == ["2026-08-01"]
+
+
+@pytest.mark.parametrize("name", [None, 123, ["orders"], "", " orders", "orders ", "orders\x00raw"])
+def test_read_table_rejects_unusable_table_names_before_connect(monkeypatch, name):
     connector = PostgresConnector(Source(name="pg", source_type="postgres"))
     monkeypatch.setattr(connector, "_connect", lambda: (_ for _ in ()).throw(AssertionError("database should not be contacted")))
     with pytest.raises(ValueError, match="非法表名"):
@@ -142,11 +153,21 @@ def test_incremental_read_rejects_cursor_without_since_before_connect(monkeypatc
         connector.read_table("orders", cursor_col="updated_at")
 
 
-@pytest.mark.parametrize("schema", ["", "erp.prod", "erp-prod", 123])
-def test_schema_rejects_non_identifier_values(schema):
+@pytest.mark.parametrize("schema", [None, 123, "", " erp", "erp ", "erp\x00prod"])
+def test_schema_rejects_unusable_values(schema):
     connector = PostgresConnector(Source(name="pg", source_type="postgres"))
-    with pytest.raises(ValueError, match="非法 schema"):
-        connector._schema(schema)
+    if schema is None:
+        assert connector._schema(schema) == "public"
+    else:
+        with pytest.raises(ValueError, match="非法 schema"):
+            connector._schema(schema)
+
+
+def test_schema_accepts_quoted_identifier_text():
+    connector = PostgresConnector(Source(name="pg", source_type="postgres"))
+    assert connector._schema("erp.prod") == "erp.prod"
+    assert connector._schema("ERP Production") == "ERP Production"
+    assert connector._schema("库存") == "库存"
 
 
 def test_configured_empty_schema_is_rejected_before_connect(monkeypatch):
