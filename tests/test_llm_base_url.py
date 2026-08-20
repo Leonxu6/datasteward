@@ -5,7 +5,20 @@ import pytest
 import dm.llm as llm
 
 
-@pytest.mark.parametrize("base_url", ["", " http://localhost:4000/v1", "http://localhost:4000/v1 ", "http://host\n/v1", 123])
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "",
+        " http://localhost:4000/v1",
+        "http://localhost:4000/v1 ",
+        "http://host\n/v1",
+        123,
+        "ftp://localhost:4000/v1",
+        "localhost:4000/v1",
+        "http:///v1",
+        "http://[::1",
+    ],
+)
 def test_chat_rejects_invalid_gateway_base_url_before_request(monkeypatch, base_url):
     monkeypatch.setattr(llm, "LLM_BASE_URL", base_url)
     monkeypatch.setattr(
