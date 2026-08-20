@@ -3,14 +3,17 @@
 自省走 information_schema（表/列/类型/主键）——这是"接上客户库就能用"的关键：
 不写死表结构，从真实库读元数据自动生成 DatasetDef。CDC 由基建层的 Flink承担（capabilities.cdc=True）。
 """
-import re
 from typing import Optional
 
 from dm.config import SRC_PG_DB, SRC_PG_HOST, SRC_PG_PASSWORD, SRC_PG_PORT, SRC_PG_USER
 from dm.connect.base import ColumnDef, Connector, DatasetDef, Source, normalize_port, normalize_read_limit, normalize_timeout
-from dm.connect.validation import normalize_required_text
+from dm.connect.validation import normalize_identifier, normalize_required_text
 
-_IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+def _quote_ident(value, *, field_name: str) -> str:
+    """按 PostgreSQL 双引号规则安全引用 schema/table/column 标识符。"""
+    value = normalize_identifier(value, field_name=field_name)
+    return '"' + value.replace('"', '""') + '"'
 
 
 def default_pg_source() -> Source:
@@ -48,9 +51,10 @@ class PostgresConnector(Connector):
             value = self.source.params["schema"]
         else:
             value = "public"
-        if not isinstance(value, str) or not _IDENT.fullmatch(value):
-            raise ValueError(f"非法 schema: {value}")
-        return value
+        try:
+            return normalize_identifier(value, field_name="schema")
+        except ValueError as exc:
+            raise ValueError(f"非法 schema: {value!r}") from exc
 
     def test_connection(self) -> tuple:
         try:
@@ -97,20 +101,24 @@ class PostgresConnector(Connector):
 
     def read_table(self, name: str, limit: Optional[int] = None,
                    cursor_col: Optional[str] = None, since=None) -> tuple:
-        if not isinstance(name, str) or not _IDENT.fullmatch(name):
-            raise ValueError(f"非法表名: {name}")
+        try:
+            table_sql = _quote_ident(name, field_name="table")
+        except ValueError as exc:
+            raise ValueError(f"非法表名: {name!r}") from exc
         if cursor_col is not None and since is None:
             raise ValueError("增量读取提供 cursor_col 时必须同时提供 since")
         if since is not None and (not isinstance(cursor_col, str) or not cursor_col.strip()):
             raise ValueError("增量读取提供 since 时必须同时提供非空 cursor_col")
         schema = self._schema()
         limit = normalize_read_limit(limit)
-        sql = f'SELECT * FROM "{schema}"."{name}"'
+        sql = f"SELECT * FROM {_quote_ident(schema, field_name='schema')}.{table_sql}"
         params = []
         if since is not None:
-            if not _IDENT.fullmatch(cursor_col):
-                raise ValueError(f"非法游标列: {cursor_col}")
-            sql += f' WHERE "{cursor_col}" > %s'
+            try:
+                cursor_sql = _quote_ident(cursor_col, field_name="cursor_col")
+            except ValueError as exc:
+                raise ValueError(f"非法游标列: {cursor_col!r}") from exc
+            sql += f" WHERE {cursor_sql} > %s"
             params.append(since)
         if limit is not None:
             sql += " LIMIT %s"
