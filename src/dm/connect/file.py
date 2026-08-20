@@ -55,6 +55,16 @@ class FileConnector(Connector):
         if Path(name).name != name or "/" in name or "\\" in name or name in {".", ".."}: raise ValueError(f"文件源数据集名称只能是当前目录下的文件名或 stem: {name!r}")
         return name
 
+    @staticmethod
+    def _validate_cursor(cursor_col) -> str:
+        if not isinstance(cursor_col, str) or not cursor_col.strip():
+            raise ValueError("增量读取提供 since 时必须同时提供非空 cursor_col")
+        if cursor_col != cursor_col.strip():
+            raise ValueError(f"cursor_col 不能包含首尾空白: {cursor_col!r}")
+        if any(ord(ch) < 32 or ord(ch) == 127 for ch in cursor_col):
+            raise ValueError(f"cursor_col 不能包含控制字符: {cursor_col!r}")
+        return cursor_col
+
     def _supported_files(self, d: Optional[Path] = None) -> list[Path]:
         d = d or self._validated_dir()
         return sorted(
@@ -136,7 +146,7 @@ class FileConnector(Connector):
     def read_table(self, name: str, limit: Optional[int] = None, cursor_col: Optional[str] = None, since=None) -> tuple:
         limit = normalize_read_limit(limit); incremental = since is not None
         if cursor_col is not None and since is None: raise ValueError("增量读取提供 cursor_col 时必须同时提供 since")
-        if incremental and (not isinstance(cursor_col, str) or not cursor_col.strip()): raise ValueError("增量读取提供 since 时必须同时提供非空 cursor_col")
+        if incremental: cursor_col = self._validate_cursor(cursor_col)
         df = self._read_df(self._path(name), nrows=None if incremental else limit)
         if incremental:
             if cursor_col not in df.columns: raise ValueError(f"增量游标列不存在: {cursor_col}")
