@@ -56,6 +56,10 @@ def _validate_messages(messages):
         _required_text(message.get("role"), field_name=f"messages[{index}].role")
         if "content" not in message:
             raise ValueError(f"messages[{index}] 缺少 content")
+    try:
+        json.dumps(messages, ensure_ascii=False)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("messages 必须可 JSON 序列化") from exc
     return messages
 
 
