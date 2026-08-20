@@ -47,6 +47,14 @@ def _required_text(value, *, field_name: str) -> str:
     return value
 
 
+def _header_value(value, *, field_name: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{field_name} 必须是字符串: {value!r}")
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+        raise ValueError(f"{field_name} 不能包含控制字符")
+    return value
+
+
 def _validate_messages(messages):
     if not isinstance(messages, list) or not messages:
         raise ValueError("messages 必须是非空列表")
@@ -104,6 +112,7 @@ def chat(messages: list, model: str | None = None, temperature: float = 0.2,
     messages = _validate_messages(messages)
     model = _required_text(LLM_MODEL if model is None else model, field_name="model")
     base_url = _required_text(LLM_BASE_URL, field_name="LLM_BASE_URL")
+    api_key = _header_value(LLM_API_KEY, field_name="LLM_API_KEY")
     timeout = _positive_number(timeout, field_name="timeout")
     max_tokens = _optional_positive_int(max_tokens, field_name="max_tokens")
     temperature = _finite_number(temperature, field_name="temperature")
@@ -111,7 +120,7 @@ def chat(messages: list, model: str | None = None, temperature: float = 0.2,
     if max_tokens is not None:
         payload["max_tokens"] = max_tokens
     url = f"{base_url.rstrip('/')}/chat/completions"
-    headers = {"Authorization": f"Bearer {LLM_API_KEY}"}
+    headers = {"Authorization": f"Bearer {api_key}"}
     try:
         if not LLM_STREAMING:
             r = requests.post(url, json=payload, headers=headers, timeout=timeout)
