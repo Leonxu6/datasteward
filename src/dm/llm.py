@@ -3,6 +3,7 @@ import json
 import math
 import operator
 import time
+from urllib.parse import urlsplit
 
 import requests
 
@@ -52,6 +53,18 @@ def _header_value(value, *, field_name: str) -> str:
         raise ValueError(f"{field_name} 必须是字符串: {value!r}")
     if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
         raise ValueError(f"{field_name} 不能包含控制字符")
+    return value
+
+
+def _gateway_base_url(value) -> str:
+    value = _required_text(value, field_name="LLM_BASE_URL")
+    try:
+        parsed = urlsplit(value)
+        hostname = parsed.hostname
+    except ValueError as exc:
+        raise ValueError(f"LLM_BASE_URL 必须是有效的 HTTP(S) URL: {value!r}") from exc
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc or not hostname:
+        raise ValueError(f"LLM_BASE_URL 必须是有效的 HTTP(S) URL: {value!r}")
     return value
 
 
@@ -111,7 +124,7 @@ def chat(messages: list, model: str | None = None, temperature: float = 0.2,
          timeout: int = 180, max_tokens: int | None = None) -> str:
     messages = _validate_messages(messages)
     model = _required_text(LLM_MODEL if model is None else model, field_name="model")
-    base_url = _required_text(LLM_BASE_URL, field_name="LLM_BASE_URL")
+    base_url = _gateway_base_url(LLM_BASE_URL)
     api_key = _header_value(LLM_API_KEY, field_name="LLM_API_KEY")
     timeout = _positive_number(timeout, field_name="timeout")
     max_tokens = _optional_positive_int(max_tokens, field_name="max_tokens")
