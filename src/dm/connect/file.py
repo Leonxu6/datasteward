@@ -51,6 +51,7 @@ class FileConnector(Connector):
     def _validate_name(name: str) -> str:
         if not isinstance(name, str) or not name.strip(): raise ValueError("文件源数据集名称不能为空")
         if name != name.strip(): raise ValueError(f"文件源数据集名称不能包含首尾空白: {name!r}")
+        if any(ord(ch) < 32 or ord(ch) == 127 for ch in name): raise ValueError(f"文件源数据集名称不能包含控制字符: {name!r}")
         if Path(name).name != name or "/" in name or "\\" in name or name in {".", ".."}: raise ValueError(f"文件源数据集名称只能是当前目录下的文件名或 stem: {name!r}")
         return name
 
