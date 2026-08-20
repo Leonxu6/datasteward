@@ -35,7 +35,10 @@ class FileConnector(Connector):
                 raise ValueError("文件源目录不能为空")
             if raw != raw.strip():
                 raise ValueError(f"文件源目录不能包含首尾空白: {raw!r}")
-        return Path(raw)
+        try:
+            return Path(raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"文件源目录不是有效路径: {raw!r}") from exc
 
     def _validated_dir(self) -> Path:
         d = self._dir()
