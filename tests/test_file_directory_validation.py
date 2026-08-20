@@ -29,3 +29,14 @@ def test_file_directory_accepts_path_objects(tmp_path: Path):
 
     assert ok is True
     assert message == "ok"
+
+
+def test_file_directory_normalizes_invalid_pathlike_errors():
+    class _BytesPath:
+        def __fspath__(self):
+            return b"/tmp/data"
+
+    ok, message = _connector(_BytesPath()).test_connection()
+
+    assert ok is False
+    assert "不是有效路径" in message
