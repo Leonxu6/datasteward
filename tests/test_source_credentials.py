@@ -32,3 +32,11 @@ def test_source_secret_rejects_invalid_environment_references(env_name):
 
     with pytest.raises(ValueError, match="credential_env"):
         source.secret("password")
+
+
+@pytest.mark.parametrize("key", [None, 123, "", " password", "password ", "pass\x00word"])
+def test_source_secret_rejects_invalid_lookup_keys(key):
+    source = Source(name="test", source_type="file")
+
+    with pytest.raises(ValueError, match="credential key"):
+        source.secret(key)
