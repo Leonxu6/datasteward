@@ -1,12 +1,4 @@
-"""LLM 薄客户端（OpenAI 兼容协议，指向 LiteLLM 网关）。
-
-给"无工具的一次性推理"场景用：eval 的 LLM-judge、KG 文档关系抽取。
-智能体主循环走 langchain-openai（见 dm/agent/graph.py），两者共用同一网关与模型配置，
-换后端（本地 ollama ↔ 云端 deepseek）只改环境变量/网关配置，不改代码。
-
-默认流式（DM_LLM_STREAMING=1）：客户端超时/死亡时连接断开会经网关传导到推理后端，
-生成当场中止、并发槽立即释放；非流式请求死后会留下占死槽位的孤儿（DEVLOG 坑27）。
-"""
+"""LLM 薄客户端（OpenAI 兼容协议，指向 LiteLLM 网关）。"""
 import json
 import math
 import operator
@@ -71,7 +63,6 @@ def _validate_messages(messages):
 
 def chat(messages: list, model: str | None = None, temperature: float = 0.2,
          timeout: int = 180, max_tokens: int | None = None) -> str:
-    """一次 chat.completions 调用，返回助手文本内容。"""
     messages = _validate_messages(messages)
     model = _required_text(LLM_MODEL if model is None else model, field_name="model")
     timeout = _positive_number(timeout, field_name="timeout")
@@ -99,8 +90,8 @@ def chat(messages: list, model: str | None = None, temperature: float = 0.2,
             raise RuntimeError("LLM 响应不是有效 JSON") from exc
         try:
             return data["choices"][0]["message"].get("content") or ""
-        except (KeyError, IndexError) as e:
-            raise RuntimeError(f"LLM 响应结构异常: {str(data)[:300]}") from e
+        except (KeyError, IndexError, TypeError, AttributeError) as exc:
+            raise RuntimeError(f"LLM 响应结构异常: {str(data)[:300]}") from exc
     parts: list[str] = []
     deadline = time.monotonic() + timeout
     try:
