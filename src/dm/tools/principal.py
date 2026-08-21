@@ -1,40 +1,51 @@
 """访问主体 Principal：治理内核的显式身份载体。
 
-原 MCP 服务器靠环境变量（DM_USER/DM_ROLE/DM_PURPOSE/DM_SESSION_ID/DM_CHANNEL）传身份，
-只适用于"每会话一个子进程"的形态。治理内核改为**显式传参**：谁调用、什么角色、什么目的、
-哪个会话，一律随调用传入——同一份 PBAC/审计代码既服务进程内的 LangGraph 智能体，
-也服务对外的 stdio MCP 壳（后者用 principal_from_env() 兼容旧注入路径）。
+身份、角色、目的、会话和通道都会进入 PBAC 与审计，因此在 Principal 构造时做稳定的
+长度/控制字符/通道格式校验，避免脏环境变量或外部通道字段污染授权与日志。
 """
 import os
 from dataclasses import dataclass
 from datetime import datetime
 
 from dm.security import User
+from dm.tools.identity import normalize_channel, normalize_identity_text
 
 
 @dataclass(frozen=True)
 class Principal:
-    """一次访问的完整主体：用户 + 角色 + 目的（PBAC）+ 会话关联 + 行级属性。"""
+    """一次访问的完整主体：用户 + 角色 + 目的 + 会话关联 + 行级属性。"""
+
     user: str = "agent"
     role: str = "仓管"
     purpose: str = ""
     session_id: str = ""
     channel: str = "cli"
-    warehouse_id: str = ""     # 行级策略属性（仓管的管辖仓库）
+    warehouse_id: str = ""
+
+    def __post_init__(self):
+        normalize_identity_text(self.user, field_name="user", max_length=200, allow_empty=False)
+        normalize_identity_text(self.role, field_name="role", max_length=100, allow_empty=False)
+        normalize_identity_text(self.purpose, field_name="purpose", max_length=500, allow_empty=True)
+        normalize_identity_text(self.session_id, field_name="session_id", max_length=200, allow_empty=True)
+        normalize_channel(self.channel, default="cli")
+        normalize_identity_text(self.warehouse_id, field_name="warehouse_id", max_length=100, allow_empty=True)
 
     def to_user(self) -> User:
-        """转成权限引擎的 User（dm.security.model.User）。"""
+        """转成权限引擎的 User。"""
         attrs = {"warehouse_id": self.warehouse_id} if self.warehouse_id else {}
         return User(name=self.user, role=self.role, purpose=self.purpose, attrs=attrs)
 
 
 def principal_from_env() -> Principal:
-    """从环境变量构建 Principal（stdio MCP 壳用；与旧 mcp_server 的 env 注入契约一致）。"""
+    """从环境变量构建 Principal（stdio MCP 壳兼容路径）。"""
+    session_id = os.environ.get("DM_SESSION_ID")
+    if session_id is None or session_id == "":
+        session_id = "mcp-" + datetime.now().strftime("%Y%m%d%H%M%S")
     return Principal(
         user=os.environ.get("DM_USER", "anonymous"),
         role=os.environ.get("DM_ROLE", "仓管"),
         purpose=os.environ.get("DM_PURPOSE", ""),
-        session_id=os.environ.get("DM_SESSION_ID") or ("mcp-" + datetime.now().strftime("%Y%m%d%H%M%S")),
+        session_id=session_id,
         channel=os.environ.get("DM_CHANNEL", "mcp"),
         warehouse_id=os.environ.get("DM_WAREHOUSE", ""),
     )
