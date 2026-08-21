@@ -1,6 +1,7 @@
 import unittest
+from unittest.mock import patch
 
-from dm.tools.sql_guard import validate_readonly
+from dm.tools.sql_guard import tables_in, validate_readonly
 
 
 class ReadonlySqlGuardTests(unittest.TestCase):
@@ -41,6 +42,15 @@ class ReadonlySqlGuardTests(unittest.TestCase):
         for sql in (None, 1, "", "   "):
             with self.subTest(sql=sql):
                 self.assert_rejected(sql, "SQL")
+
+    @patch("dm.tools.sql_guard.business_table_names", return_value=["orders", "customers"])
+    def test_tables_in_ignores_names_in_literals_and_comments(self, _business_names):
+        sql = "SELECT * FROM orders WHERE note = 'customers' -- customers\n"
+        self.assertEqual(tables_in(sql), ["orders"])
+
+    @patch("dm.tools.sql_guard.business_table_names", return_value=["orders"])
+    def test_tables_in_handles_non_string_input(self, _business_names):
+        self.assertEqual(tables_in(None), [])
 
 
 if __name__ == "__main__":
