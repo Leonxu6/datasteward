@@ -78,6 +78,10 @@ def _violation_status(chk: dict) -> str:
     return "warn" if chk.get("severity") == "warn" else "fail"
 
 
+def _valid_count(value) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
 def run_check(chk: dict) -> dict:
     """执行单个健康检查，返回结果（status: ok/warn/fail）。异常 → fail。"""
     try:
@@ -97,9 +101,12 @@ def run_check(chk: dict) -> dict:
             tbl = chk["table"]
             src = _pg_scalar(f"SELECT COUNT(*) FROM {tbl}")
             snk = _sr_scalar(f"SELECT COUNT(*) FROM `{tbl}`")
+            actual = {"src": src, "snk": snk}
+            if not _valid_count(src) or not _valid_count(snk):
+                return _result(chk, "fail", actual, "源/汇计数不可用或不是有效非负整数")
             if src == snk:
-                return _result(chk, "ok", {"src": src, "snk": snk}, f"源汇一致（{src}）")
-            return _result(chk, "fail", {"src": src, "snk": snk},
+                return _result(chk, "ok", actual, f"源汇一致（{src}）")
+            return _result(chk, "fail", actual,
                            f"源↔汇不一致：PG={src} StarRocks={snk} 差 {abs(src - snk)}（疑似 CDC 顿挫/延迟）")
         if t == "schema":
             actual = set(_sr_cols(chk["table"]))
