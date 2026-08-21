@@ -1,7 +1,7 @@
 """共享存储层：StarRocks 数据仓库 + 追加式 JSONL 治理日志。"""
 import pymysql
 
-from dm.config import (  # noqa: F401  (LOG_DIR re-exported for consumers)
+from dm.config import (  # noqa: F401
     LOG_DIR, WH_DB, WH_HOST, WH_PASSWORD, WH_PORT,
     WH_RO_PASSWORD, WH_RO_USER, WH_USER,
 )
@@ -11,26 +11,56 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class _Result:
-    """包一层 pymysql 游标，暴露 DuckDB 风格取数接口。"""
+    """pymysql 游标的 DuckDB 风格薄适配器，完整消费后主动释放游标。"""
 
     def __init__(self, cur):
         self._cur = cur
         self.description = cur.description
+        self._closed = False
+
+    def close(self):
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            self._cur.close()
+        except Exception:  # noqa: BLE001
+            pass
 
     def fetchone(self):
-        return self._cur.fetchone()
+        row = self._cur.fetchone()
+        if row is None:
+            self.close()
+        return row
 
     def fetchmany(self, size):
-        return self._cur.fetchmany(size)
+        rows = self._cur.fetchmany(size)
+        if not rows:
+            self.close()
+        return rows
 
     def fetchall(self):
-        return self._cur.fetchall()
+        try:
+            return self._cur.fetchall()
+        finally:
+            self.close()
 
     def fetchdf(self):
         import pandas as pd
-        rows = self._cur.fetchall()
-        cols = [d[0] for d in self._cur.description] if self._cur.description else []
-        return pd.DataFrame(list(rows), columns=cols)
+
+        try:
+            rows = self._cur.fetchall()
+            cols = [d[0] for d in self.description] if self.description else []
+            return pd.DataFrame(list(rows), columns=cols)
+        finally:
+            self.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+        return False
 
 
 class _Conn:
@@ -39,15 +69,22 @@ class _Conn:
     def __init__(self, conn):
         self._conn = conn
 
-    def execute(self, sql, params=None):
+    def _run(self, method: str, sql, params):
         cur = self._conn.cursor()
-        cur.execute(sql, params)
+        try:
+            getattr(cur, method)(sql, params)
+        except Exception:
+            try:
+                cur.close()
+            finally:
+                raise
         return _Result(cur)
 
+    def execute(self, sql, params=None):
+        return self._run("execute", sql, params)
+
     def executemany(self, sql, seq_of_params):
-        cur = self._conn.cursor()
-        cur.executemany(sql, seq_of_params)
-        return _Result(cur)
+        return self._run("executemany", sql, seq_of_params)
 
     def commit(self):
         self._conn.commit()
