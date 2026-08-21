@@ -12,12 +12,6 @@ FORBIDDEN = re.compile(
     r"replace|export|import|install|load|set|reset|call|merge|vacuum|explain|show)\b", re.I)
 
 
-def tables_in(sql: str) -> list:
-    """识别 SQL 里引用了哪些业务表（按词边界匹配表名）。"""
-    low = sql.lower()
-    return [n for n in business_table_names() if re.search(r"\b" + re.escape(n) + r"\b", low)]
-
-
 def _mask_literals_and_comments(sql: str) -> tuple[str, str | None]:
     """Mask quoted text/comments while preserving whitespace and token positions."""
     out = list(sql)
@@ -77,6 +71,15 @@ def _mask_literals_and_comments(sql: str) -> tuple[str, str | None]:
     if state in {"single", "double", "block_comment"}:
         return "".join(out), "ERROR: SQL 中存在未闭合的引号或注释。"
     return "".join(out), None
+
+
+def tables_in(sql: str) -> list:
+    """识别 SQL 里真实引用的业务表，忽略字符串字面量和注释。"""
+    if not isinstance(sql, str):
+        return []
+    masked, _ = _mask_literals_and_comments(sql)
+    low = masked.lower()
+    return [n for n in business_table_names() if re.search(r"\b" + re.escape(n) + r"\b", low)]
 
 
 def validate_readonly(sql: str) -> tuple:
