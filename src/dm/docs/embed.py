@@ -18,9 +18,19 @@ from pathlib import Path
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS", "1")
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 
+
+def _embedding_dimension(raw: str) -> int:
+    if not isinstance(raw, str) or not raw.isascii() or not raw.isdigit():
+        raise ValueError("DM_EMBED_DIM must be an integer from 1 to 16384")
+    value = int(raw)
+    if not 1 <= value <= 16384:
+        raise ValueError("DM_EMBED_DIM must be an integer from 1 to 16384")
+    return value
+
+
 BACKEND = os.environ.get("DM_EMBED_BACKEND", "fastembed")
 MODEL_NAME = os.environ.get("DM_EMBED_MODEL", "BAAI/bge-small-zh-v1.5")
-DIM = int(os.environ.get("DM_EMBED_DIM", "512"))
+DIM = _embedding_dimension(os.environ.get("DM_EMBED_DIM", "512"))
 CACHE_DIR = os.environ.get("DM_EMBED_CACHE") or str(Path.home() / ".cache" / "dm_fastembed")
 
 _MODEL = None
