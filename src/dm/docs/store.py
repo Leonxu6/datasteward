@@ -23,7 +23,11 @@ def connect_vec(autocommit=True):
     """连接并注册 pgvector 适配，可直接传/取 Python list 作为向量。"""
     from pgvector.psycopg2 import register_vector
     c = connect(autocommit=autocommit)
-    register_vector(c)
+    try:
+        register_vector(c)
+    except Exception:
+        c.close()
+        raise
     return c
 
 
