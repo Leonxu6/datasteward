@@ -110,7 +110,12 @@ def run_check(chk: dict) -> dict:
                 return _result(chk, "warn", None, "无时间数据")
             dt = _to_dt(mx)
             now = datetime.now(dt.tzinfo) if dt.tzinfo is not None else datetime.now()
-            age = (now - dt).days
+            delta = now - dt
+            if delta.total_seconds() < -300:
+                ahead_minutes = round(abs(delta.total_seconds()) / 60)
+                return _result(chk, "warn", f"未来{ahead_minutes}分钟",
+                               f"最新时间戳比当前时钟超前约 {ahead_minutes} 分钟（检查时钟/时区）")
+            age = max(0, delta.days)
             if age > chk["max_age_days"]:
                 return _result(chk, "warn", f"{age}天", f"数据 {age} 天未更新（阈值 {chk['max_age_days']} 天）")
             return _result(chk, "ok", f"{age}天", f"最新数据 {age} 天内")
