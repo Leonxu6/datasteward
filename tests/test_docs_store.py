@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import Mock, call, patch
+from unittest.mock import Mock, patch
 
 from dm.docs import store
 
@@ -53,6 +53,36 @@ class DocumentStoreTests(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "ddl failed"):
             store.init_schema()
+
+        cursor.close.assert_called_once_with()
+        conn.close.assert_called_once_with()
+
+    @patch("dm.docs.store.connect")
+    def test_counts_returns_document_and_chunk_counts(self, connect):
+        cursor = Mock()
+        cursor.fetchone.side_effect = [(3,), (17,)]
+        conn = Mock()
+        conn.cursor.return_value = cursor
+        connect.return_value = conn
+
+        self.assertEqual(store.counts(), (3, 17))
+        self.assertEqual(
+            [item.args[0] for item in cursor.execute.call_args_list],
+            ["SELECT count(*) FROM document", "SELECT count(*) FROM doc_chunk"],
+        )
+        cursor.close.assert_called_once_with()
+        conn.close.assert_called_once_with()
+
+    @patch("dm.docs.store.connect")
+    def test_counts_closes_resources_when_query_fails(self, connect):
+        cursor = Mock()
+        cursor.execute.side_effect = RuntimeError("query failed")
+        conn = Mock()
+        conn.cursor.return_value = cursor
+        connect.return_value = conn
+
+        with self.assertRaisesRegex(RuntimeError, "query failed"):
+            store.counts()
 
         cursor.close.assert_called_once_with()
         conn.close.assert_called_once_with()
