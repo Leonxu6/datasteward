@@ -73,6 +73,11 @@ def _result(chk, status, actual, message):
             "actual": actual, "message": message}
 
 
+def _violation_status(chk: dict) -> str:
+    """Map catalog severity to the externally visible health status."""
+    return "warn" if chk.get("severity") == "warn" else "fail"
+
+
 def run_check(chk: dict) -> dict:
     """执行单个健康检查，返回结果（status: ok/warn/fail）。异常 → fail。"""
     try:
@@ -86,7 +91,7 @@ def run_check(chk: dict) -> dict:
         if t == "expectation":
             n = _sr_scalar(f"SELECT COUNT(*) FROM `{chk['table']}` WHERE {chk['predicate']}")
             if n and n > 0:
-                return _result(chk, "fail", n, f"{n} 行违反『{chk['predicate']}』")
+                return _result(chk, _violation_status(chk), n, f"{n} 行违反『{chk['predicate']}』")
             return _result(chk, "ok", 0, "无违反行")
         if t == "parity":
             tbl = chk["table"]
