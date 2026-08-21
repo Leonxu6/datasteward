@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from dm.kg.query import find_related
+from dm.kg.query import find_related, impact_path
 
 
 class KgQueryTests(unittest.TestCase):
@@ -32,6 +32,34 @@ class KgQueryTests(unittest.TestCase):
             with self.subTest(entity_id=entity_id, hops=hops, limit=limit):
                 with self.assertRaises(ValueError):
                     find_related(entity_id, max_hops=hops, limit=limit)
+        run_read.assert_not_called()
+
+    @patch("dm.kg.query.run_read", return_value=[{"id": "SO001"}])
+    def test_impact_path_interpolates_only_validated_label_and_bounds(self, run_read):
+        result = impact_path("M0001", "SalesOrder", max_hops=5, limit=7)
+
+        self.assertEqual(result["target_type"], "SalesOrder")
+        self.assertEqual(result["count"], 1)
+        cypher = run_read.call_args.args[0]
+        self.assertIn("[*1..5]", cypher)
+        self.assertIn("(b:SalesOrder)", cypher)
+        self.assertIn("LIMIT 7", cypher)
+        self.assertEqual(run_read.call_args.kwargs, {"id": "M0001"})
+
+    @patch("dm.kg.query.run_read")
+    def test_impact_path_rejects_unsafe_labels_and_limits_before_database_access(self, run_read):
+        cases = (
+            ("M0001", "Customer-Type", 4, 20),
+            ("M0001", "Customer) MATCH (x", 4, 20),
+            ("M0001", "Customer", True, 20),
+            ("M0001", "Customer", 7, 20),
+            ("M0001", "Customer", 4, 51),
+            (" M0001", "Customer", 4, 20),
+        )
+        for entity_id, target_type, hops, limit in cases:
+            with self.subTest(target_type=target_type, hops=hops, limit=limit):
+                with self.assertRaises(ValueError):
+                    impact_path(entity_id, target_type, max_hops=hops, limit=limit)
         run_read.assert_not_called()
 
 
