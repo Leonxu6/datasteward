@@ -36,6 +36,21 @@ def _embedding_backend() -> str:
     return value
 
 
+def _normalize_texts(texts) -> list[str]:
+    if isinstance(texts, str):
+        values = [texts]
+    else:
+        if texts is None or isinstance(texts, (bytes, bytearray)):
+            raise ValueError("texts must be a string or iterable of strings")
+        try:
+            values = list(texts)
+        except TypeError as exc:
+            raise ValueError("texts must be a string or iterable of strings") from exc
+    if any(not isinstance(text, str) for text in values):
+        raise ValueError("every embedding input must be a string")
+    return values
+
+
 @contextlib.contextmanager
 def _silence_stdout():
     """把底层 fd1(stdout) 临时重定向到 stderr。
@@ -71,7 +86,7 @@ def _fastembed_model():
 def _hash_vec(text):
     """确定性、L2 归一化的伪向量：字符 bigram 落桶。仅供测试，共享子串越多越相近。"""
     v = [0.0] * DIM
-    s = (text or "").replace(" ", "").replace("\n", "")
+    s = text.replace(" ", "").replace("\n", "")
     for i in range(max(0, len(s) - 1)):
         bg = s[i:i + 2]
         h = 0
@@ -84,9 +99,9 @@ def _hash_vec(text):
 
 def embed(texts, is_query=False):
     """文本列表 → 向量列表（list[list[float]]，长度 DIM）。is_query 时走查询侧编码。"""
-    if isinstance(texts, str):
-        texts = [texts]
-    texts = list(texts)
+    texts = _normalize_texts(texts)
+    if not texts:
+        return []
     if _embedding_backend() == "hash":
         return [_hash_vec(t) for t in texts]
     # 全程 fd 级静默 stdout：模型加载 + 编码都可能打印，绝不能污染 stdio-MCP 的 JSON-RPC 通道
