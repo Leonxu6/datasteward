@@ -62,6 +62,24 @@ def normalize_positive_int(value, *, field_name: str, default: int, maximum: int
     return result
 
 
+def normalize_nonnegative_int(value, *, field_name: str, default: int, maximum: int) -> int:
+    """Parse a bounded integer that may be zero, useful for disabling queue capacity."""
+    value = default if value is None else value
+    if isinstance(value, bool):
+        raise ValueError(f"{field_name} 必须是非负整数")
+    if isinstance(value, str):
+        if not value or value != value.strip() or not value.isascii() or not value.isdecimal():
+            raise ValueError(f"{field_name} 必须是非负整数")
+        result = int(value)
+    elif isinstance(value, int):
+        result = value
+    else:
+        raise ValueError(f"{field_name} 必须是非负整数")
+    if result < 0 or result > maximum:
+        raise ValueError(f"{field_name} 必须在 0-{maximum} 范围内")
+    return result
+
+
 def normalize_positive_float(value, *, field_name: str, default: float, maximum: float) -> float:
     """Parse a finite positive float with an explicit upper bound."""
     value = default if value is None else value
