@@ -6,11 +6,9 @@
 """
 import re
 
+from dm.kg.cypher_guard import validate_readonly_cypher
 from dm.kg.store import run_read
 from dm.kg.validation import bounded_int, label_name, required_text
-
-_WRITE = re.compile(r"\b(create|merge|delete|set|remove|detach|drop|load\s+csv|"
-                    r"foreach|call\s*\{|apoc\.|dbms\.|db\.create)\b", re.I)
 
 
 def find_related(entity_id: str, max_hops: int = 2, limit: int = 30):
@@ -42,12 +40,11 @@ def impact_path(entity_id: str, target_type: str, max_hops: int = 4, limit: int 
 
 
 def restricted_cypher(cypher: str, limit: int = 50):
-    c = (cypher or "").strip().rstrip(";")
-    if not c:
-        return {"mode": "cypher", "error": "空查询"}
-    if _WRITE.search(c):
-        return {"mode": "cypher", "error": "只读：检测到写/管理关键字，已拒绝"}
-    if not re.search(r"\blimit\b", c, re.I):
-        c += f" LIMIT {max(1, min(int(limit), 200))}"
+    c, error, masked = validate_readonly_cypher(cypher)
+    if error:
+        return {"mode": "cypher", "error": f"只读查询被拒绝：{error}"}
+    lim = bounded_int(limit, name="limit", minimum=1, maximum=200)
+    if not re.search(r"\blimit\b", masked, re.I):
+        c += f" LIMIT {lim}"
     rows = run_read(c)
     return {"mode": "cypher", "cypher": c, "count": len(rows), "rows": rows}
