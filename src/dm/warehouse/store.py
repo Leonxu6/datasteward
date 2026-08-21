@@ -6,6 +6,7 @@ from dm.config import (  # noqa: F401
     WH_RO_PASSWORD, WH_RO_USER, WH_USER,
 )
 from dm.warehouse.logio import append_jsonl, read_jsonl
+from dm.warehouse.validation import normalize_fetch_size
 
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -34,6 +35,7 @@ class _Result:
         return row
 
     def fetchmany(self, size):
+        size = normalize_fetch_size(size)
         rows = self._cur.fetchmany(size)
         if not rows:
             self.close()
