@@ -84,4 +84,5 @@ def counts():
         nc = cur.fetchone()[0]
         return nd, nc
     finally:
+        cur.close()
         c.close()
