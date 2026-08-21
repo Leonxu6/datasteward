@@ -5,6 +5,7 @@ import pytest
 from dm.channels.validation import (
     append_query_params,
     normalize_message_text,
+    normalize_nonnegative_int,
     normalize_positive_float,
     normalize_positive_int,
     normalize_webhook_url,
@@ -65,6 +66,17 @@ def test_positive_int_normalization(value, expected):
 def test_positive_int_rejects_invalid_values(value):
     with pytest.raises(ValueError):
         normalize_positive_int(value, field_name="limit", default=4, maximum=10)
+
+
+def test_nonnegative_int_allows_explicit_zero_capacity():
+    assert normalize_nonnegative_int(0, field_name="queue_max", default=12, maximum=100) == 0
+    assert normalize_nonnegative_int("12", field_name="queue_max", default=4, maximum=100) == 12
+
+
+@pytest.mark.parametrize("value", [True, -1, 101, "-1", "1.5", " 2", "１２"])
+def test_nonnegative_int_rejects_invalid_values(value):
+    with pytest.raises(ValueError):
+        normalize_nonnegative_int(value, field_name="queue_max", default=12, maximum=100)
 
 
 def test_positive_float_normalization_and_bounds():
