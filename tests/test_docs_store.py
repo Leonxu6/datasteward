@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 from dm.docs import store
 
@@ -38,7 +38,7 @@ class DocumentStoreTests(unittest.TestCase):
 
         store.init_schema()
 
-        self.assertEqual([call.args[0] for call in cursor.execute.call_args_list], ["first", "second"])
+        self.assertEqual([item.args[0] for item in cursor.execute.call_args_list], ["first", "second"])
         cursor.close.assert_called_once_with()
         conn.close.assert_called_once_with()
 
