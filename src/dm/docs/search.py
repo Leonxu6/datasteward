@@ -6,6 +6,7 @@
 
 供 connector/mcp_server.py 的 search_documents 工具调用（同一套审计留痕）。
 """
+import operator
 import re
 
 import numpy as np
@@ -17,17 +18,41 @@ from dm.docs.store import connect_vec
 _ENTITY_RE = re.compile(r"[A-Za-z]{1,5}-?\d{2,4}")
 _ENT_BONUS = 0.15      # 查询实体命中"片段关联实体"的加分
 _CONTENT_BONUS = 0.05  # 仅出现在片段正文（未登记为关联实体）的较小加分
+_MAX_TOP_K = 100
 
 
 def _entities(text):
     return {m.group(0).upper() for m in _ENTITY_RE.finditer(text or "")}
 
 
+def _normalize_query(query: str) -> str:
+    if not isinstance(query, str):
+        raise ValueError("query must be a string")
+    clean = query.strip()
+    if not clean:
+        raise ValueError("query must not be empty")
+    return clean
+
+
+def _normalize_top_k(top_k: int) -> int:
+    if isinstance(top_k, bool):
+        raise ValueError("top_k must be an integer from 1 to 100")
+    try:
+        value = operator.index(top_k)
+    except TypeError as exc:
+        raise ValueError("top_k must be an integer from 1 to 100") from exc
+    if not 1 <= value <= _MAX_TOP_K:
+        raise ValueError("top_k must be an integer from 1 to 100")
+    return value
+
+
 def search(query: str, top_k: int = 5):
     """返回 [{doc_id, doc_type, title, entities, chunk_no, content, score, vscore}]（混合分降序）。"""
+    query = _normalize_query(query)
+    top_k = _normalize_top_k(top_k)
     qv = np.asarray(embed_one(query, is_query=True), dtype="float32")
     q_ents = _entities(query)
-    pool = max(int(top_k) * 3, 12)
+    pool = max(top_k * 3, 12)
     c = connect_vec()
     cur = c.cursor()
     try:
@@ -51,4 +76,4 @@ def search(query: str, top_k: int = 5):
                     "chunk_no": r[4], "content": r[5],
                     "score": round(vscore + boost, 4), "vscore": round(vscore, 4)})
     out.sort(key=lambda x: x["score"], reverse=True)
-    return out[:int(top_k)]
+    return out[:top_k]
