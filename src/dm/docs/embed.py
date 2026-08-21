@@ -26,6 +26,16 @@ CACHE_DIR = os.environ.get("DM_EMBED_CACHE") or str(Path.home() / ".cache" / "dm
 _MODEL = None
 
 
+def _embedding_backend() -> str:
+    value = os.environ.get("DM_EMBED_BACKEND", BACKEND)
+    if not isinstance(value, str):
+        raise ValueError("DM_EMBED_BACKEND must be fastembed or hash")
+    value = value.strip().lower()
+    if value not in {"fastembed", "hash"}:
+        raise ValueError("DM_EMBED_BACKEND must be fastembed or hash")
+    return value
+
+
 @contextlib.contextmanager
 def _silence_stdout():
     """把底层 fd1(stdout) 临时重定向到 stderr。
@@ -77,7 +87,7 @@ def embed(texts, is_query=False):
     if isinstance(texts, str):
         texts = [texts]
     texts = list(texts)
-    if os.environ.get("DM_EMBED_BACKEND", BACKEND) == "hash":  # 动态读取，便于测试切 hash 后端
+    if _embedding_backend() == "hash":
         return [_hash_vec(t) for t in texts]
     # 全程 fd 级静默 stdout：模型加载 + 编码都可能打印，绝不能污染 stdio-MCP 的 JSON-RPC 通道
     with _silence_stdout():
