@@ -7,14 +7,16 @@
 import re
 
 from dm.kg.store import run_read
+from dm.kg.validation import bounded_int, required_text
 
 _WRITE = re.compile(r"\b(create|merge|delete|set|remove|detach|drop|load\s+csv|"
                     r"foreach|call\s*\{|apoc\.|dbms\.|db\.create)\b", re.I)
 
 
 def find_related(entity_id: str, max_hops: int = 2, limit: int = 30):
-    h = max(1, min(int(max_hops), 4))
-    lim = max(1, min(int(limit), 100))
+    entity_id = required_text(entity_id, name="entity_id")
+    h = bounded_int(max_hops, name="max_hops", minimum=1, maximum=4)
+    lim = bounded_int(limit, name="limit", minimum=1, maximum=100)
     rows = run_read(
         f"MATCH (a {{id:$id}}) "
         f"MATCH p=(a)-[*1..{h}]-(b) WHERE b<>a "
