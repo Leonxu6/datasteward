@@ -48,6 +48,35 @@ class HealthCheckTests(unittest.TestCase):
         self.assertIn("超前", result["message"])
         self.assertIn("未来", result["actual"])
 
+    @patch("dm.health.checks._sr_scalar", return_value=4)
+    def test_warning_expectation_violation_remains_a_warning(self, _scalar):
+        check = {
+            "id": "expect_test",
+            "type": "expectation",
+            "table": "sales_order",
+            "predicate": "qty <= 0",
+            "severity": "warn",
+            "desc": "quantity should be positive",
+        }
+
+        result = run_check(check)
+
+        self.assertEqual(result["status"], "warn")
+        self.assertEqual(result["actual"], 4)
+
+    @patch("dm.health.checks._sr_scalar", return_value=2)
+    def test_error_expectation_violation_is_a_failure(self, _scalar):
+        check = {
+            "id": "expect_error",
+            "type": "expectation",
+            "table": "inventory",
+            "predicate": "qty < 0",
+            "severity": "error",
+            "desc": "inventory should not be negative",
+        }
+
+        self.assertEqual(run_check(check)["status"], "fail")
+
 
 if __name__ == "__main__":
     unittest.main()
