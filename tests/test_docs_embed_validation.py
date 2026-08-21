@@ -46,6 +46,17 @@ class EmbedValidationTests(unittest.TestCase):
         self.assertEqual(len(vector), embed.DIM)
         self.assertTrue(all(value == 0.0 for value in vector))
 
+    def test_embedding_dimension_accepts_ascii_positive_range(self):
+        for value, expected in (("1", 1), ("512", 512), ("16384", 16384)):
+            with self.subTest(value=value):
+                self.assertEqual(embed._embedding_dimension(value), expected)
+
+    def test_embedding_dimension_rejects_invalid_or_ambiguous_values(self):
+        for value in ("", "0", "-1", "16385", "512.0", "５１２", " 512 ", None):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "DM_EMBED_DIM"):
+                    embed._embedding_dimension(value)
+
 
 if __name__ == "__main__":
     unittest.main()
