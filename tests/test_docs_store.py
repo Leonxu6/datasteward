@@ -28,6 +28,35 @@ class DocumentStoreTests(unittest.TestCase):
         register.assert_called_once_with(conn)
         conn.close.assert_not_called()
 
+    @patch("dm.docs.store._ddl", return_value=["first", "second"])
+    @patch("dm.docs.store.connect")
+    def test_init_schema_closes_resources_after_success(self, connect, _ddl):
+        cursor = Mock()
+        conn = Mock()
+        conn.cursor.return_value = cursor
+        connect.return_value = conn
+
+        store.init_schema()
+
+        self.assertEqual([call.args[0] for call in cursor.execute.call_args_list], ["first", "second"])
+        cursor.close.assert_called_once_with()
+        conn.close.assert_called_once_with()
+
+    @patch("dm.docs.store._ddl", return_value=["first", "second"])
+    @patch("dm.docs.store.connect")
+    def test_init_schema_closes_resources_after_ddl_failure(self, connect, _ddl):
+        cursor = Mock()
+        cursor.execute.side_effect = RuntimeError("ddl failed")
+        conn = Mock()
+        conn.cursor.return_value = cursor
+        connect.return_value = conn
+
+        with self.assertRaisesRegex(RuntimeError, "ddl failed"):
+            store.init_schema()
+
+        cursor.close.assert_called_once_with()
+        conn.close.assert_called_once_with()
+
 
 if __name__ == "__main__":
     unittest.main()
