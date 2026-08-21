@@ -15,7 +15,6 @@ from dm.config import SRC_PG_DB, SRC_PG_HOST, SRC_PG_PASSWORD, SRC_PG_PORT, SRC_
 from dm.schema import business_table_names, table_by_name
 from dm.warehouse.store import connect_ro
 
-# 监控目录：每条 = 一个健康检查（对标 Palantir 的 Health Check 配置）
 CHECK_CATALOG = [
     {"id": "volume_all", "type": "volume", "min_rows": 1, "severity": "error",
      "desc": "所有业务表应非空（缺数据探测）"},
@@ -109,7 +108,9 @@ def run_check(chk: dict) -> dict:
             mx = _sr_scalar(f"SELECT MAX(`{chk['column']}`) FROM `{chk['table']}`")
             if mx is None:
                 return _result(chk, "warn", None, "无时间数据")
-            age = (datetime.now() - _to_dt(mx)).days
+            dt = _to_dt(mx)
+            now = datetime.now(dt.tzinfo) if dt.tzinfo is not None else datetime.now()
+            age = (now - dt).days
             if age > chk["max_age_days"]:
                 return _result(chk, "warn", f"{age}天", f"数据 {age} 天未更新（阈值 {chk['max_age_days']} 天）")
             return _result(chk, "ok", f"{age}天", f"最新数据 {age} 天内")
@@ -123,10 +124,16 @@ def run_check(chk: dict) -> dict:
 def _to_dt(v):
     if isinstance(v, datetime):
         return v
+    if not isinstance(v, (str, bytes)):
+        raise ValueError(f"unsupported timestamp type: {type(v).__name__}")
+    text = v.decode() if isinstance(v, bytes) else v
+    text = text.strip()
+    if not text:
+        raise ValueError("empty timestamp")
     try:
-        return datetime.fromisoformat(str(v).replace("T", " ").split(".")[0])
-    except Exception:  # noqa: BLE001
-        return datetime.now()
+        return datetime.fromisoformat(text.replace("T", " "))
+    except ValueError as exc:
+        raise ValueError(f"invalid timestamp: {text[:40]}") from exc
 
 
 def _dbt_tests_result(chk):
