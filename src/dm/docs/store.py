@@ -65,9 +65,12 @@ def init_schema():
     """建库（幂等）。注意：若改了嵌入维度 DIM，需先 DROP doc_chunk 再建。"""
     c = connect()
     cur = c.cursor()
-    for stmt in _ddl():
-        cur.execute(stmt)
-    c.close()
+    try:
+        for stmt in _ddl():
+            cur.execute(stmt)
+    finally:
+        cur.close()
+        c.close()
 
 
 def counts():
