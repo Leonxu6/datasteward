@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from dm.kg.query import find_related, impact_path
+from dm.kg.query import find_related, impact_path, restricted_cypher
 
 
 class KgQueryTests(unittest.TestCase):
@@ -60,6 +60,37 @@ class KgQueryTests(unittest.TestCase):
             with self.subTest(target_type=target_type, hops=hops, limit=limit):
                 with self.assertRaises(ValueError):
                     impact_path(entity_id, target_type, max_hops=hops, limit=limit)
+        run_read.assert_not_called()
+
+    @patch("dm.kg.query.run_read", return_value=[{"id": "M0001"}])
+    def test_restricted_cypher_appends_validated_limit(self, run_read):
+        result = restricted_cypher("MATCH (n) RETURN n.id AS id", limit=25)
+
+        self.assertEqual(result["count"], 1)
+        self.assertTrue(result["cypher"].endswith("LIMIT 25"))
+        run_read.assert_called_once_with(result["cypher"])
+
+    @patch("dm.kg.query.run_read", return_value=[])
+    def test_restricted_cypher_preserves_existing_limit(self, run_read):
+        result = restricted_cypher("MATCH (n) RETURN n LIMIT 3", limit=25)
+
+        self.assertEqual(result["cypher"], "MATCH (n) RETURN n LIMIT 3")
+        run_read.assert_called_once_with(result["cypher"])
+
+    @patch("dm.kg.query.run_read")
+    def test_restricted_cypher_returns_error_without_database_access(self, run_read):
+        for cypher in ("MATCH (n) DELETE n", "RETURN 1; RETURN 2", "CALL db.labels()"):
+            with self.subTest(cypher=cypher):
+                result = restricted_cypher(cypher)
+                self.assertIn("error", result)
+        run_read.assert_not_called()
+
+    @patch("dm.kg.query.run_read")
+    def test_restricted_cypher_rejects_invalid_default_limit(self, run_read):
+        for limit in (True, 0, 201, 5.0, "5"):
+            with self.subTest(limit=limit):
+                with self.assertRaises(ValueError):
+                    restricted_cypher("RETURN 1", limit=limit)
         run_read.assert_not_called()
 
 
