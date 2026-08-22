@@ -44,6 +44,15 @@ def test_nonnegative_count_rejects_invalid_database_values(value):
     assert checks._nonnegative_count(12, field="inventory") == 12
 
 
+def test_malformed_check_definition_returns_failure_instead_of_raising():
+    result = checks.run_check({})
+    assert result["status"] == "fail"
+    assert result["id"] == "unknown"
+    assert result["type"] == "unknown"
+    assert result["severity"] == "error"
+    assert "检查执行失败" in result["message"]
+
+
 def test_expectation_check_fails_cleanly_on_invalid_count(monkeypatch):
     monkeypatch.setattr(checks, "_sr_scalar", lambda _sql: "12")
     result = checks.run_check(_expectation_check())
