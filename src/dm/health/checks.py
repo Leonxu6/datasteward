@@ -54,9 +54,17 @@ def _nonnegative_count(value, *, field):
 
 
 def _result(chk, status, actual, message):
-    return {"id": chk["id"], "type": chk["type"], "table": chk.get("table", "*"),
-            "desc": chk["desc"], "severity": chk["severity"], "status": status,
-            "actual": actual, "message": message}
+    check = chk if isinstance(chk, dict) else {}
+    return {
+        "id": check.get("id", "unknown"),
+        "type": check.get("type", "unknown"),
+        "table": check.get("table", "*"),
+        "desc": check.get("desc", "未提供检查描述"),
+        "severity": check.get("severity", "error"),
+        "status": status,
+        "actual": actual,
+        "message": message,
+    }
 
 
 def run_check(chk: dict) -> dict:
@@ -73,10 +81,7 @@ def run_check(chk: dict) -> dict:
                 return _result(chk, "fail", empties, f"空表：{', '.join(empties)}")
             return _result(chk, "ok", 0, "全部业务表非空")
         if t == "expectation":
-            n = _nonnegative_count(
-                _sr_scalar(f"SELECT COUNT(*) FROM `{chk['table']}` WHERE {chk['predicate']}"),
-                field=chk["table"],
-            )
+            n = _nonnegative_count(_sr_scalar(f"SELECT COUNT(*) FROM `{chk['table']}` WHERE {chk['predicate']}"), field=chk["table"])
             if n > 0:
                 return _result(chk, "fail", n, f"{n} 行违反『{chk['predicate']}』")
             return _result(chk, "ok", 0, "无违反行")
@@ -92,15 +97,13 @@ def run_check(chk: dict) -> dict:
             actual = {"src": src, "snk": snk}
             if src == snk:
                 return _result(chk, "ok", actual, f"源汇一致（{src}）")
-            return _result(chk, "fail", actual,
-                           f"源↔汇不一致：PG={src} StarRocks={snk} 差 {abs(src - snk)}（疑似 CDC 顿挫/延迟）")
+            return _result(chk, "fail", actual, f"源↔汇不一致：PG={src} StarRocks={snk} 差 {abs(src - snk)}（疑似 CDC 顿挫/延迟）")
         if t == "schema":
             actual = set(_sr_cols(chk["table"]))
             expect = {c[0] for c in table_by_name(chk["table"])["columns"]}
             missing, extra = expect - actual, actual - expect
             if missing or extra:
-                return _result(chk, "warn", {"missing": sorted(missing), "extra": sorted(extra)},
-                               f"结构漂移：缺 {sorted(missing)} 多 {sorted(extra)}")
+                return _result(chk, "warn", {"missing": sorted(missing), "extra": sorted(extra)}, f"结构漂移：缺 {sorted(missing)} 多 {sorted(extra)}")
             return _result(chk, "ok", len(actual), "结构一致")
         if t == "freshness":
             mx = _sr_scalar(f"SELECT MAX(`{chk['column']}`) FROM `{chk['table']}`")
@@ -144,8 +147,7 @@ def _dbt_tests_result(chk):
         return _result(chk, "warn", None, "dbt 尚未运行（无 run_results.json）——先跑 dbt build")
     data = json.loads(rr.read_text(encoding="utf-8"))
     tests = [r for r in data.get("results", []) if r.get("unique_id", "").startswith("test.")]
-    bad = [r.get("unique_id", "?").split(".")[2] if len(r.get("unique_id", "").split(".")) > 2 else r.get("unique_id")
-           for r in tests if r.get("status") in ("fail", "error")]
+    bad = [r.get("unique_id", "?").split(".")[2] if len(r.get("unique_id", "").split(".")) > 2 else r.get("unique_id") for r in tests if r.get("status") in ("fail", "error")]
     if bad:
         return _result(chk, "fail", len(bad), f"{len(bad)} 个 dbt 测试未过：{', '.join(bad[:5])}")
     if not tests:
@@ -156,10 +158,7 @@ def _dbt_tests_result(chk):
 def run_all() -> dict:
     """跑完整监控目录，返回 {results, summary}。"""
     results = [run_check(c) for c in CHECK_CATALOG]
-    summary = {"total": len(results),
-               "ok": sum(1 for r in results if r["status"] == "ok"),
-               "warn": sum(1 for r in results if r["status"] == "warn"),
-               "fail": sum(1 for r in results if r["status"] == "fail")}
+    summary = {"total": len(results), "ok": sum(1 for r in results if r["status"] == "ok"), "warn": sum(1 for r in results if r["status"] == "warn"), "fail": sum(1 for r in results if r["status"] == "fail")}
     return {"results": results, "summary": summary}
 
 
@@ -167,5 +166,4 @@ def alerts() -> list:
     """当前告警（status != ok），按严重级排序。"""
     res = run_all()["results"]
     order = {"fail": 0, "warn": 1}
-    return sorted([r for r in res if r["status"] != "ok"],
-                  key=lambda r: (order.get(r["status"], 9), r["severity"]))
+    return sorted([r for r in res if r["status"] != "ok"], key=lambda r: (order.get(r["status"], 9), r["severity"]))
