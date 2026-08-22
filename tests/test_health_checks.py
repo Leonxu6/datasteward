@@ -6,25 +6,15 @@ from dm.health import checks
 
 
 def _freshness_check():
-    return {
-        "id": "freshness_test",
-        "type": "freshness",
-        "table": "inventory",
-        "column": "update_time",
-        "max_age_days": 30,
-        "severity": "warn",
-        "desc": "test freshness",
-    }
+    return {"id": "freshness_test", "type": "freshness", "table": "inventory", "column": "update_time", "max_age_days": 30, "severity": "warn", "desc": "test freshness"}
 
 
 def _parity_check():
-    return {
-        "id": "parity_test",
-        "type": "parity",
-        "table": "inventory",
-        "severity": "error",
-        "desc": "test parity",
-    }
+    return {"id": "parity_test", "type": "parity", "table": "inventory", "severity": "error", "desc": "test parity"}
+
+
+def _expectation_check():
+    return {"id": "expect_test", "type": "expectation", "table": "inventory", "predicate": "qty < 0", "severity": "error", "desc": "test expectation"}
 
 
 def test_to_dt_accepts_datetime_and_iso_text():
@@ -44,6 +34,21 @@ def test_to_dt_preserves_fractional_seconds_and_timezone_offsets():
 def test_to_dt_rejects_invalid_timestamps(value):
     with pytest.raises(ValueError):
         checks._to_dt(value)
+
+
+@pytest.mark.parametrize("value", [None, True, False, -1, 1.5, "12"])
+def test_nonnegative_count_rejects_invalid_database_values(value):
+    with pytest.raises(ValueError):
+        checks._nonnegative_count(value, field="inventory")
+    assert checks._nonnegative_count(0, field="inventory") == 0
+    assert checks._nonnegative_count(12, field="inventory") == 12
+
+
+def test_expectation_check_fails_cleanly_on_invalid_count(monkeypatch):
+    monkeypatch.setattr(checks, "_sr_scalar", lambda _sql: "12")
+    result = checks.run_check(_expectation_check())
+    assert result["status"] == "fail"
+    assert "invalid row count" in result["message"]
 
 
 def test_freshness_check_fails_instead_of_marking_invalid_timestamp_fresh(monkeypatch):
