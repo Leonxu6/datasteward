@@ -21,6 +21,15 @@ def _integer_bound(value: object, *, field: str) -> int:
     return value
 
 
+def _finite_bound(value: object, *, field: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{field} 必须是数字")
+    result = float(value)
+    if not math.isfinite(result):
+        raise ValueError(f"{field} 必须是有限数字")
+    return result
+
+
 def env_text(name: str, default: str, *, allow_empty: bool = False, max_length: int = 1000) -> str:
     if not isinstance(allow_empty, bool):
         raise ValueError("allow_empty 必须是布尔值")
@@ -60,11 +69,20 @@ def env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
 
 
 def env_float(name: str, default: float, *, minimum: float, maximum: float) -> float:
+    minimum = _finite_bound(minimum, field="minimum")
+    maximum = _finite_bound(maximum, field="maximum")
+    if minimum > maximum:
+        raise ValueError("minimum 不能大于 maximum")
     raw = os.environ.get(name)
-    try:
-        result = float(default if raw is None else raw)
-    except ValueError as exc:
-        raise ValueError(f"{name} 必须是数字") from exc
+    if raw is None:
+        if isinstance(default, bool) or not isinstance(default, (int, float)):
+            raise ValueError(f"{name} 默认值必须是数字")
+        result = float(default)
+    else:
+        try:
+            result = float(raw)
+        except ValueError as exc:
+            raise ValueError(f"{name} 必须是数字") from exc
     if not math.isfinite(result) or result < minimum or result > maximum:
         raise ValueError(f"{name} 必须在 {minimum:g}-{maximum:g} 范围内")
     return result
