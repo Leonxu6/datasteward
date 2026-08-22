@@ -15,6 +15,12 @@ def _positive_int(value: object, *, field: str) -> int:
     return value
 
 
+def _integer_bound(value: object, *, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{field} 必须是整数")
+    return value
+
+
 def env_text(name: str, default: str, *, allow_empty: bool = False, max_length: int = 1000) -> str:
     if not isinstance(allow_empty, bool):
         raise ValueError("allow_empty 必须是布尔值")
@@ -35,8 +41,14 @@ def env_text(name: str, default: str, *, allow_empty: bool = False, max_length: 
 
 
 def env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
+    minimum = _integer_bound(minimum, field="minimum")
+    maximum = _integer_bound(maximum, field="maximum")
+    if minimum > maximum:
+        raise ValueError("minimum 不能大于 maximum")
     raw = os.environ.get(name)
     if raw is None:
+        if isinstance(default, bool) or not isinstance(default, int):
+            raise ValueError(f"{name} 默认值必须是整数")
         result = default
     else:
         if not raw or raw != raw.strip() or not raw.isascii() or not raw.isdecimal():
