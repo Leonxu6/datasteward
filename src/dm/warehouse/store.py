@@ -29,14 +29,22 @@ class _Result:
             pass
 
     def fetchone(self):
-        row = self._cur.fetchone()
+        try:
+            row = self._cur.fetchone()
+        except Exception:
+            self.close()
+            raise
         if row is None:
             self.close()
         return row
 
     def fetchmany(self, size):
         size = normalize_fetch_size(size)
-        rows = self._cur.fetchmany(size)
+        try:
+            rows = self._cur.fetchmany(size)
+        except Exception:
+            self.close()
+            raise
         if not rows:
             self.close()
         return rows
