@@ -1,14 +1,4 @@
-"""数据健康监控（对标 Palantir Data Health / Foundry Rules）。
-
-五类检查 + 阈值 + 严重级，组成"监控目录"：
-- freshness  新鲜度：某表时间列的最新值距今是否超阈值
-- volume     数据量：业务表是否非空（缺数据探测）
-- expectation 期望：违反业务约束的行数（如库存为负）
-- parity     源↔汇对账：PG(源) 与 StarRocks(汇) 行数是否一致 —— **CDC 健康/数据顿挫探测器**
-- schema     结构漂移：实际列 vs schema.py 定义
-
-见 docs/palantir/07-数据健康与监控。结果 status ∈ ok/warn/fail；供治理台监控页 + 告警。
-"""
+"""数据健康监控（对标 Palantir Data Health / Foundry Rules）。"""
 from datetime import datetime
 
 from dm.config import SRC_PG_DB, SRC_PG_HOST, SRC_PG_PASSWORD, SRC_PG_PORT, SRC_PG_USER
@@ -16,35 +6,25 @@ from dm.schema import business_table_names, table_by_name
 from dm.warehouse.store import connect_ro
 
 CHECK_CATALOG = [
-    {"id": "volume_all", "type": "volume", "min_rows": 1, "severity": "error",
-     "desc": "所有业务表应非空（缺数据探测）"},
-    {"id": "expect_inventory_qty", "type": "expectation", "table": "inventory",
-     "predicate": "qty < 0", "severity": "error", "desc": "库存数量不应为负"},
-    {"id": "expect_safety_stock", "type": "expectation", "table": "material",
-     "predicate": "safety_stock < 0", "severity": "error", "desc": "安全库存阈值不应为负"},
-    {"id": "expect_so_qty", "type": "expectation", "table": "sales_order",
-     "predicate": "qty <= 0", "severity": "warn", "desc": "销售订单数量应为正"},
-    {"id": "parity_inventory", "type": "parity", "table": "inventory", "severity": "error",
-     "desc": "库存 源(PG)↔汇(StarRocks) 行数对账（CDC 健康）"},
-    {"id": "parity_material", "type": "parity", "table": "material", "severity": "error",
-     "desc": "物料 源↔汇 行数对账"},
-    {"id": "parity_sales_order", "type": "parity", "table": "sales_order", "severity": "error",
-     "desc": "销售订单 源↔汇 行数对账"},
-    {"id": "parity_purchase_order", "type": "parity", "table": "purchase_order", "severity": "error",
-     "desc": "采购单 源↔汇 行数对账"},
-    {"id": "schema_inventory", "type": "schema", "table": "inventory", "severity": "warn",
-     "desc": "库存表结构一致（无列漂移）"},
-    {"id": "freshness_inventory", "type": "freshness", "table": "inventory", "column": "update_time",
-     "max_age_days": 30, "severity": "warn", "desc": "库存数据新鲜度（最新更新距今）"},
-    {"id": "dbt_tests", "type": "dbt", "severity": "error",
-     "desc": "dbt 质量测试（唯一/非空/引用完整/业务规则）全部通过"},
+    {"id": "volume_all", "type": "volume", "min_rows": 1, "severity": "error", "desc": "所有业务表应非空（缺数据探测）"},
+    {"id": "expect_inventory_qty", "type": "expectation", "table": "inventory", "predicate": "qty < 0", "severity": "error", "desc": "库存数量不应为负"},
+    {"id": "expect_safety_stock", "type": "expectation", "table": "material", "predicate": "safety_stock < 0", "severity": "error", "desc": "安全库存阈值不应为负"},
+    {"id": "expect_so_qty", "type": "expectation", "table": "sales_order", "predicate": "qty <= 0", "severity": "warn", "desc": "销售订单数量应为正"},
+    {"id": "parity_inventory", "type": "parity", "table": "inventory", "severity": "error", "desc": "库存 源(PG)↔汇(StarRocks) 行数对账（CDC 健康）"},
+    {"id": "parity_material", "type": "parity", "table": "material", "severity": "error", "desc": "物料 源↔汇 行数对账"},
+    {"id": "parity_sales_order", "type": "parity", "table": "sales_order", "severity": "error", "desc": "销售订单 源↔汇 行数对账"},
+    {"id": "parity_purchase_order", "type": "parity", "table": "purchase_order", "severity": "error", "desc": "采购单 源↔汇 行数对账"},
+    {"id": "schema_inventory", "type": "schema", "table": "inventory", "severity": "warn", "desc": "库存表结构一致（无列漂移）"},
+    {"id": "freshness_inventory", "type": "freshness", "table": "inventory", "column": "update_time", "max_age_days": 30, "severity": "warn", "desc": "库存数据新鲜度（最新更新距今）"},
+    {"id": "dbt_tests", "type": "dbt", "severity": "error", "desc": "dbt 质量测试（唯一/非空/引用完整/业务规则）全部通过"},
 ]
 
 
 def _sr_scalar(sql):
     con = connect_ro()
     try:
-        return con.execute(sql).fetchone()[0]
+        row = con.execute(sql).fetchone()
+        return row[0] if row else None
     finally:
         con.close()
 
@@ -67,6 +47,12 @@ def _pg_scalar(sql):
         return r[0] if r else None
 
 
+def _nonnegative_count(value, *, field):
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"{field} returned an invalid row count: {value!r}")
+    return value
+
+
 def _result(chk, status, actual, message):
     return {"id": chk["id"], "type": chk["type"], "table": chk.get("table", "*"),
             "desc": chk["desc"], "severity": chk["severity"], "status": status,
@@ -78,14 +64,20 @@ def run_check(chk: dict) -> dict:
     try:
         t = chk["type"]
         if t == "volume":
-            empties = [n for n in business_table_names()
-                       if _sr_scalar(f"SELECT COUNT(*) FROM `{n}`") < chk["min_rows"]]
+            empties = []
+            for name in business_table_names():
+                count = _nonnegative_count(_sr_scalar(f"SELECT COUNT(*) FROM `{name}`"), field=name)
+                if count < chk["min_rows"]:
+                    empties.append(name)
             if empties:
                 return _result(chk, "fail", empties, f"空表：{', '.join(empties)}")
             return _result(chk, "ok", 0, "全部业务表非空")
         if t == "expectation":
-            n = _sr_scalar(f"SELECT COUNT(*) FROM `{chk['table']}` WHERE {chk['predicate']}")
-            if n and n > 0:
+            n = _nonnegative_count(
+                _sr_scalar(f"SELECT COUNT(*) FROM `{chk['table']}` WHERE {chk['predicate']}"),
+                field=chk["table"],
+            )
+            if n > 0:
                 return _result(chk, "fail", n, f"{n} 行违反『{chk['predicate']}』")
             return _result(chk, "ok", 0, "无违反行")
         if t == "parity":
@@ -95,6 +87,9 @@ def run_check(chk: dict) -> dict:
             actual = {"src": src, "snk": snk}
             if src is None or snk is None:
                 return _result(chk, "fail", actual, "源或汇未返回有效行数")
+            src = _nonnegative_count(src, field=f"{tbl} source")
+            snk = _nonnegative_count(snk, field=f"{tbl} sink")
+            actual = {"src": src, "snk": snk}
             if src == snk:
                 return _result(chk, "ok", actual, f"源汇一致（{src}）")
             return _result(chk, "fail", actual,
@@ -143,8 +138,7 @@ def _dbt_tests_result(chk):
     import json
     import os
     from pathlib import Path
-    dbt_dir = Path(os.environ.get("DM_DBT_DIR") or
-                   Path(__file__).resolve().parents[3] / "transform" / "dbt")
+    dbt_dir = Path(os.environ.get("DM_DBT_DIR") or Path(__file__).resolve().parents[3] / "transform" / "dbt")
     rr = dbt_dir / "target" / "run_results.json"
     if not rr.exists():
         return _result(chk, "warn", None, "dbt 尚未运行（无 run_results.json）——先跑 dbt build")
