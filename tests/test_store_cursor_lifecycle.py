@@ -46,9 +46,13 @@ class FakeCursor:
 class FakeConnection:
     def __init__(self, cursor):
         self.cursor_value = cursor
+        self.closed = False
 
     def cursor(self):
         return self.cursor_value
+
+    def close(self):
+        self.closed = True
 
 
 def test_fetchall_closes_cursor_after_complete_consumption():
@@ -81,6 +85,15 @@ def test_result_context_manager_closes_cursor():
     with _Result(cursor) as result:
         assert result.fetchone() == (1,)
     assert cursor.closed
+
+
+def test_connection_context_manager_closes_connection_even_on_errors():
+    cursor = FakeCursor()
+    raw = FakeConnection(cursor)
+    with pytest.raises(RuntimeError, match="boom"):
+        with _Conn(raw):
+            raise RuntimeError("boom")
+    assert raw.closed
 
 
 def test_execute_closes_cursor_when_driver_raises():
