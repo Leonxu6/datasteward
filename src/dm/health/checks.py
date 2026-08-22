@@ -112,6 +112,8 @@ def run_check(chk: dict) -> dict:
             if mx is None:
                 return _result(chk, "warn", None, "无时间数据")
             age = (datetime.now() - _to_dt(mx)).days
+            if age < 0:
+                return _result(chk, "warn", f"{age}天", "最新时间戳位于未来，检查源系统时钟或时区")
             if age > chk["max_age_days"]:
                 return _result(chk, "warn", f"{age}天", f"数据 {age} 天未更新（阈值 {chk['max_age_days']} 天）")
             return _result(chk, "ok", f"{age}天", f"最新数据 {age} 天内")
