@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -44,6 +44,14 @@ def test_freshness_check_fails_instead_of_marking_invalid_timestamp_fresh(monkey
     result = checks.run_check(_freshness_check())
     assert result["status"] == "fail"
     assert "invalid freshness timestamp" in result["message"]
+
+
+def test_freshness_check_warns_when_source_timestamp_is_in_the_future(monkeypatch):
+    future = datetime.now() + timedelta(days=2)
+    monkeypatch.setattr(checks, "_sr_scalar", lambda _sql: future)
+    result = checks.run_check(_freshness_check())
+    assert result["status"] == "warn"
+    assert "未来" in result["message"]
 
 
 @pytest.mark.parametrize("source_count,sink_count", [(None, 12), (12, None), (None, None)])
