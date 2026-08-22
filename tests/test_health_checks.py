@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -33,6 +33,13 @@ def test_to_dt_accepts_datetime_and_iso_text():
     assert checks._to_dt("2026-08-22T12:30:00") == value
 
 
+def test_to_dt_preserves_fractional_seconds_and_timezone_offsets():
+    parsed = checks._to_dt("2026-08-22T12:30:00.125+08:00")
+    assert parsed.microsecond == 125000
+    assert parsed.utcoffset() == timedelta(hours=8)
+    assert checks._to_dt("2026-08-22T04:30:00Z").tzinfo == timezone.utc
+
+
 @pytest.mark.parametrize("value", ["", "   ", "not-a-date", object()])
 def test_to_dt_rejects_invalid_timestamps(value):
     with pytest.raises(ValueError):
@@ -44,6 +51,13 @@ def test_freshness_check_fails_instead_of_marking_invalid_timestamp_fresh(monkey
     result = checks.run_check(_freshness_check())
     assert result["status"] == "fail"
     assert "invalid freshness timestamp" in result["message"]
+
+
+def test_freshness_check_handles_timezone_aware_source_values(monkeypatch):
+    recent = datetime.now(timezone.utc) - timedelta(hours=3)
+    monkeypatch.setattr(checks, "_sr_scalar", lambda _sql: recent.isoformat())
+    result = checks.run_check(_freshness_check())
+    assert result["status"] == "ok"
 
 
 def test_freshness_check_warns_when_source_timestamp_is_in_the_future(monkeypatch):
