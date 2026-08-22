@@ -86,10 +86,20 @@ def test_env_bool_validates_default_type(monkeypatch):
             env_bool("DM_FLAG", default)  # type: ignore[arg-type]
 
 
-def test_env_http_url_requires_http_host_and_no_embedded_credentials(monkeypatch):
+def test_env_http_url_requires_clean_service_base(monkeypatch):
     monkeypatch.setenv("DM_URL", "https://example.com/api/")
     assert env_http_url("DM_URL", "http://localhost") == "https://example.com/api"
-    for value in ("file:///tmp/x", "https:///missing", "https://u:p@example.com", "https://example.com:bad"):
+    invalid = (
+        "file:///tmp/x",
+        "https:///missing",
+        "https://u:p@example.com",
+        "https://example.com:bad",
+        "https://example.com/a b",
+        "https://example.com\\@evil.test/path",
+        "https://example.com/api?token=1",
+        "https://example.com/api#section",
+    )
+    for value in invalid:
         monkeypatch.setenv("DM_URL", value)
         with pytest.raises(ValueError):
             env_http_url("DM_URL", "http://localhost")
