@@ -91,6 +91,8 @@ def env_float(name: str, default: float, *, minimum: float, maximum: float) -> f
 def env_bool(name: str, default: bool) -> bool:
     raw = os.environ.get(name)
     if raw is None:
+        if not isinstance(default, bool):
+            raise ValueError(f"{name} 默认值必须是布尔值")
         return default
     if raw != raw.strip() or not raw:
         raise ValueError(f"{name} 必须是布尔值")
