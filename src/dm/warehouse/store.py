@@ -74,7 +74,7 @@ class _Result:
 
 
 class _Conn:
-    """连接适配器：execute(sql) 返回 _Result；close() 关闭底层连接。"""
+    """连接适配器：execute(sql) 返回 _Result；支持 ``with`` 自动关闭。"""
 
     def __init__(self, conn):
         self._conn = conn
@@ -104,6 +104,13 @@ class _Conn:
             self._conn.close()
         except Exception:  # noqa: BLE001
             pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+        return False
 
 
 def _connect(user, password, database, autocommit=True):
