@@ -39,6 +39,16 @@ def test_env_int_requires_ascii_digits_and_bounds(monkeypatch):
             env_int("DM_PORT", 1, minimum=1, maximum=65535)
 
 
+def test_env_int_validates_defaults_and_bounds(monkeypatch):
+    monkeypatch.delenv("DM_PORT", raising=False)
+    for default in (True, False, 3.0, "3", None):
+        with pytest.raises(ValueError):
+            env_int("DM_PORT", default, minimum=1, maximum=10)  # type: ignore[arg-type]
+    for minimum, maximum in ((True, 10), (1, False), (1.5, 10), (1, "10"), (11, 10)):
+        with pytest.raises(ValueError):
+            env_int("DM_PORT", 3, minimum=minimum, maximum=maximum)  # type: ignore[arg-type]
+
+
 def test_env_float_rejects_nonfinite_and_out_of_range_values(monkeypatch):
     monkeypatch.setenv("DM_TIMEOUT", "2.5")
     assert env_float("DM_TIMEOUT", 1, minimum=0.1, maximum=60) == 2.5
