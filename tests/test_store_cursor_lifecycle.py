@@ -4,10 +4,11 @@ from dm.warehouse.store import _Conn, _Result
 
 
 class FakeCursor:
-    def __init__(self, rows=(), error=None):
+    def __init__(self, rows=(), error=None, fetch_error=None):
         self.description = (("id",),)
         self.rows = list(rows)
         self.error = error
+        self.fetch_error = fetch_error
         self.closed = False
         self.executed = []
 
@@ -22,13 +23,19 @@ class FakeCursor:
             raise self.error
 
     def fetchone(self):
+        if self.fetch_error:
+            raise self.fetch_error
         return self.rows.pop(0) if self.rows else None
 
     def fetchmany(self, size):
+        if self.fetch_error:
+            raise self.fetch_error
         result, self.rows = self.rows[:size], self.rows[size:]
         return result
 
     def fetchall(self):
+        if self.fetch_error:
+            raise self.fetch_error
         result, self.rows = self.rows, []
         return result
 
@@ -57,6 +64,15 @@ def test_fetchone_closes_cursor_when_exhausted():
     assert result.fetchone() == (1,)
     assert not cursor.closed
     assert result.fetchone() is None
+    assert cursor.closed
+
+
+@pytest.mark.parametrize("method,args", [("fetchone", ()), ("fetchmany", (10,))])
+def test_incremental_fetch_closes_cursor_when_driver_raises(method, args):
+    cursor = FakeCursor(fetch_error=RuntimeError("read failed"))
+    result = _Result(cursor)
+    with pytest.raises(RuntimeError, match="read failed"):
+        getattr(result, method)(*args)
     assert cursor.closed
 
 
