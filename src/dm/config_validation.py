@@ -106,6 +106,10 @@ def env_bool(name: str, default: bool) -> bool:
 
 def env_http_url(name: str, default: str) -> str:
     value = env_text(name, default, max_length=2048)
+    if any(ch.isspace() for ch in value):
+        raise ValueError(f"{name} 不能包含空白字符")
+    if "\\" in value:
+        raise ValueError(f"{name} 不能包含反斜杠")
     try:
         parsed = urlsplit(value)
         _ = parsed.port
@@ -115,4 +119,6 @@ def env_http_url(name: str, default: str) -> str:
         raise ValueError(f"{name} 必须是带主机名的 http(s) URL")
     if parsed.username is not None or parsed.password is not None:
         raise ValueError(f"{name} 不能在 URL 中内嵌凭据")
+    if parsed.query or parsed.fragment:
+        raise ValueError(f"{name} 不能包含查询参数或片段")
     return value.rstrip("/")
