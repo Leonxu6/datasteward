@@ -20,6 +20,16 @@ def test_env_text_can_explicitly_allow_empty(monkeypatch):
     assert env_text("DM_X", "fallback", allow_empty=True) == ""
 
 
+def test_env_text_validates_parser_options(monkeypatch):
+    monkeypatch.delenv("DM_X", raising=False)
+    for allow_empty in (0, 1, "true", None):
+        with pytest.raises(ValueError):
+            env_text("DM_X", "default", allow_empty=allow_empty)  # type: ignore[arg-type]
+    for max_length in (0, -1, True, 1.5, "100"):
+        with pytest.raises(ValueError):
+            env_text("DM_X", "default", max_length=max_length)  # type: ignore[arg-type]
+
+
 def test_env_int_requires_ascii_digits_and_bounds(monkeypatch):
     monkeypatch.setenv("DM_PORT", "9030")
     assert env_int("DM_PORT", 1, minimum=1, maximum=65535) == 9030
