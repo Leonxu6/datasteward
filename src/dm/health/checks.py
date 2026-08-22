@@ -92,9 +92,12 @@ def run_check(chk: dict) -> dict:
             tbl = chk["table"]
             src = _pg_scalar(f"SELECT COUNT(*) FROM {tbl}")
             snk = _sr_scalar(f"SELECT COUNT(*) FROM `{tbl}`")
+            actual = {"src": src, "snk": snk}
+            if src is None or snk is None:
+                return _result(chk, "fail", actual, "源或汇未返回有效行数")
             if src == snk:
-                return _result(chk, "ok", {"src": src, "snk": snk}, f"源汇一致（{src}）")
-            return _result(chk, "fail", {"src": src, "snk": snk},
+                return _result(chk, "ok", actual, f"源汇一致（{src}）")
+            return _result(chk, "fail", actual,
                            f"源↔汇不一致：PG={src} StarRocks={snk} 差 {abs(src - snk)}（疑似 CDC 顿挫/延迟）")
         if t == "schema":
             actual = set(_sr_cols(chk["table"]))
