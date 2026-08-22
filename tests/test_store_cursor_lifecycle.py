@@ -47,9 +47,17 @@ class FakeConnection:
     def __init__(self, cursor):
         self.cursor_value = cursor
         self.closed = False
+        self.commits = 0
+        self.rollbacks = 0
 
     def cursor(self):
         return self.cursor_value
+
+    def commit(self):
+        self.commits += 1
+
+    def rollback(self):
+        self.rollbacks += 1
 
     def close(self):
         self.closed = True
@@ -94,6 +102,15 @@ def test_connection_context_manager_closes_connection_even_on_errors():
         with _Conn(raw):
             raise RuntimeError("boom")
     assert raw.closed
+
+
+def test_commit_and_rollback_delegate_to_driver_connection():
+    raw = FakeConnection(FakeCursor())
+    conn = _Conn(raw)
+    conn.commit()
+    conn.rollback()
+    assert raw.commits == 1
+    assert raw.rollbacks == 1
 
 
 def test_execute_closes_cursor_when_driver_raises():
