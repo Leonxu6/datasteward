@@ -111,7 +111,9 @@ def run_check(chk: dict) -> dict:
             mx = _sr_scalar(f"SELECT MAX(`{chk['column']}`) FROM `{chk['table']}`")
             if mx is None:
                 return _result(chk, "warn", None, "无时间数据")
-            age = (datetime.now() - _to_dt(mx)).days
+            timestamp = _to_dt(mx)
+            now = datetime.now(timestamp.tzinfo) if timestamp.tzinfo is not None else datetime.now()
+            age = (now - timestamp).days
             if age < 0:
                 return _result(chk, "warn", f"{age}天", "最新时间戳位于未来，检查源系统时钟或时区")
             if age > chk["max_age_days"]:
@@ -131,7 +133,7 @@ def _to_dt(v):
     if not text:
         raise ValueError("freshness timestamp is empty")
     try:
-        return datetime.fromisoformat(text.replace("T", " ").split(".")[0])
+        return datetime.fromisoformat(text.replace("Z", "+00:00"))
     except (TypeError, ValueError) as exc:
         raise ValueError(f"invalid freshness timestamp: {text[:80]}") from exc
 
