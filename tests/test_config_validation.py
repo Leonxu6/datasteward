@@ -79,6 +79,13 @@ def test_env_bool_requires_explicit_supported_spellings(monkeypatch):
             env_bool("DM_FLAG", False)
 
 
+def test_env_bool_validates_default_type(monkeypatch):
+    monkeypatch.delenv("DM_FLAG", raising=False)
+    for default in (0, 1, "true", None):
+        with pytest.raises(ValueError):
+            env_bool("DM_FLAG", default)  # type: ignore[arg-type]
+
+
 def test_env_http_url_requires_http_host_and_no_embedded_credentials(monkeypatch):
     monkeypatch.setenv("DM_URL", "https://example.com/api/")
     assert env_http_url("DM_URL", "http://localhost") == "https://example.com/api"
