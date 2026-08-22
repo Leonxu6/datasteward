@@ -58,6 +58,17 @@ def test_env_float_rejects_nonfinite_and_out_of_range_values(monkeypatch):
             env_float("DM_TIMEOUT", 1, minimum=0.1, maximum=60)
 
 
+def test_env_float_validates_defaults_and_bounds(monkeypatch):
+    monkeypatch.delenv("DM_TIMEOUT", raising=False)
+    for default in (True, False, "1", None, math.nan, math.inf):
+        with pytest.raises(ValueError):
+            env_float("DM_TIMEOUT", default, minimum=0.1, maximum=60)  # type: ignore[arg-type]
+    cases = ((True, 60), (0.1, False), ("0.1", 60), (0.1, "60"), (math.nan, 60), (0.1, math.inf), (61, 60))
+    for minimum, maximum in cases:
+        with pytest.raises(ValueError):
+            env_float("DM_TIMEOUT", 1, minimum=minimum, maximum=maximum)  # type: ignore[arg-type]
+
+
 def test_env_bool_requires_explicit_supported_spellings(monkeypatch):
     for value, expected in (("1", True), ("true", True), ("YES", True), ("0", False), ("off", False)):
         monkeypatch.setenv("DM_FLAG", value)
