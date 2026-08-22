@@ -9,7 +9,16 @@ _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off"}
 
 
+def _positive_int(value: object, *, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(f"{field} 必须是正整数")
+    return value
+
+
 def env_text(name: str, default: str, *, allow_empty: bool = False, max_length: int = 1000) -> str:
+    if not isinstance(allow_empty, bool):
+        raise ValueError("allow_empty 必须是布尔值")
+    max_length = _positive_int(max_length, field="max_length")
     raw = os.environ.get(name)
     value = default if raw is None else raw
     if not isinstance(value, str):
