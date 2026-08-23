@@ -50,10 +50,10 @@ def test_env_int_validates_defaults_and_bounds(monkeypatch):
             env_int("DM_PORT", 3, minimum=minimum, maximum=maximum)  # type: ignore[arg-type]
 
 
-def test_env_float_rejects_nonfinite_and_out_of_range_values(monkeypatch):
+def test_env_float_rejects_nonfinite_out_of_range_and_padded_values(monkeypatch):
     monkeypatch.setenv("DM_TIMEOUT", "2.5")
     assert env_float("DM_TIMEOUT", 1, minimum=0.1, maximum=60) == 2.5
-    for value in ("nan", "inf", "0", "61", "bad"):
+    for value in ("nan", "inf", "0", "61", "bad", " 2.5", "2.5 ", "\t2.5"):
         monkeypatch.setenv("DM_TIMEOUT", value)
         with pytest.raises(ValueError):
             env_float("DM_TIMEOUT", 1, minimum=0.1, maximum=60)
