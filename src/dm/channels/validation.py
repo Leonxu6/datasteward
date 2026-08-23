@@ -46,15 +46,19 @@ def normalize_webhook_url(value, *, field_name: str = "webhook") -> str:
         raise ValueError(f"{field_name} 必须是非空且无首尾空白的字符串")
     if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
         raise ValueError(f"{field_name} 不能包含控制字符")
+    if "\\" in value:
+        raise ValueError(f"{field_name} 不能包含反斜杠")
     try:
         parsed = urlsplit(value)
-        _ = parsed.port
+        port = parsed.port
     except ValueError as exc:
         raise ValueError(f"{field_name} URL 格式无效") from exc
     if parsed.scheme.lower() != "https" or not parsed.hostname:
         raise ValueError(f"{field_name} 必须是带主机名的 https:// URL")
     if parsed.username is not None or parsed.password is not None:
         raise ValueError(f"{field_name} 不能内嵌用户名或密码")
+    if parsed.netloc.endswith(":") or port == 0:
+        raise ValueError(f"{field_name} 端口格式无效")
     return value
 
 
