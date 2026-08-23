@@ -59,6 +59,9 @@ def test_webhook_url_validates_field_name():
         "https://user:pass@example.com/hook",
         " https://example.com/hook",
         "https://example.com:bad/hook",
+        "https://example.com\\@evil.test/hook",
+        "https://example.com:/hook",
+        "https://example.com:0/hook",
     ],
 )
 def test_webhook_url_rejects_unsafe_or_malformed_values(value):
