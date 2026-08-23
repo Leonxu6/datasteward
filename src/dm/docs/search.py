@@ -17,14 +17,28 @@ from dm.docs.store import connect_vec
 _ENTITY_RE = re.compile(r"[A-Za-z]{1,5}-?\d{2,4}")
 _ENT_BONUS = 0.15      # 查询实体命中"片段关联实体"的加分
 _CONTENT_BONUS = 0.05  # 仅出现在片段正文（未登记为关联实体）的较小加分
+_MAX_QUERY_CHARS = 2000
 
 
 def _entities(text):
     return {m.group(0).upper() for m in _ENTITY_RE.finditer(text or "")}
 
 
+def _query_text(value: object) -> str:
+    if not isinstance(value, str):
+        raise ValueError("query must be a string")
+    if not value or value != value.strip():
+        raise ValueError("query must be non-empty text without surrounding whitespace")
+    if len(value) > _MAX_QUERY_CHARS:
+        raise ValueError(f"query must be at most {_MAX_QUERY_CHARS} characters")
+    if any((ord(ch) < 32 and ch not in "\n\r\t") or ord(ch) == 127 for ch in value):
+        raise ValueError("query contains unsafe control characters")
+    return value
+
+
 def search(query: str, top_k: int = 5):
     """返回 [{doc_id, doc_type, title, entities, chunk_no, content, score, vscore}]（混合分降序）。"""
+    query = _query_text(query)
     qv = np.asarray(embed_one(query, is_query=True), dtype="float32")
     q_ents = _entities(query)
     pool = max(int(top_k) * 3, 12)
