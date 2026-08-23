@@ -30,6 +30,20 @@ def _row_count(value: object) -> int:
     return value
 
 
+def _column_names(description: object) -> list[str]:
+    if description is None:
+        return []
+    try:
+        names = [item[0] for item in description]
+    except (TypeError, IndexError) as exc:
+        raise ValueError("query returned malformed column metadata") from exc
+    if any(not isinstance(name, str) or not name for name in names):
+        raise ValueError("query returned invalid column names")
+    if len(names) != len(set(names)):
+        raise ValueError("query returned duplicate column names; use explicit SQL aliases")
+    return names
+
+
 def list_tables(principal: Principal) -> str:
     """列出数据仓库里所有业务表（表英文名、中文名、说明、行数）。建议先调用它了解有哪些数据。"""
     t0 = time.time()
@@ -95,7 +109,7 @@ def run_sql(principal: Principal, sql: str) -> str:
     try:
         with connect_ro() as con:
             with con.execute(exec_sql) as cur:
-                colnames = [d[0] for d in cur.description] if cur.description else []
+                colnames = _column_names(cur.description)
                 fetched = cur.fetchmany(MAX_ROWS + 1)
         truncated = len(fetched) > MAX_ROWS
         rows = fetched[:MAX_ROWS]
