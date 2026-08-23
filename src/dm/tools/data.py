@@ -4,6 +4,7 @@
 唯一差别：身份从环境变量改为显式 Principal。PBAC/行列策略/脱敏依旧在 run_sql 入口强制。
 """
 import json
+import re
 import time
 
 from dm.schema import TABLES, business_table_names, table_by_name
@@ -14,6 +15,13 @@ from dm.tools.sql_guard import tables_in, validate_readonly
 from dm.warehouse.store import connect_ro
 
 MAX_ROWS = 200
+_TABLE_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,127}$")
+
+
+def _table_name(value: object) -> str:
+    if not isinstance(value, str) or not _TABLE_NAME.fullmatch(value):
+        raise ValueError("table name must be a clean SQL identifier")
+    return value
 
 
 def list_tables(principal: Principal) -> str:
@@ -36,6 +44,11 @@ def list_tables(principal: Principal) -> str:
 def describe_table(principal: Principal, name: str) -> str:
     """查看某张表的字段定义：列名、类型、中文名、是否主键、外键指向。参数 name 为表英文名。"""
     t0 = time.time()
+    try:
+        name = _table_name(name)
+    except ValueError as exc:
+        audit_event(principal, "describe_table", {"name": name}, "", [], 0, t0, False, "invalid table name")
+        return f"ERROR: {exc}。请用 list_tables 查看可用表。"
     t = table_by_name(name)
     if not t or name not in business_table_names():
         audit_event(principal, "describe_table", {"name": name}, "", [], 0, t0, False, "unknown table")
