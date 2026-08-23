@@ -71,11 +71,10 @@ def run_sql(principal: Principal, sql: str) -> str:
                 "。请如实告知用户该数据受权限(Marking)保护、当前角色无权查看，切勿臆造数值。")
     exec_sql = apply_row_policies(user, clean, tables)   # 行级对象策略：收窄可见行
     try:
-        con = connect_ro()
-        cur = con.execute(exec_sql)
-        colnames = [d[0] for d in cur.description] if cur.description else []
-        rows = cur.fetchmany(MAX_ROWS)
-        con.close()
+        with connect_ro() as con:
+            with con.execute(exec_sql) as cur:
+                colnames = [d[0] for d in cur.description] if cur.description else []
+                rows = cur.fetchmany(MAX_ROWS)
         masked_rows, masked_cols = apply_mask(colnames, rows, decision["mask_columns"])
         result = [dict(zip(colnames, r)) for r in masked_rows]
         audit_event(principal, "run_sql", {"sql": sql}, clean, tables, len(result), t0, True,
