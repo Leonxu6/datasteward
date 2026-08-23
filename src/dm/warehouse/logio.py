@@ -47,9 +47,12 @@ def append_jsonl(log_dir: Path, name, record: dict) -> None:
     payload = encode_record(record)
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o640)
     try:
-        written = os.write(fd, payload)
-        if written != len(payload):
-            raise OSError(f"short JSONL append: wrote {written}/{len(payload)} bytes")
+        offset = 0
+        while offset < len(payload):
+            written = os.write(fd, payload[offset:])
+            if written <= 0:
+                raise OSError(f"short JSONL append stalled after {offset}/{len(payload)} bytes")
+            offset += written
     finally:
         os.close(fd)
 
