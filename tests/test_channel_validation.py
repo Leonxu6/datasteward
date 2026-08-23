@@ -45,6 +45,12 @@ def test_webhook_url_accepts_https_hosts(value):
     assert normalize_webhook_url(value) == value
 
 
+def test_webhook_url_validates_field_name():
+    for field_name in ("", " webhook", "webhook ", "bad\nname", None):
+        with pytest.raises(ValueError):
+            normalize_webhook_url("https://example.com/hook", field_name=field_name)  # type: ignore[arg-type]
+
+
 @pytest.mark.parametrize(
     "value",
     [
