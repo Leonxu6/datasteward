@@ -41,6 +41,16 @@ def test_validate_readonly_rejects_oversized_queries_before_regex_work():
     assert str(MAX_SQL_CHARS) in err
 
 
+def test_validate_readonly_rejects_unsafe_control_characters():
+    for sql in ("SELECT\x00 1", "SELECT\x1f 1", "SELECT\x7f 1"):
+        clean, err = validate_readonly(sql)
+        assert clean == ""
+        assert err and "控制字符" in err
+    clean, err = validate_readonly("SELECT\n1\tFROM material")
+    assert err is None
+    assert "material" in tables_in(clean)
+
+
 def test_tables_in_matches_word_boundary():
     ts = tables_in("SELECT * FROM material JOIN inventory ON 1=1")
     assert "material" in ts and "inventory" in ts
