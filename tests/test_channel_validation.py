@@ -28,6 +28,15 @@ def test_message_text_enforces_explicit_length_limit():
         normalize_message_text("12345", max_length=4)
 
 
+def test_message_text_validates_field_name_and_length_options():
+    for field_name in ("", " message", "message ", "bad\nname", None):
+        with pytest.raises(ValueError):
+            normalize_message_text("ok", field_name=field_name)  # type: ignore[arg-type]
+    for max_length in (0, -1, True, 1.5, "20"):
+        with pytest.raises(ValueError):
+            normalize_message_text("ok", max_length=max_length)  # type: ignore[arg-type]
+
+
 @pytest.mark.parametrize("value", ["https://example.com/hook", "https://example.com/hook?access_token=abc"])
 def test_webhook_url_accepts_https_hosts(value):
     assert normalize_webhook_url(value) == value
