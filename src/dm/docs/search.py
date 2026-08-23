@@ -57,6 +57,16 @@ def _query_vector(value: object) -> np.ndarray:
     return vector
 
 
+def _vector_score(value: object) -> float:
+    try:
+        score = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("vector search score must be numeric") from exc
+    if not np.isfinite(score):
+        raise ValueError("vector search score must be finite")
+    return score
+
+
 def search(query: str, top_k: int = 5):
     """返回 [{doc_id, doc_type, title, entities, chunk_no, content, score, vscore}]（混合分降序）。"""
     query = _query_text(query)
@@ -83,7 +93,7 @@ def search(query: str, top_k: int = 5):
     for r in rows:
         doc_ents = {e.strip().upper() for e in (r[3] or "").split(",") if e.strip()}
         content_ents = _entities(r[5])
-        vscore = float(r[6])
+        vscore = _vector_score(r[6])
         boost = (_ENT_BONUS * len(q_ents & doc_ents)
                  + _CONTENT_BONUS * len(q_ents & (content_ents - doc_ents)))
         out.append({"doc_id": r[0], "doc_type": r[1], "title": r[2], "entities": r[3],
