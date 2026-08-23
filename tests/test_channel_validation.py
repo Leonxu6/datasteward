@@ -100,8 +100,31 @@ def test_nonnegative_int_rejects_invalid_values(value):
         normalize_nonnegative_int(value, field_name="queue_max", default=12, maximum=100)
 
 
+def test_integer_normalizers_validate_field_names_and_maximums():
+    funcs = (
+        (normalize_positive_int, 1),
+        (normalize_nonnegative_int, 0),
+    )
+    for func, value in funcs:
+        for field_name in ("", " limit", "limit ", "bad\nname", None):
+            with pytest.raises(ValueError):
+                func(value, field_name=field_name, default=value, maximum=10)  # type: ignore[arg-type]
+        for maximum in (0, -1, True, 1.5, "10"):
+            with pytest.raises(ValueError):
+                func(value, field_name="limit", default=value, maximum=maximum)  # type: ignore[arg-type]
+
+
 def test_positive_float_normalization_and_bounds():
     assert normalize_positive_float("2.5", field_name="timeout", default=3, maximum=10) == 2.5
     for value in (True, 0, -1, 11, math.inf, math.nan, "bad", " 2.5", "2.5 ", 10**10000):
         with pytest.raises(ValueError):
             normalize_positive_float(value, field_name="timeout", default=3, maximum=10)
+
+
+def test_positive_float_validates_field_name_and_maximum():
+    for field_name in ("", " timeout", "timeout ", "bad\nname", None):
+        with pytest.raises(ValueError):
+            normalize_positive_float(1, field_name=field_name, default=1, maximum=10)  # type: ignore[arg-type]
+    for maximum in (0, -1, True, math.nan, math.inf, "10", 10**10000):
+        with pytest.raises(ValueError):
+            normalize_positive_float(1, field_name="timeout", default=1, maximum=maximum)  # type: ignore[arg-type]
