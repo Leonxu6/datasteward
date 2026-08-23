@@ -45,7 +45,7 @@ class _Result:
         except Exception:
             self.close()
             raise
-        if not rows:
+        if len(rows) < size:
             self.close()
         return rows
 
