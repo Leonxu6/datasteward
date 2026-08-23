@@ -44,6 +44,19 @@ class _Connection:
         return False
 
 
+def _patch_allowed_query(monkeypatch, connection):
+    monkeypatch.setattr(kernel_data, "connect_ro", lambda: connection)
+    monkeypatch.setattr(kernel_data, "tables_in", lambda sql: ["material"])
+    monkeypatch.setattr(kernel_data, "enforce_query", lambda user, sql, tables: {
+        "allow": True,
+        "mask_columns": [],
+        "hit_markings": [],
+    })
+    monkeypatch.setattr(kernel_data, "apply_row_policies", lambda user, sql, tables: sql)
+    monkeypatch.setattr(kernel_data, "apply_mask", lambda columns, rows, masks: (rows, []))
+    monkeypatch.setattr(kernel_data, "audit_event", lambda *args, **kwargs: None)
+
+
 def test_list_tables_closes_each_cursor_and_connection(monkeypatch):
     connection = _Connection()
     monkeypatch.setattr(kernel_data, "TABLES", [{"name": "material", "cn": "物料", "desc": "demo"}])
@@ -61,19 +74,30 @@ def test_run_sql_closes_cursor_and_connection_after_fetch(monkeypatch):
     connection = _Connection(
         result_factory=lambda: _Result(rows=[("M001",)], description=(("material_id",),))
     )
-    monkeypatch.setattr(kernel_data, "connect_ro", lambda: connection)
-    monkeypatch.setattr(kernel_data, "tables_in", lambda sql: ["material"])
-    monkeypatch.setattr(kernel_data, "enforce_query", lambda user, sql, tables: {
-        "allow": True,
-        "mask_columns": [],
-        "hit_markings": [],
-    })
-    monkeypatch.setattr(kernel_data, "apply_row_policies", lambda user, sql, tables: sql)
-    monkeypatch.setattr(kernel_data, "apply_mask", lambda columns, rows, masks: (rows, []))
-    monkeypatch.setattr(kernel_data, "audit_event", lambda *args, **kwargs: None)
+    _patch_allowed_query(monkeypatch, connection)
 
     output = json.loads(kernel_data.run_sql(Principal(user="admin", role="管理员"), "SELECT material_id FROM material"))
 
     assert output["rows"] == [{"material_id": "M001"}]
     assert connection.closed is True
     assert connection.results and all(result.closed for result in connection.results)
+
+
+def test_run_sql_truncation_flag_requires_an_extra_row(monkeypatch):
+    principal = Principal(user="admin", role="管理员")
+    sql = "SELECT material_id FROM material"
+
+    exactly_limit = [(f"M{i:03d}",) for i in range(kernel_data.MAX_ROWS)]
+    connection = _Connection(result_factory=lambda: _Result(rows=exactly_limit, description=(("material_id",),)))
+    _patch_allowed_query(monkeypatch, connection)
+    output = json.loads(kernel_data.run_sql(principal, sql))
+    assert output["row_count"] == kernel_data.MAX_ROWS
+    assert output["truncated"] is False
+
+    over_limit = exactly_limit + [("M-extra",)]
+    connection = _Connection(result_factory=lambda: _Result(rows=over_limit, description=(("material_id",),)))
+    _patch_allowed_query(monkeypatch, connection)
+    output = json.loads(kernel_data.run_sql(principal, sql))
+    assert output["row_count"] == kernel_data.MAX_ROWS
+    assert output["truncated"] is True
+    assert all(row["material_id"] != "M-extra" for row in output["rows"])
