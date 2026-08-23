@@ -5,8 +5,24 @@ import math
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 
+def _clean_field_name(value: object) -> str:
+    if not isinstance(value, str) or not value or value != value.strip():
+        raise ValueError("field_name 必须是非空且无首尾空白的字符串")
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+        raise ValueError("field_name 不能包含控制字符")
+    return value
+
+
+def _positive_limit(value: object, *, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(f"{field} 必须是正整数")
+    return value
+
+
 def normalize_message_text(value, *, field_name: str = "message", max_length: int = 20_000) -> str:
     """Return bounded text suitable for sending to an external channel."""
+    field_name = _clean_field_name(field_name)
+    max_length = _positive_limit(max_length, field="max_length")
     if not isinstance(value, str):
         raise ValueError(f"{field_name} 必须是字符串")
     if not value or not value.strip():
