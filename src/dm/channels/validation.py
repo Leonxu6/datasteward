@@ -19,6 +19,11 @@ def _positive_limit(value: object, *, field: str) -> int:
     return value
 
 
+def _unsafe_message_control(ch: str) -> bool:
+    code = ord(ch)
+    return code == 127 or (code < 32 and ch not in "\n\r\t")
+
+
 def normalize_message_text(value, *, field_name: str = "message", max_length: int = 20_000) -> str:
     """Return bounded text suitable for sending to an external channel."""
     field_name = _clean_field_name(field_name)
@@ -29,8 +34,8 @@ def normalize_message_text(value, *, field_name: str = "message", max_length: in
         raise ValueError(f"{field_name} 不能为空")
     if len(value) > max_length:
         raise ValueError(f"{field_name} 不能超过 {max_length} 个字符")
-    if any(ord(ch) == 0 or ord(ch) == 127 for ch in value):
-        raise ValueError(f"{field_name} 不能包含 NUL/DEL 控制字符")
+    if any(_unsafe_message_control(ch) for ch in value):
+        raise ValueError(f"{field_name} 不能包含不安全控制字符")
     return value
 
 
