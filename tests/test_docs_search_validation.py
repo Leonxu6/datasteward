@@ -20,3 +20,12 @@ def test_search_top_k_validation_rejects_bool_non_integer_and_out_of_range_value
             docs_search._top_k(value)
     assert docs_search._top_k(1) == 1
     assert docs_search._top_k(100) == 100
+
+
+def test_query_vector_requires_non_empty_finite_numeric_1d_data():
+    for value in ([], [[1.0, 2.0]], [1.0, float("nan")], [float("inf")], ["not-a-number"]):
+        with pytest.raises(ValueError):
+            docs_search._query_vector(value)
+    vector = docs_search._query_vector([0, 1.5, -2])
+    assert vector.dtype.name == "float32"
+    assert vector.tolist() == [0.0, 1.5, -2.0]
