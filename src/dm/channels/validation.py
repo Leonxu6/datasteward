@@ -19,6 +19,18 @@ def _positive_limit(value: object, *, field: str) -> int:
     return value
 
 
+def _positive_finite_limit(value: object, *, field: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{field} 必须是正数")
+    try:
+        result = float(value)
+    except OverflowError as exc:
+        raise ValueError(f"{field} 必须是有限正数") from exc
+    if not math.isfinite(result) or result <= 0:
+        raise ValueError(f"{field} 必须是有限正数")
+    return result
+
+
 def _unsafe_message_control(ch: str) -> bool:
     code = ord(ch)
     return code == 127 or (code < 32 and ch not in "\n\r\t")
@@ -72,6 +84,8 @@ def append_query_params(url: str, **params: object) -> str:
 
 def normalize_positive_int(value, *, field_name: str, default: int, maximum: int) -> int:
     """Parse a bounded positive integer from code or environment-style strings."""
+    field_name = _clean_field_name(field_name)
+    maximum = _positive_limit(maximum, field="maximum")
     value = default if value is None else value
     if isinstance(value, bool):
         raise ValueError(f"{field_name} 必须是正整数")
@@ -90,6 +104,8 @@ def normalize_positive_int(value, *, field_name: str, default: int, maximum: int
 
 def normalize_nonnegative_int(value, *, field_name: str, default: int, maximum: int) -> int:
     """Parse a bounded integer that may be zero, useful for disabling queue capacity."""
+    field_name = _clean_field_name(field_name)
+    maximum = _positive_limit(maximum, field="maximum")
     value = default if value is None else value
     if isinstance(value, bool):
         raise ValueError(f"{field_name} 必须是非负整数")
@@ -108,6 +124,8 @@ def normalize_nonnegative_int(value, *, field_name: str, default: int, maximum: 
 
 def normalize_positive_float(value, *, field_name: str, default: float, maximum: float) -> float:
     """Parse a finite positive float with an explicit upper bound."""
+    field_name = _clean_field_name(field_name)
+    maximum = _positive_finite_limit(maximum, field="maximum")
     value = default if value is None else value
     if isinstance(value, bool):
         raise ValueError(f"{field_name} 必须是正数")
