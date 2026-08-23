@@ -1,6 +1,8 @@
 """治理内核（dm/tools）确定性单测：SQL 守卫、Principal 映射、PBAC 拒答路径（不触 DB）。"""
 import json
 
+import pytest
+
 from dm.tools import Principal
 from dm.tools.sql_guard import tables_in, validate_readonly
 
@@ -22,6 +24,14 @@ def test_validate_readonly_blocks_forbidden_keywords():
     assert err is None
     _, err = validate_readonly("WITH a AS (SELECT 1) INSERT INTO t SELECT * FROM a")
     assert err
+
+
+def test_sql_guard_normalizes_non_string_inputs():
+    clean, err = validate_readonly(None)
+    assert clean == ""
+    assert err == "ERROR: SQL 必须是字符串。"
+    with pytest.raises(TypeError, match="sql must be a string"):
+        tables_in(123)
 
 
 def test_tables_in_matches_word_boundary():
