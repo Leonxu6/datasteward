@@ -74,13 +74,15 @@ def run_sql(principal: Principal, sql: str) -> str:
         with connect_ro() as con:
             with con.execute(exec_sql) as cur:
                 colnames = [d[0] for d in cur.description] if cur.description else []
-                rows = cur.fetchmany(MAX_ROWS)
+                fetched = cur.fetchmany(MAX_ROWS + 1)
+        truncated = len(fetched) > MAX_ROWS
+        rows = fetched[:MAX_ROWS]
         masked_rows, masked_cols = apply_mask(colnames, rows, decision["mask_columns"])
         result = [dict(zip(colnames, r)) for r in masked_rows]
         audit_event(principal, "run_sql", {"sql": sql}, clean, tables, len(result), t0, True,
                     category="dataQuery", decision="allow")
         out = {"columns": colnames, "row_count": len(result), "rows": result,
-               "truncated": len(result) >= MAX_ROWS}
+               "truncated": truncated}
         notes = []
         if masked_cols:
             out["masked_columns"] = masked_cols
