@@ -59,6 +59,21 @@ def test_tables_in_matches_word_boundary():
     assert "material_category" in ts2
 
 
+def test_describe_table_rejects_malformed_names_before_schema_lookup(monkeypatch):
+    from dm.tools import data as kernel_data
+
+    def _boom(name):
+        raise AssertionError("invalid names must not reach table_by_name")
+
+    monkeypatch.setattr(kernel_data, "table_by_name", _boom)
+    monkeypatch.setattr(kernel_data, "audit_event", lambda *args, **kwargs: None)
+    principal = Principal(user="admin", role="管理员")
+    for name in (None, "", " material", "material ", "material;drop", "bad\x00name"):
+        out = kernel_data.describe_table(principal, name)
+        assert out.startswith("ERROR")
+        assert "table name" in out
+
+
 def test_principal_to_user_maps_attrs():
     p = Principal(user="w1", role="仓管", purpose="盘点", session_id="S1", channel="test", warehouse_id="W02")
     u = p.to_user()
