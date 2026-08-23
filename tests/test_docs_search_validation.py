@@ -29,3 +29,37 @@ def test_query_vector_requires_non_empty_finite_numeric_1d_data():
     vector = docs_search._query_vector([0, 1.5, -2])
     assert vector.dtype.name == "float32"
     assert vector.tolist() == [0.0, 1.5, -2.0]
+
+
+def test_search_closes_cursor_and_connection_after_fetch(monkeypatch):
+    class Cursor:
+        def __init__(self):
+            self.closed = False
+
+        def execute(self, sql, params):
+            self.params = params
+
+        def fetchall(self):
+            return []
+
+        def close(self):
+            self.closed = True
+
+    class Connection:
+        def __init__(self):
+            self.cur = Cursor()
+            self.closed = False
+
+        def cursor(self):
+            return self.cur
+
+        def close(self):
+            self.closed = True
+
+    connection = Connection()
+    monkeypatch.setattr(docs_search, "embed_one", lambda query, is_query: [0.1, 0.2])
+    monkeypatch.setattr(docs_search, "connect_vec", lambda: connection)
+
+    assert docs_search.search("S001 contract") == []
+    assert connection.cur.closed is True
+    assert connection.closed is True
