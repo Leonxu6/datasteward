@@ -70,6 +70,14 @@ def test_env_float_validates_defaults_and_bounds(monkeypatch):
             env_float("DM_TIMEOUT", 1, minimum=minimum, maximum=maximum)  # type: ignore[arg-type]
 
 
+def test_env_float_normalizes_huge_integer_overflow(monkeypatch):
+    huge = 10**10000
+    monkeypatch.delenv("DM_TIMEOUT", raising=False)
+    for default, minimum, maximum in ((huge, 0.1, 60), (1, -huge, 60), (1, 0.1, huge)):
+        with pytest.raises(ValueError):
+            env_float("DM_TIMEOUT", default, minimum=minimum, maximum=maximum)
+
+
 def test_env_bool_requires_explicit_supported_spellings(monkeypatch):
     for value, expected in (("1", True), ("true", True), ("YES", True), ("0", False), ("off", False)):
         monkeypatch.setenv("DM_FLAG", value)
