@@ -61,7 +61,7 @@ def list_tables(principal: Principal) -> str:
         return json.dumps(out, ensure_ascii=False, indent=2)
     except Exception as e:  # noqa: BLE001
         audit_event(principal, "list_tables", {}, "", [], 0, t0, False, str(e))
-        return f"ERROR: {e}"
+        return "ERROR: 无法读取表目录。详细错误已写入审计日志。"
 
 
 def describe_table(principal: Principal, name: str) -> str:
@@ -131,4 +131,4 @@ def run_sql(principal: Principal, sql: str) -> str:
         return json.dumps(out, ensure_ascii=False, default=str, indent=2)
     except Exception as e:  # noqa: BLE001
         audit_event(principal, "run_sql", {"sql": sql}, clean, tables, 0, t0, False, str(e))
-        return f"ERROR: 查询失败: {e}"
+        return "ERROR: 查询失败。详细错误已写入审计日志。"
