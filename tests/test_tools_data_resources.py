@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from dm.tools import Principal
 from dm.tools import data as kernel_data
 
@@ -68,6 +70,14 @@ def test_list_tables_closes_each_cursor_and_connection(monkeypatch):
     assert output[0]["rows"] == 3
     assert connection.closed is True
     assert connection.results and all(result.closed for result in connection.results)
+
+
+def test_row_count_validation_rejects_missing_or_invalid_counts():
+    for value in (None, True, -1, 1.5, "3"):
+        with pytest.raises(ValueError, match="row count"):
+            kernel_data._row_count(value)
+    assert kernel_data._row_count(0) == 0
+    assert kernel_data._row_count(42) == 42
 
 
 def test_run_sql_closes_cursor_and_connection_after_fetch(monkeypatch):
