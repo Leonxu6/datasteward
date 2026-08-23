@@ -30,7 +30,13 @@ def _json_default(value):
 def encode_record(record: dict) -> bytes:
     if not isinstance(record, dict):
         raise TypeError("record must be a dict")
-    line = json.dumps(record, ensure_ascii=False, default=_json_default, separators=(",", ":"))
+    line = json.dumps(
+        record,
+        ensure_ascii=False,
+        default=_json_default,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
     return (line + "\n").encode("utf-8")
 
 
