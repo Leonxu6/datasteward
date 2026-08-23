@@ -24,7 +24,10 @@ def _integer_bound(value: object, *, field: str) -> int:
 def _finite_bound(value: object, *, field: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError(f"{field} 必须是数字")
-    result = float(value)
+    try:
+        result = float(value)
+    except OverflowError as exc:
+        raise ValueError(f"{field} 必须是有限数字") from exc
     if not math.isfinite(result):
         raise ValueError(f"{field} 必须是有限数字")
     return result
@@ -78,13 +81,16 @@ def env_float(name: str, default: float, *, minimum: float, maximum: float) -> f
     if raw is None:
         if isinstance(default, bool) or not isinstance(default, (int, float)):
             raise ValueError(f"{name} 默认值必须是数字")
-        result = float(default)
+        try:
+            result = float(default)
+        except OverflowError as exc:
+            raise ValueError(f"{name} 默认值必须是有限数字") from exc
     else:
         if not raw or raw != raw.strip():
             raise ValueError(f"{name} 不能包含首尾空白")
         try:
             result = float(raw)
-        except ValueError as exc:
+        except (OverflowError, ValueError) as exc:
             raise ValueError(f"{name} 必须是数字") from exc
     if not math.isfinite(result) or result < minimum or result > maximum:
         raise ValueError(f"{name} 必须在 {minimum:g}-{maximum:g} 范围内")
