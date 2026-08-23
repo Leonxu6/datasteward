@@ -31,12 +31,13 @@ def test_env_text_validates_parser_options(monkeypatch):
 
 
 def test_env_int_requires_ascii_digits_and_bounds(monkeypatch):
-    monkeypatch.setenv("DM_PORT", "9030")
-    assert env_int("DM_PORT", 1, minimum=1, maximum=65535) == 9030
-    for value in ("0", "65536", " 9030", "+9030", "９０３０", "9.0"):
+    for value, expected in (("9030", 9030), ("-2", -2), ("0", 0)):
+        monkeypatch.setenv("DM_PORT", value)
+        assert env_int("DM_PORT", 1, minimum=-2, maximum=65535) == expected
+    for value in ("65536", "-3", " 9030", "+9030", "--2", "９０３０", "9.0"):
         monkeypatch.setenv("DM_PORT", value)
         with pytest.raises(ValueError):
-            env_int("DM_PORT", 1, minimum=1, maximum=65535)
+            env_int("DM_PORT", 1, minimum=-2, maximum=65535)
 
 
 def test_env_int_validates_defaults_and_bounds(monkeypatch):
