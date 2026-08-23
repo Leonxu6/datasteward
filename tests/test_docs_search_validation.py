@@ -38,6 +38,20 @@ def test_vector_score_requires_finite_numeric_values():
     assert docs_search._vector_score("0.875") == 0.875
 
 
+def test_search_row_validation_rejects_malformed_metadata():
+    valid = ("doc-1", "contract", "title", "S001", 0, "content", 0.8)
+    assert docs_search._search_row(valid) == valid
+    for value in (
+        None,
+        ("too", "short"),
+        ("doc", "type", "title", ["S001"], 0, "content", 0.8),
+        ("doc", "type", "title", "S001", 0, None, 0.8),
+        ("doc", "type", "title", "S001", 0, "content", float("nan")),
+    ):
+        with pytest.raises(ValueError):
+            docs_search._search_row(value)
+
+
 def test_search_closes_cursor_and_connection_after_fetch(monkeypatch):
     class Cursor:
         def __init__(self):
