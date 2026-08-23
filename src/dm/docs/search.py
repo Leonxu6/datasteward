@@ -74,7 +74,10 @@ def search(query: str, top_k: int = 5):
             (qv, qv, pool))
         rows = cur.fetchall()
     finally:
-        c.close()
+        try:
+            cur.close()
+        finally:
+            c.close()
 
     out = []
     for r in rows:
