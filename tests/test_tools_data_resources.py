@@ -80,6 +80,20 @@ def test_row_count_validation_rejects_missing_or_invalid_counts():
     assert kernel_data._row_count(42) == 42
 
 
+def test_column_name_validation_rejects_malformed_and_duplicate_metadata():
+    assert kernel_data._column_names(None) == []
+    assert kernel_data._column_names((("material_id",), ("name",))) == ["material_id", "name"]
+    for description in (
+        (("id",), ("id",)),
+        (("",),),
+        ((None,),),
+        ((),),
+        42,
+    ):
+        with pytest.raises(ValueError):
+            kernel_data._column_names(description)
+
+
 def test_run_sql_closes_cursor_and_connection_after_fetch(monkeypatch):
     connection = _Connection(
         result_factory=lambda: _Result(rows=[("M001",)], description=(("material_id",),))
