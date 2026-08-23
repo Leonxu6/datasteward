@@ -102,6 +102,6 @@ def test_nonnegative_int_rejects_invalid_values(value):
 
 def test_positive_float_normalization_and_bounds():
     assert normalize_positive_float("2.5", field_name="timeout", default=3, maximum=10) == 2.5
-    for value in (True, 0, -1, 11, math.inf, math.nan, "bad"):
+    for value in (True, 0, -1, 11, math.inf, math.nan, "bad", " 2.5", "2.5 ", 10**10000):
         with pytest.raises(ValueError):
             normalize_positive_float(value, field_name="timeout", default=3, maximum=10)
