@@ -18,6 +18,7 @@ _ENTITY_RE = re.compile(r"[A-Za-z]{1,5}-?\d{2,4}")
 _ENT_BONUS = 0.15      # 查询实体命中"片段关联实体"的加分
 _CONTENT_BONUS = 0.05  # 仅出现在片段正文（未登记为关联实体）的较小加分
 _MAX_QUERY_CHARS = 2000
+_MAX_TOP_K = 100
 
 
 def _entities(text):
@@ -36,12 +37,21 @@ def _query_text(value: object) -> str:
     return value
 
 
+def _top_k(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("top_k must be an integer")
+    if value < 1 or value > _MAX_TOP_K:
+        raise ValueError(f"top_k must be between 1 and {_MAX_TOP_K}")
+    return value
+
+
 def search(query: str, top_k: int = 5):
     """返回 [{doc_id, doc_type, title, entities, chunk_no, content, score, vscore}]（混合分降序）。"""
     query = _query_text(query)
+    top_k = _top_k(top_k)
     qv = np.asarray(embed_one(query, is_query=True), dtype="float32")
     q_ents = _entities(query)
-    pool = max(int(top_k) * 3, 12)
+    pool = max(top_k * 3, 12)
     c = connect_vec()
     cur = c.cursor()
     try:
@@ -65,4 +75,4 @@ def search(query: str, top_k: int = 5):
                     "chunk_no": r[4], "content": r[5],
                     "score": round(vscore + boost, 4), "vscore": round(vscore, 4)})
     out.sort(key=lambda x: x["score"], reverse=True)
-    return out[:int(top_k)]
+    return out[:top_k]
