@@ -26,6 +26,12 @@ def test_encode_record_requires_mapping():
         encode_record([1, 2])
 
 
+def test_encode_record_rejects_non_finite_json_numbers():
+    for value in (float("nan"), float("inf"), float("-inf")):
+        with pytest.raises(ValueError):
+            encode_record({"metric": value})
+
+
 def test_append_and_read_jsonl_round_trip(tmp_path):
     append_jsonl(tmp_path, "audit", {"id": 1})
     append_jsonl(tmp_path, "audit", {"id": 2})
