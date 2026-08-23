@@ -20,12 +20,12 @@ def list_tables(principal: Principal) -> str:
     """列出数据仓库里所有业务表（表英文名、中文名、说明、行数）。建议先调用它了解有哪些数据。"""
     t0 = time.time()
     try:
-        con = connect_ro()
         out = []
-        for t in TABLES:
-            n = con.execute(f'SELECT COUNT(*) FROM `{t["name"]}`').fetchone()[0]
-            out.append({"table": t["name"], "cn": t["cn"], "desc": t["desc"], "rows": n})
-        con.close()
+        with connect_ro() as con:
+            for t in TABLES:
+                with con.execute(f'SELECT COUNT(*) FROM `{t["name"]}`') as cur:
+                    n = cur.fetchone()[0]
+                out.append({"table": t["name"], "cn": t["cn"], "desc": t["desc"], "rows": n})
         audit_event(principal, "list_tables", {}, "", [t["name"] for t in TABLES], len(out), t0, True)
         return json.dumps(out, ensure_ascii=False, indent=2)
     except Exception as e:  # noqa: BLE001
