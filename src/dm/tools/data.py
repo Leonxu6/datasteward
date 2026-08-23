@@ -24,6 +24,12 @@ def _table_name(value: object) -> str:
     return value
 
 
+def _row_count(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError("database row count must be a non-negative integer")
+    return value
+
+
 def list_tables(principal: Principal) -> str:
     """列出数据仓库里所有业务表（表英文名、中文名、说明、行数）。建议先调用它了解有哪些数据。"""
     t0 = time.time()
@@ -32,7 +38,10 @@ def list_tables(principal: Principal) -> str:
         with connect_ro() as con:
             for t in TABLES:
                 with con.execute(f'SELECT COUNT(*) FROM `{t["name"]}`') as cur:
-                    n = cur.fetchone()[0]
+                    row = cur.fetchone()
+                    if row is None or len(row) < 1:
+                        raise ValueError(f"missing row count for {t['name']}")
+                    n = _row_count(row[0])
                 out.append({"table": t["name"], "cn": t["cn"], "desc": t["desc"], "rows": n})
         audit_event(principal, "list_tables", {}, "", [t["name"] for t in TABLES], len(out), t0, True)
         return json.dumps(out, ensure_ascii=False, indent=2)
