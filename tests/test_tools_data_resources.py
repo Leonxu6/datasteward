@@ -125,3 +125,28 @@ def test_run_sql_truncation_flag_requires_an_extra_row(monkeypatch):
     assert output["row_count"] == kernel_data.MAX_ROWS
     assert output["truncated"] is True
     assert all(row["material_id"] != "M-extra" for row in output["rows"])
+
+
+def test_database_errors_are_audited_but_not_exposed_to_tool_callers(monkeypatch):
+    secret_error = "db host=db.internal password=super-secret"
+    audits = []
+    monkeypatch.setattr(kernel_data, "audit_event", lambda *args, **kwargs: audits.append((args, kwargs)))
+    monkeypatch.setattr(kernel_data, "TABLES", [{"name": "material", "cn": "物料", "desc": "demo"}])
+    monkeypatch.setattr(kernel_data, "connect_ro", lambda: (_ for _ in ()).throw(RuntimeError(secret_error)))
+
+    response = kernel_data.list_tables(Principal(user="admin", role="管理员"))
+    assert response.startswith("ERROR")
+    assert "super-secret" not in response
+    assert audits and secret_error in str(audits[-1])
+
+    class FailingConnection(_Connection):
+        def execute(self, sql):
+            raise RuntimeError(secret_error)
+
+    connection = FailingConnection()
+    _patch_allowed_query(monkeypatch, connection)
+    monkeypatch.setattr(kernel_data, "audit_event", lambda *args, **kwargs: audits.append((args, kwargs)))
+    response = kernel_data.run_sql(Principal(user="admin", role="管理员"), "SELECT material_id FROM material")
+    assert response.startswith("ERROR")
+    assert "super-secret" not in response
+    assert secret_error in str(audits[-1])
