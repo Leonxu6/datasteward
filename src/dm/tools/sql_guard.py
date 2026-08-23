@@ -20,6 +20,10 @@ def _require_sql_text(sql: object) -> str:
     return sql
 
 
+def _has_unsafe_control(sql: str) -> bool:
+    return any((ord(ch) < 32 and ch not in "\n\r\t") or ord(ch) == 127 for ch in sql)
+
+
 def tables_in(sql: str) -> list:
     """识别 SQL 里引用了哪些业务表（按词边界匹配表名）。"""
     sql = _require_sql_text(sql)
@@ -35,6 +39,8 @@ def validate_readonly(sql: str) -> tuple:
         return "", "ERROR: SQL 必须是字符串。"
     if len(sql) > MAX_SQL_CHARS:
         return "", f"ERROR: SQL 过长，最多允许 {MAX_SQL_CHARS} 个字符。"
+    if _has_unsafe_control(sql):
+        return "", "ERROR: SQL 包含不安全的控制字符。"
     clean = sql.strip().rstrip(";").strip()
     if ";" in clean:
         return clean, "ERROR: 只允许单条查询语句（不要用分号拼接多条）。"
