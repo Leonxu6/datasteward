@@ -4,7 +4,7 @@ import json
 import pytest
 
 from dm.tools import Principal
-from dm.tools.sql_guard import tables_in, validate_readonly
+from dm.tools.sql_guard import MAX_SQL_CHARS, tables_in, validate_readonly
 
 
 def test_validate_readonly_rejects_writes():
@@ -32,6 +32,13 @@ def test_sql_guard_normalizes_non_string_inputs():
     assert err == "ERROR: SQL 必须是字符串。"
     with pytest.raises(TypeError, match="sql must be a string"):
         tables_in(123)
+
+
+def test_validate_readonly_rejects_oversized_queries_before_regex_work():
+    clean, err = validate_readonly("SELECT '" + ("x" * MAX_SQL_CHARS) + "'")
+    assert clean == ""
+    assert err and "SQL 过长" in err
+    assert str(MAX_SQL_CHARS) in err
 
 
 def test_tables_in_matches_word_boundary():
