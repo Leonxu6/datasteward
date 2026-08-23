@@ -31,6 +31,13 @@ def test_query_vector_requires_non_empty_finite_numeric_1d_data():
     assert vector.tolist() == [0.0, 1.5, -2.0]
 
 
+def test_vector_score_requires_finite_numeric_values():
+    for value in (None, "bad", float("nan"), float("inf"), float("-inf")):
+        with pytest.raises(ValueError):
+            docs_search._vector_score(value)
+    assert docs_search._vector_score("0.875") == 0.875
+
+
 def test_search_closes_cursor_and_connection_after_fetch(monkeypatch):
     class Cursor:
         def __init__(self):
