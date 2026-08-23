@@ -80,6 +80,8 @@ def env_float(name: str, default: float, *, minimum: float, maximum: float) -> f
             raise ValueError(f"{name} 默认值必须是数字")
         result = float(default)
     else:
+        if not raw or raw != raw.strip():
+            raise ValueError(f"{name} 不能包含首尾空白")
         try:
             result = float(raw)
         except ValueError as exc:
