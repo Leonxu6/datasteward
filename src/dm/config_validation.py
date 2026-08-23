@@ -60,7 +60,8 @@ def env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
             raise ValueError(f"{name} 默认值必须是整数")
         result = default
     else:
-        if not raw or raw != raw.strip() or not raw.isascii() or not raw.isdecimal():
+        digits = raw[1:] if raw.startswith("-") else raw
+        if not raw or raw != raw.strip() or raw.startswith("+") or not digits or not digits.isascii() or not digits.isdecimal():
             raise ValueError(f"{name} 必须是整数")
         result = int(raw)
     if result < minimum or result > maximum:
