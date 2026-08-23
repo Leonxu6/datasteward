@@ -67,6 +67,17 @@ def _vector_score(value: object) -> float:
     return score
 
 
+def _search_row(row: object) -> tuple:
+    if not isinstance(row, (tuple, list)) or len(row) != 7:
+        raise ValueError("vector search returned malformed row metadata")
+    if row[3] is not None and not isinstance(row[3], str):
+        raise ValueError("vector search entities must be text or null")
+    if not isinstance(row[5], str):
+        raise ValueError("vector search content must be text")
+    _vector_score(row[6])
+    return tuple(row)
+
+
 def search(query: str, top_k: int = 5):
     """返回 [{doc_id, doc_type, title, entities, chunk_no, content, score, vscore}]（混合分降序）。"""
     query = _query_text(query)
@@ -90,7 +101,8 @@ def search(query: str, top_k: int = 5):
             c.close()
 
     out = []
-    for r in rows:
+    for raw_row in rows:
+        r = _search_row(raw_row)
         doc_ents = {e.strip().upper() for e in (r[3] or "").split(",") if e.strip()}
         content_ents = _entities(r[5])
         vscore = _vector_score(r[6])
