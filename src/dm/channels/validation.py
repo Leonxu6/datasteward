@@ -41,6 +41,7 @@ def normalize_message_text(value, *, field_name: str = "message", max_length: in
 
 def normalize_webhook_url(value, *, field_name: str = "webhook") -> str:
     """Require a credential-free HTTPS webhook with a concrete hostname."""
+    field_name = _clean_field_name(field_name)
     if not isinstance(value, str) or not value or value != value.strip():
         raise ValueError(f"{field_name} 必须是非空且无首尾空白的字符串")
     if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
