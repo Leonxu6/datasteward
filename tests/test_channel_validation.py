@@ -13,11 +13,14 @@ from dm.channels.validation import (
 
 
 def test_message_text_accepts_multiline_content_without_stripping_it():
-    value = "line one\nline two"
+    value = "line one\nline two\twith tab"
     assert normalize_message_text(value) == value
 
 
-@pytest.mark.parametrize("value", [None, 7, "", "   ", "bad\x00message", "bad\x7fmessage"])
+@pytest.mark.parametrize(
+    "value",
+    [None, 7, "", "   ", "bad\x00message", "bad\x08message", "bad\x1bmessage", "bad\x7fmessage"],
+)
 def test_message_text_rejects_invalid_values(value):
     with pytest.raises(ValueError):
         normalize_message_text(value)
