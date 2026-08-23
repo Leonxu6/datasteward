@@ -12,14 +12,25 @@ FORBIDDEN = re.compile(
     r"replace|export|import|install|load|set|reset|call|merge|vacuum|explain|show)\b", re.I)
 
 
+def _require_sql_text(sql: object) -> str:
+    if not isinstance(sql, str):
+        raise TypeError("sql must be a string")
+    return sql
+
+
 def tables_in(sql: str) -> list:
     """识别 SQL 里引用了哪些业务表（按词边界匹配表名）。"""
+    sql = _require_sql_text(sql)
     low = sql.lower()
     return [n for n in business_table_names() if re.search(r"\b" + re.escape(n) + r"\b", low)]
 
 
 def validate_readonly(sql: str) -> tuple:
     """只读校验。返回 (clean_sql, err)：err 非空表示拒绝原因（对外可见的中文报错）。"""
+    try:
+        sql = _require_sql_text(sql)
+    except TypeError:
+        return "", "ERROR: SQL 必须是字符串。"
     clean = sql.strip().rstrip(";").strip()
     if ";" in clean:
         return clean, "ERROR: 只允许单条查询语句（不要用分号拼接多条）。"
