@@ -45,11 +45,23 @@ def _top_k(value: object) -> int:
     return value
 
 
+def _query_vector(value: object) -> np.ndarray:
+    try:
+        vector = np.asarray(value, dtype="float32")
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("query embedding must be numeric") from exc
+    if vector.ndim != 1 or vector.size == 0:
+        raise ValueError("query embedding must be a non-empty 1D vector")
+    if not np.isfinite(vector).all():
+        raise ValueError("query embedding must contain only finite values")
+    return vector
+
+
 def search(query: str, top_k: int = 5):
     """返回 [{doc_id, doc_type, title, entities, chunk_no, content, score, vscore}]（混合分降序）。"""
     query = _query_text(query)
     top_k = _top_k(top_k)
-    qv = np.asarray(embed_one(query, is_query=True), dtype="float32")
+    qv = _query_vector(embed_one(query, is_query=True))
     q_ents = _entities(query)
     pool = max(top_k * 3, 12)
     c = connect_vec()
