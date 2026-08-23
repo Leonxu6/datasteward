@@ -111,9 +111,11 @@ def normalize_positive_float(value, *, field_name: str, default: float, maximum:
     value = default if value is None else value
     if isinstance(value, bool):
         raise ValueError(f"{field_name} 必须是正数")
+    if isinstance(value, str) and (not value or value != value.strip()):
+        raise ValueError(f"{field_name} 必须是无首尾空白的正数")
     try:
         result = float(value)
-    except (TypeError, ValueError) as exc:
+    except (OverflowError, TypeError, ValueError) as exc:
         raise ValueError(f"{field_name} 必须是正数") from exc
     if not math.isfinite(result) or result <= 0 or result > maximum:
         raise ValueError(f"{field_name} 必须在 (0, {maximum:g}] 范围内")
