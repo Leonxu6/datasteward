@@ -2,6 +2,7 @@ from datetime import datetime
 
 import pytest
 
+from dm.warehouse import logio
 from dm.warehouse.logio import append_jsonl, encode_record, log_path, normalize_log_name, read_jsonl
 
 
@@ -36,6 +37,22 @@ def test_append_and_read_jsonl_round_trip(tmp_path):
     append_jsonl(tmp_path, "audit", {"id": 1})
     append_jsonl(tmp_path, "audit", {"id": 2})
     assert read_jsonl(tmp_path, "audit") == [{"id": 1}, {"id": 2}]
+
+
+def test_append_jsonl_retries_short_writes_until_record_is_complete(tmp_path, monkeypatch):
+    original_write = logio.os.write
+    calls = []
+
+    def short_write(fd, payload):
+        calls.append(len(payload))
+        chunk = payload[: max(1, len(payload) // 2)]
+        return original_write(fd, chunk)
+
+    monkeypatch.setattr(logio.os, "write", short_write)
+    append_jsonl(tmp_path, "audit", {"id": 7, "message": "完整记录"})
+
+    assert len(calls) > 1
+    assert read_jsonl(tmp_path, "audit") == [{"id": 7, "message": "完整记录"}]
 
 
 def test_read_jsonl_skips_corrupt_and_non_object_lines(tmp_path):
