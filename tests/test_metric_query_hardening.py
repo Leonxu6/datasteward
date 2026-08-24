@@ -25,3 +25,13 @@ def test_compile_metric_rejects_invalid_filter_containers(filters):
 def test_compile_metric_rejects_invalid_limits(limit):
     with pytest.raises(ValueError):
         compile_metric("total_stock", limit=limit)
+
+
+def test_compile_metric_deduplicates_dimensions_preserving_order():
+    sql, _ = compile_metric(
+        "total_stock",
+        dimensions=["material_id", "material_name", "material_id", " material_name "],
+    )
+    assert sql.count("`material_id`") == 2  # SELECT + GROUP BY
+    assert sql.count("`material_name`") == 2
+    assert "GROUP BY `material_id`, `material_name`" in sql
