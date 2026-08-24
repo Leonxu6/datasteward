@@ -42,10 +42,11 @@ class _Result:
         size = normalize_fetch_size(size)
         try:
             rows = self._cur.fetchmany(size)
+            exhausted = len(rows) < size
         except Exception:
             self.close()
             raise
-        if len(rows) < size:
+        if exhausted:
             self.close()
         return rows
 
