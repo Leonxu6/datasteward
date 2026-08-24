@@ -17,7 +17,6 @@ from typing import Optional
 
 from dm.schema import TABLES
 
-# SQL 类型 → Palantir base type（对齐 docs/palantir/03 的 base type 全枚举）
 BASE_TYPE_MAP = {
     "VARCHAR": "String", "TEXT": "String", "CHAR": "String",
     "INTEGER": "Integer", "INT": "Integer", "BIGINT": "Long", "SMALLINT": "Short",
@@ -25,7 +24,6 @@ BASE_TYPE_MAP = {
     "BOOLEAN": "Boolean", "DATE": "Date", "TIMESTAMP": "Timestamp", "DATETIME": "Timestamp",
 }
 
-# 对象分组（≈ Palantir groups；供 Object Explorer 归类）
 _GROUPS = {
     "主数据": {"company_org", "department", "employee", "unit", "material_category",
              "material", "unit_conversion", "supplier", "customer", "dictionary",
@@ -36,16 +34,24 @@ _GROUPS = {
 }
 
 
+def _clean_model_name(value: object, *, field_name: str) -> str:
+    if not isinstance(value, str) or not value or value != value.strip():
+        raise ValueError(f"{field_name} must be clean non-empty text")
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+        raise ValueError(f"{field_name} contains control characters")
+    return value
+
+
 def to_pascal(name: str) -> str:
     """purchase_order -> PurchaseOrder（Object Type 的 API name 规范）。"""
+    name = _clean_model_name(name, field_name="object source name")
     return "".join(p[:1].upper() + p[1:] for p in name.split("_") if p)
 
 
 def to_camel(col: str) -> str:
     """unit_price -> unitPrice（Property / Link 的 API name 规范）。"""
+    col = _clean_model_name(col, field_name="property source name")
     parts = [p for p in col.split("_") if p]
-    if not parts:
-        return col
     return parts[0] + "".join(p[:1].upper() + p[1:] for p in parts[1:])
 
 
@@ -59,38 +65,38 @@ def _group_of(name: str) -> str:
 @dataclass
 class Property:
     """对象属性（对标 Palantir Property）。"""
-    api_name: str                 # camelCase 语义名
-    column: str                   # 背书列名（原始，用于取数）
-    base_type: str                # Palantir base type
-    display_name: str             # 中文显示名
+    api_name: str
+    column: str
+    base_type: str
+    display_name: str
     is_primary_key: bool = False
-    fk_to: Optional[str] = None   # 外键指向的表英文名（用于派生 Link）
+    fk_to: Optional[str] = None
 
 
 @dataclass
 class LinkType:
     """链接类型（对标 Palantir Link Type；v0 由外键派生 many-to-one）。"""
-    api_name: str                 # 关系名（camelCase）
-    from_object: str              # 源对象 API name（PascalCase）
-    to_object: str                # 目标对象 API name
-    cardinality: str              # many-to-one / one-to-one / many-to-many
-    from_property: str            # 源侧外键列（原始列名）
-    to_property: str              # 目标侧主键列（原始列名）
-    display_name: str             # 中文关系描述
+    api_name: str
+    from_object: str
+    to_object: str
+    cardinality: str
+    from_property: str
+    to_property: str
+    display_name: str
 
 
 @dataclass
 class ObjectType:
     """对象类型（对标 Palantir Object Type；1 datasource ↔ 1 object type）。"""
-    api_name: str                 # PascalCase
-    table: str                    # 背书数据源（StarRocks/PG 表名）
-    display_name: str             # 中文名
+    api_name: str
+    table: str
+    display_name: str
     plural_display_name: str
     description: str
-    primary_key: list             # 列名列表（支持复合）
-    title_property: str           # 展示用属性（列名）
+    primary_key: list
+    title_property: str
     group: str
-    status: str = "active"        # active / experimental / deprecated
+    status: str = "active"
     properties: list = field(default_factory=list)
     links: list = field(default_factory=list)
 
@@ -116,7 +122,6 @@ def _build() -> dict:
             )
             for col, sqltype, cn in t["columns"]
         ]
-        # title 属性：优先名为 name 的列，否则取主键首列
         title = "name" if any(c[0] == "name" for c in t["columns"]) else pk_cols[0]
         obj[t["name"]] = ObjectType(
             api_name=to_pascal(t["name"]), table=t["name"],
@@ -124,7 +129,6 @@ def _build() -> dict:
             primary_key=pk_cols, title_property=title, group=_group_of(t["name"]),
             properties=props,
         )
-    # 派生链接：每个外键 → many-to-one（子对象 → 父对象）；自引用亦建
     for t in TABLES:
         src = obj[t["name"]]
         for col, tgt in t["fks"]:
@@ -142,7 +146,6 @@ def _build() -> dict:
     return obj
 
 
-# 本体注册表（进程级构建一次；派生自 schema.py，无副作用、无需 DB）
 ONTOLOGY: dict = _build()
 
 
@@ -153,6 +156,7 @@ def object_types() -> list:
 
 def get_object_type(name_or_api: str) -> Optional[ObjectType]:
     """按表英文名或 API name（PascalCase）查对象类型。"""
+    name_or_api = _clean_model_name(name_or_api, field_name="object type name")
     if name_or_api in ONTOLOGY:
         return ONTOLOGY[name_or_api]
     for ot in ONTOLOGY.values():
