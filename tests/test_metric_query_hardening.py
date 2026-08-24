@@ -4,6 +4,18 @@ import dm.ontology.metrics as metrics
 from dm.ontology.metrics import compile_metric
 
 
+def _metric_definition(**overrides):
+    definition = {
+        "name": "sample_metric",
+        "agg": "sum",
+        "expr": "amount",
+        "base_model": "fact_sales",
+        "dimensions": ["customer_id"],
+    }
+    definition.update(overrides)
+    return definition
+
+
 @pytest.mark.parametrize("name", [None, 3, [], "", " total_stock", "total_stock\n", "bad-name"])
 def test_compile_metric_rejects_invalid_metric_names(name):
     with pytest.raises(ValueError):
@@ -47,14 +59,38 @@ def test_compile_metric_deduplicates_dimensions_preserving_order():
     ],
 )
 def test_compile_metric_rejects_unsafe_definition_identifiers(monkeypatch, field, value):
-    definition = {
-        "name": "sample_metric",
-        "agg": "sum",
-        "expr": "amount",
-        "base_model": "fact_sales",
-        "dimensions": ["customer_id"],
-    }
+    definition = _metric_definition()
     definition[field] = value
     monkeypatch.setattr(metrics, "_CACHE", {"sample_metric": definition})
     with pytest.raises(ValueError):
         compile_metric("sample_metric")
+
+
+@pytest.mark.parametrize(
+    "default_filters",
+    [
+        "customer_id='C1'",
+        ["customer_id='C1'; DROP TABLE x"],
+        ["customer_id='C1'\n"],
+        ["secret='x'"],
+        [3],
+    ],
+)
+def test_compile_metric_rejects_invalid_default_filters(monkeypatch, default_filters):
+    monkeypatch.setattr(
+        metrics,
+        "_CACHE",
+        {"sample_metric": _metric_definition(default_filters=default_filters)},
+    )
+    with pytest.raises(ValueError):
+        compile_metric("sample_metric")
+
+
+def test_compile_metric_accepts_valid_default_filters(monkeypatch):
+    monkeypatch.setattr(
+        metrics,
+        "_CACHE",
+        {"sample_metric": _metric_definition(default_filters=["customer_id='C1'"])},
+    )
+    sql, _ = compile_metric("sample_metric")
+    assert "WHERE (customer_id='C1')" in sql
