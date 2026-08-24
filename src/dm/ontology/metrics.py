@@ -76,7 +76,13 @@ def compile_metric(name: str, dimensions: list | None = None, filters: list | No
     if not m:
         known = ", ".join(load_metrics().keys())
         raise ValueError(f"未知指标 '{name}'。可用指标：{known}")
-    dims = [d.strip() for d in dimensions if d.strip()]
+    dims: list[str] = []
+    seen_dims: set[str] = set()
+    for raw_dim in dimensions:
+        dim = raw_dim.strip()
+        if dim and dim not in seen_dims:
+            seen_dims.add(dim)
+            dims.append(dim)
     allowed = set(m.get("dimensions", []))
     bad = [d for d in dims if d not in allowed]
     if bad:
