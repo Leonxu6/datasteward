@@ -16,6 +16,35 @@ _FILTER = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*(=|!=|>=|<=|>|<)\s*('[^']*
 _CACHE = None
 
 
+def _clean_name(value: object, *, field: str) -> str:
+    if not isinstance(value, str) or not value or value != value.strip():
+        raise ValueError(f"{field} must be clean non-empty text")
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+        raise ValueError(f"{field} contains control characters")
+    return value
+
+
+def _query_items(value: object, *, field: str) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, (list, tuple)):
+        raise ValueError(f"{field} must be a list of strings")
+    out: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            raise ValueError(f"{field} must contain only strings")
+        out.append(item)
+    return out
+
+
+def _query_limit(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("limit must be an integer")
+    if value < 1 or value > 500:
+        raise ValueError("limit must be between 1 and 500")
+    return value
+
+
 def load_metrics() -> dict:
     """读 metrics.yaml → {name: 定义}。进程内缓存。"""
     global _CACHE
@@ -39,18 +68,22 @@ def metric_catalog() -> list:
 def compile_metric(name: str, dimensions: list | None = None, filters: list | None = None,
                    limit: int = 100) -> tuple:
     """编译指标查询。返回 (sql, 定义)。维度/过滤不合法直接抛 ValueError（给调用方转成可读报错）。"""
+    name = _clean_name(name, field="metric name")
+    dimensions = _query_items(dimensions, field="dimensions")
+    filters = _query_items(filters, field="filters")
+    limit = _query_limit(limit)
     m = load_metrics().get(name)
     if not m:
         known = ", ".join(load_metrics().keys())
         raise ValueError(f"未知指标 '{name}'。可用指标：{known}")
-    dims = [d.strip() for d in (dimensions or []) if d.strip()]
+    dims = [d.strip() for d in dimensions if d.strip()]
     allowed = set(m.get("dimensions", []))
     bad = [d for d in dims if d not in allowed]
     if bad:
         raise ValueError(f"维度 {bad} 不在指标 '{name}' 的允许维度内：{sorted(allowed)}")
 
     conds = list(m.get("default_filters", []))
-    for f in (filters or []):
+    for f in filters:
         if not f.strip():
             continue
         mt = _FILTER.match(f)
@@ -75,5 +108,5 @@ def compile_metric(name: str, dimensions: list | None = None, filters: list | No
         sql += " WHERE " + " AND ".join(f"({c})" for c in conds)
     if dims:
         sql += " GROUP BY " + ", ".join(f"`{d}`" for d in dims) + f" ORDER BY `{name}` DESC"
-    sql += f" LIMIT {max(1, min(int(limit), 500))}"
+    sql += f" LIMIT {limit}"
     return sql, m
