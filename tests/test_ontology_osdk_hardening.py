@@ -17,6 +17,12 @@ def test_get_links_rejects_invalid_per_link_limits_before_database_access(value)
         get_links("Material", "M001", per_link_limit=value)
 
 
+@pytest.mark.parametrize("value", [3, [], "", " name", "name ", "name\n", "definitely_unknown"])
+def test_list_objects_rejects_invalid_sort_properties_before_database_access(value):
+    with pytest.raises(ValueError):
+        list_objects("Material", order_by=value)
+
+
 def _object_type_stub():
     return SimpleNamespace(
         properties=[
