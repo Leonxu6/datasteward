@@ -20,6 +20,19 @@ def _positive_limit(value: object, *, field: str, maximum: int) -> int:
     return value
 
 
+def _order_property(ot: ObjectType, order_by: object):
+    if order_by is None:
+        return None
+    if not isinstance(order_by, str) or not order_by or order_by != order_by.strip():
+        raise ValueError("order_by must be clean non-empty text")
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in order_by):
+        raise ValueError("order_by contains control characters")
+    prop = ot.prop(order_by)
+    if prop is None:
+        raise ValueError(f"unknown order_by property: {order_by}")
+    return prop
+
+
 def _row_to_obj(ot: ObjectType, row: tuple, cols: list) -> dict:
     """一行 → 以 property api_name 为键的对象 dict。"""
     if len(row) != len(cols):
@@ -33,7 +46,6 @@ def _row_to_obj(ot: ObjectType, row: tuple, cols: list) -> dict:
 
 
 def _mask_obj(ot: ObjectType, obj: dict, um: set) -> dict:
-    """按有效 Marking `um` 把对象里受限属性（列级/属性安全策略）屏蔽为 None（单元格级）。"""
     from dm.security.model import column_markings
     out = dict(obj)
     for p in ot.properties:
@@ -44,12 +56,11 @@ def _mask_obj(ot: ObjectType, obj: dict, um: set) -> dict:
 
 
 def list_objects(api_name: str, limit: int = 50, order_by: Optional[str] = None, user=None) -> dict:
-    """列出某对象类型的实例（≈ OSDK objects.X.page/iterate）。
-    传入 user 时按对象层强制权限：表级 Marking 可见性 + 行级对象策略(WHERE) + 列级属性策略(屏蔽)。"""
     limit = _positive_limit(limit, field="limit", maximum=500)
     ot = get_object_type(api_name)
     if not ot:
         return {"error": f"未知对象类型 {api_name}"}
+    order_prop = _order_property(ot, order_by)
     um = None
     where = ""
     if user is not None:
@@ -62,8 +73,8 @@ def list_objects(api_name: str, limit: int = 50, order_by: Optional[str] = None,
         if rf:
             where = f" WHERE `{rf[0]}`='" + str(rf[1]).replace("'", "''") + "'"
     sql = f"SELECT * FROM `{ot.table}`" + where
-    if order_by and ot.prop(order_by):
-        sql += f" ORDER BY `{ot.prop(order_by).column}`"
+    if order_prop is not None:
+        sql += f" ORDER BY `{order_prop.column}`"
     sql += f" LIMIT {limit}"
     con = connect_ro()
     try:
@@ -94,7 +105,6 @@ def _fetch_row(ot: ObjectType, pk_value) -> Optional[dict]:
 
 
 def get_object(api_name: str, pk_value, user=None) -> dict:
-    """按主键取单个对象（≈ OSDK objects.X.get(pk)）。传入 user 则做表级可见性 + 列级属性屏蔽。"""
     ot = get_object_type(api_name)
     if not ot:
         return {"error": f"未知对象类型 {api_name}"}
@@ -113,12 +123,6 @@ def get_object(api_name: str, pk_value, user=None) -> dict:
 
 
 def get_links(api_name: str, pk_value, per_link_limit: int = 20) -> dict:
-    """取某对象一跳可达的相关对象（≈ Palantir Search-Around）。
-
-    - outgoing：本对象的外键 → 父对象（如 采购单 → 供应商）
-    - incoming：引用本对象的子对象（如 供应商 ← 各采购单）
-    多跳/跨域走知识图谱（Neo4j graph_query）；本处只做一跳的对象化遍历。
-    """
     per_link_limit = _positive_limit(per_link_limit, field="per_link_limit", maximum=200)
     ot = get_object_type(api_name)
     if not ot:
@@ -148,8 +152,6 @@ def get_links(api_name: str, pk_value, per_link_limit: int = 20) -> dict:
             cols = [d[0] for d in cur.description]
             rows = cur.fetchall()
             if rows:
-                # 键须唯一：多个子表的外键可能派生成同名关系（如都叫 material），
-                # 用 "子对象.关系" 作键避免互相覆盖。
                 incoming[f"{lk.from_object}.{lk.api_name}"] = {
                     "from": lk.from_object, "display": lk.display_name,
                     "count": len(rows),
