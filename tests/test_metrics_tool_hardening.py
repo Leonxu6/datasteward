@@ -83,3 +83,16 @@ def test_rows_to_records_rejects_malformed_results(columns, rows, message):
 
 def test_rows_to_records_preserves_valid_rows():
     assert metrics_tool._rows_to_records(["id", "amount"], [("A", 12)]) == [{"id": "A", "amount": 12}]
+
+
+def test_query_metric_redacts_database_details_from_user_response(monkeypatch):
+    _authorized_metric(monkeypatch)
+    audit_calls = []
+    monkeypatch.setattr(metrics_tool, "audit_event", lambda *args, **kwargs: audit_calls.append((args, kwargs)))
+    secret_error = "password=super-secret host=internal-db"
+    monkeypatch.setattr(metrics_tool, "connect_ro", lambda: (_ for _ in ()).throw(RuntimeError(secret_error)))
+
+    result = metrics_tool.query_metric(_principal(), "sample")
+    assert result == "ERROR: 指标查询失败，请检查数据服务状态或联系维护者。"
+    assert "super-secret" not in result
+    assert any(secret_error in str(call) for call in audit_calls)
