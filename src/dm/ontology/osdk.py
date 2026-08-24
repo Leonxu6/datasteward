@@ -22,6 +22,12 @@ def _positive_limit(value: object, *, field: str, maximum: int) -> int:
 
 def _row_to_obj(ot: ObjectType, row: tuple, cols: list) -> dict:
     """一行 → 以 property api_name 为键的对象 dict。"""
+    if len(row) != len(cols):
+        raise ValueError("object query row length does not match cursor columns")
+    if any(not isinstance(col, str) or not col for col in cols):
+        raise ValueError("object query columns must be non-empty strings")
+    if len(set(cols)) != len(cols):
+        raise ValueError("object query returned duplicate column names")
     raw = dict(zip(cols, row))
     return {p.api_name: raw.get(p.column) for p in ot.properties}
 
