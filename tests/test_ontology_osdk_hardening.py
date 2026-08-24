@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from dm.ontology.osdk import _row_to_obj, get_links, list_objects
+from dm.ontology.osdk import _row_to_obj, _row_to_raw, get_links, list_objects
 
 
 @pytest.mark.parametrize("value", [True, False, 0, -1, 501, 1.5, "10", None])
@@ -46,3 +46,21 @@ def test_row_to_obj_rejects_duplicate_columns():
 def test_row_to_obj_rejects_invalid_column_labels(columns):
     with pytest.raises(ValueError, match="non-empty strings"):
         _row_to_obj(_object_type_stub(), ("M001", "name"), columns)
+
+
+@pytest.mark.parametrize(
+    ("row", "columns", "message"),
+    [
+        (object(), ["id"], "sized sequences"),
+        (("M001",), ["id", "name"], "row length"),
+        (("M001", "copy"), ["id", "id"], "duplicate"),
+        (("M001", "name"), ["id", ""], "non-empty strings"),
+    ],
+)
+def test_row_to_raw_rejects_malformed_single_object_rows(row, columns, message):
+    with pytest.raises(ValueError, match=message):
+        _row_to_raw(row, columns)
+
+
+def test_row_to_raw_preserves_valid_single_object_rows():
+    assert _row_to_raw(("M001", "Bolt"), ["id", "name"]) == {"id": "M001", "name": "Bolt"}
