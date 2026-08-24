@@ -14,8 +14,17 @@ from dm.tools.principal import Principal
 from dm.warehouse.store import connect_ro
 
 
+def _query_text(value: object, *, field: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{field} must be text")
+    if value != value.strip():
+        raise ValueError(f"{field} must not have leading or trailing whitespace")
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+        raise ValueError(f"{field} contains control characters")
+    return value
+
+
 def list_metrics(principal: Principal) -> str:
-    """列出全部业务指标定义（名称/中文名/口径说明/允许维度/单位/负责人）。回答口径类问题先看这里。"""
     t0 = time.time()
     cat = metric_catalog()
     audit_event(principal, "list_metrics", {}, "", ["metrics_registry"], len(cat), t0, True)
@@ -24,20 +33,17 @@ def list_metrics(principal: Principal) -> str:
 
 def query_metric(principal: Principal, metric: str, dimensions: str = "",
                  filters: str = "", limit: int = 100) -> str:
-    """按注册口径查询业务指标数值（缺料物料数/净需求/可发货量/库存总量/采购在途量/销售额）。
-    参数：metric 指标名（先用 list_metrics 查可用项）；dimensions 逗号分隔的分组维度（可空）；
-    filters 分号分隔的过滤（形如 material_id='M0001'；只接受简单比较）；limit 行数上限。
-    返回 JSON：{metric, cn, sql, columns, rows}。涉敏指标受 Marking/PBAC 约束，无权会被拒。"""
     t0 = time.time()
-    dims = [d for d in (dimensions or "").split(",") if d.strip()]
-    flts = [f for f in (filters or "").split(";") if f.strip()]
     try:
+        dimensions = _query_text(dimensions, field="dimensions")
+        filters = _query_text(filters, field="filters")
+        dims = [d for d in dimensions.split(",") if d.strip()]
+        flts = [f for f in filters.split(";") if f.strip()]
         sql, mdef = compile_metric(metric, dims, flts, limit)
     except ValueError as e:
         audit_event(principal, "query_metric", {"metric": metric, "dimensions": dimensions,
                     "filters": filters}, "", [], 0, t0, False, str(e))
         return f"ERROR: {e}"
-    # PBAC：指标级 Marking 门禁（与列级同一套有效 Marking 判定，目的约束天然生效）
     need = set(mdef.get("required_markings", []))
     um = effective_user_markings(principal.to_user())
     if not need <= um:
