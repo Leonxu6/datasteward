@@ -96,7 +96,7 @@ def query_metric(principal: Principal, metric: str, dimensions: str = "",
     except Exception as e:  # noqa: BLE001
         audit_event(principal, "query_metric", {"metric": metric}, sql, [mdef["base_model"]], 0, t0,
                     False, str(e))
-        return f"ERROR: 指标查询失败: {e}"
+        return "ERROR: 指标查询失败，请检查数据服务状态或联系维护者。"
     finally:
         _close_quietly(cur)
         _close_quietly(con)
