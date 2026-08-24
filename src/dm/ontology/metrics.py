@@ -12,6 +12,7 @@ from dm.config import DW_SCHEMA as _DW_SCHEMA
 _IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 # 过滤表达式白名单形态：col OP value（OP ∈ = != > < >= <=；value 为数字或单引号串）
 _FILTER = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*(=|!=|>=|<=|>|<)\s*('[^']*'|-?\d+(\.\d+)?)\s*$")
+_ALLOWED_AGGS = {"sum", "count", "count_distinct", "avg", "min", "max"}
 
 _CACHE = None
 
@@ -64,6 +65,15 @@ def _validated_filter(value: object, *, name: str, allowed: set[str], expr: str)
     if col not in allowed and col != expr:
         raise ValueError(f"过滤列 '{col}' 不在指标 '{name}' 的允许维度内：{sorted(allowed)}")
     return value.strip()
+
+
+def _aggregate(value: object, *, name: str) -> str:
+    if not isinstance(value, str) or not value or value != value.strip():
+        raise ValueError(f"metric '{name}' agg must be clean non-empty text")
+    agg = value.lower()
+    if agg not in _ALLOWED_AGGS:
+        raise ValueError(f"不支持的聚合：{value}")
+    return agg
 
 
 def load_metrics() -> dict:
@@ -125,9 +135,7 @@ def compile_metric(name: str, dimensions: list | None = None, filters: list | No
             continue
         conds.append(_validated_filter(f, name=name, allowed=allowed, expr=expr))
 
-    agg = m.get("agg", "sum").lower()
-    if agg not in ("sum", "count", "count_distinct", "avg", "min", "max"):
-        raise ValueError(f"不支持的聚合：{agg}")
+    agg = _aggregate(m.get("agg", "sum"), name=name)
     agg_sql = f"COUNT(DISTINCT `{expr}`)" if agg == "count_distinct" else f"{agg.upper()}(`{expr}`)"
 
     select = [f"`{d}`" for d in dims] + [f"{agg_sql} AS `{name}`"]
