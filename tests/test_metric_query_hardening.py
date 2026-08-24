@@ -45,18 +45,14 @@ def test_compile_metric_deduplicates_dimensions_preserving_order():
         "total_stock",
         dimensions=["material_id", "material_name", "material_id", " material_name "],
     )
-    assert sql.count("`material_id`") == 2  # SELECT + GROUP BY
+    assert sql.count("`material_id`") == 2
     assert sql.count("`material_name`") == 2
     assert "GROUP BY `material_id`, `material_name`" in sql
 
 
 @pytest.mark.parametrize(
     ("field", "value"),
-    [
-        ("expr", "amount;DROP"),
-        ("base_model", "fact sales"),
-        ("dimensions", ["customer_id", "bad-dimension"]),
-    ],
+    [("expr", "amount;DROP"), ("base_model", "fact sales"), ("dimensions", ["customer_id", "bad-dimension"])],
 )
 def test_compile_metric_rejects_unsafe_definition_identifiers(monkeypatch, field, value):
     definition = _metric_definition()
@@ -68,30 +64,16 @@ def test_compile_metric_rejects_unsafe_definition_identifiers(monkeypatch, field
 
 @pytest.mark.parametrize(
     "default_filters",
-    [
-        "customer_id='C1'",
-        ["customer_id='C1'; DROP TABLE x"],
-        ["customer_id='C1'\n"],
-        ["secret='x'"],
-        [3],
-    ],
+    ["customer_id='C1'", ["customer_id='C1'; DROP TABLE x"], ["customer_id='C1'\n"], ["secret='x'"], [3]],
 )
 def test_compile_metric_rejects_invalid_default_filters(monkeypatch, default_filters):
-    monkeypatch.setattr(
-        metrics,
-        "_CACHE",
-        {"sample_metric": _metric_definition(default_filters=default_filters)},
-    )
+    monkeypatch.setattr(metrics, "_CACHE", {"sample_metric": _metric_definition(default_filters=default_filters)})
     with pytest.raises(ValueError):
         compile_metric("sample_metric")
 
 
 def test_compile_metric_accepts_valid_default_filters(monkeypatch):
-    monkeypatch.setattr(
-        metrics,
-        "_CACHE",
-        {"sample_metric": _metric_definition(default_filters=["customer_id='C1'"])},
-    )
+    monkeypatch.setattr(metrics, "_CACHE", {"sample_metric": _metric_definition(default_filters=["customer_id='C1'"])})
     sql, _ = compile_metric("sample_metric")
     assert "WHERE (customer_id='C1')" in sql
 
@@ -107,3 +89,15 @@ def test_compile_metric_normalizes_aggregate_case(monkeypatch):
     monkeypatch.setattr(metrics, "_CACHE", {"sample_metric": _metric_definition(agg="AVG")})
     sql, _ = compile_metric("sample_metric")
     assert "AVG(`amount`)" in sql
+
+
+def test_compile_metric_deduplicates_default_and_requested_filters(monkeypatch):
+    definition = _metric_definition(default_filters=["customer_id='C1'"])
+    monkeypatch.setattr(metrics, "_CACHE", {"sample_metric": definition})
+    sql, _ = compile_metric(
+        "sample_metric",
+        filters=["customer_id='C1'", "customer_id='C2'", "customer_id='C1'"],
+    )
+    assert sql.count("(customer_id='C1')") == 1
+    assert sql.count("(customer_id='C2')") == 1
+    assert sql.index("(customer_id='C1')") < sql.index("(customer_id='C2')")
