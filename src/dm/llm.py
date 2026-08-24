@@ -57,6 +57,8 @@ def _required_text(value, *, field_name: str) -> str:
 def _header_value(value, *, field_name: str) -> str:
     if not isinstance(value, str):
         raise ValueError(f"{field_name} 必须是字符串: {value!r}")
+    if value != value.strip():
+        raise ValueError(f"{field_name} 不能包含首尾空白")
     if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
         raise ValueError(f"{field_name} 不能包含控制字符")
     return value
