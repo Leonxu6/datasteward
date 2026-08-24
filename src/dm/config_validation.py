@@ -3,10 +3,20 @@ from __future__ import annotations
 
 import math
 import os
+import re
 from urllib.parse import urlsplit
 
 _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off"}
+_ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _env_name(value: object) -> str:
+    if not isinstance(value, str) or not value or value != value.strip():
+        raise ValueError("环境变量名必须是非空且无首尾空白的字符串")
+    if not _ENV_NAME.fullmatch(value):
+        raise ValueError("环境变量名只能包含字母、数字和下划线，且不能以数字开头")
+    return value
 
 
 def _positive_int(value: object, *, field: str) -> int:
@@ -34,6 +44,7 @@ def _finite_bound(value: object, *, field: str) -> float:
 
 
 def env_text(name: str, default: str, *, allow_empty: bool = False, max_length: int = 1000) -> str:
+    name = _env_name(name)
     if not isinstance(allow_empty, bool):
         raise ValueError("allow_empty 必须是布尔值")
     max_length = _positive_int(max_length, field="max_length")
@@ -53,6 +64,7 @@ def env_text(name: str, default: str, *, allow_empty: bool = False, max_length: 
 
 
 def env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
+    name = _env_name(name)
     minimum = _integer_bound(minimum, field="minimum")
     maximum = _integer_bound(maximum, field="maximum")
     if minimum > maximum:
@@ -73,6 +85,7 @@ def env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
 
 
 def env_float(name: str, default: float, *, minimum: float, maximum: float) -> float:
+    name = _env_name(name)
     minimum = _finite_bound(minimum, field="minimum")
     maximum = _finite_bound(maximum, field="maximum")
     if minimum > maximum:
@@ -98,6 +111,7 @@ def env_float(name: str, default: float, *, minimum: float, maximum: float) -> f
 
 
 def env_bool(name: str, default: bool) -> bool:
+    name = _env_name(name)
     raw = os.environ.get(name)
     if raw is None:
         if not isinstance(default, bool):
