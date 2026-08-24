@@ -31,6 +31,14 @@ def _identifier(value: object, *, field: str) -> str:
     return value
 
 
+def _string_list(value: object, *, field: str) -> list[str]:
+    if not isinstance(value, list):
+        raise ValueError(f"{field} must be a list")
+    if any(not isinstance(item, str) for item in value):
+        raise ValueError(f"{field} must contain only strings")
+    return list(value)
+
+
 def _query_items(value: object, *, field: str) -> list[str]:
     if value is None:
         return []
@@ -93,7 +101,6 @@ def _normalize_catalog(raw: object) -> dict[str, dict]:
 
 
 def load_metrics() -> dict:
-    """读 metrics.yaml → {name: 定义}。进程内缓存。"""
     global _CACHE
     if _CACHE is None:
         raw = yaml.safe_load((files("dm.ontology") / "metrics.yaml").read_text(encoding="utf-8"))
@@ -102,19 +109,27 @@ def load_metrics() -> dict:
 
 
 def metric_catalog() -> list:
-    """指标字典（对外展示/工具返回）：不含内部实现细节。"""
-    return [{
-        "name": m["name"], "cn": m.get("cn", ""), "description": m.get("description", ""),
-        "unit": m.get("unit", ""), "owner": m.get("owner", ""),
-        "dimensions": m.get("dimensions", []),
-        "required_markings": m.get("required_markings", []),
-        "base_model": m.get("base_model", ""),
-    } for m in load_metrics().values()]
+    """指标字典（对外展示/工具返回）：列表字段使用副本，避免调用方污染缓存。"""
+    out = []
+    for m in load_metrics().values():
+        name = m["name"]
+        out.append({
+            "name": name,
+            "cn": m.get("cn", ""),
+            "description": m.get("description", ""),
+            "unit": m.get("unit", ""),
+            "owner": m.get("owner", ""),
+            "dimensions": _string_list(m.get("dimensions", []), field=f"metric '{name}' dimensions"),
+            "required_markings": _string_list(
+                m.get("required_markings", []), field=f"metric '{name}' required_markings"
+            ),
+            "base_model": m.get("base_model", ""),
+        })
+    return out
 
 
 def compile_metric(name: str, dimensions: list | None = None, filters: list | None = None,
                    limit: int = 100) -> tuple:
-    """编译指标查询。返回 (sql, 定义)。维度/过滤不合法直接抛 ValueError（给调用方转成可读报错）。"""
     name = _identifier(name, field="metric name")
     dimensions = _query_items(dimensions, field="dimensions")
     filters = _query_items(filters, field="filters")
