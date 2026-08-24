@@ -10,7 +10,6 @@ import yaml
 
 from dm.config import DW_SCHEMA as _DW_SCHEMA
 _IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-# 过滤表达式白名单形态：col OP value（OP ∈ = != > < >= <=；value 为数字或单引号串）
 _FILTER = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*(=|!=|>=|<=|>|<)\s*('[^']*'|-?\d+(\.\d+)?)\s*$")
 _ALLOWED_AGGS = {"sum", "count", "count_distinct", "avg", "min", "max"}
 
@@ -76,12 +75,29 @@ def _aggregate(value: object, *, name: str) -> str:
     return agg
 
 
+def _normalize_catalog(raw: object) -> dict[str, dict]:
+    if not isinstance(raw, dict):
+        raise ValueError("metrics catalog root must be a mapping")
+    entries = raw.get("metrics", [])
+    if not isinstance(entries, list):
+        raise ValueError("metrics catalog 'metrics' must be a list")
+    catalog: dict[str, dict] = {}
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            raise ValueError(f"metrics catalog entry {index} must be a mapping")
+        name = _identifier(entry.get("name"), field=f"metrics catalog entry {index} name")
+        if name in catalog:
+            raise ValueError(f"duplicate metric name: {name}")
+        catalog[name] = entry
+    return catalog
+
+
 def load_metrics() -> dict:
     """读 metrics.yaml → {name: 定义}。进程内缓存。"""
     global _CACHE
     if _CACHE is None:
         raw = yaml.safe_load((files("dm.ontology") / "metrics.yaml").read_text(encoding="utf-8"))
-        _CACHE = {m["name"]: m for m in raw.get("metrics", [])}
+        _CACHE = _normalize_catalog(raw)
     return _CACHE
 
 
