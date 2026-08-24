@@ -24,6 +24,15 @@ def _query_text(value: object, *, field: str) -> str:
     return value
 
 
+def _close_quietly(resource) -> None:
+    if resource is None:
+        return
+    try:
+        resource.close()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def list_metrics(principal: Principal) -> str:
     t0 = time.time()
     cat = metric_catalog()
@@ -53,12 +62,13 @@ def query_metric(principal: Principal, metric: str, dimensions: str = "",
         return (f"⛔ 权限不足：指标『{mdef.get('cn', metric)}』需要 Marking {miss}"
                 f"（角色 {principal.role}" + (f"/目的『{principal.purpose}』" if principal.purpose else "")
                 + "）。请如实告知用户该指标受权限保护，切勿臆造数值。")
+    con = None
+    cur = None
     try:
         con = connect_ro()
         cur = con.execute(sql)
         cols = [d[0] for d in cur.description] if cur.description else []
         rows = cur.fetchall()
-        con.close()
         out = {"metric": metric, "cn": mdef.get("cn", ""), "unit": mdef.get("unit", ""),
                "description": mdef.get("description", ""), "sql": sql, "columns": cols,
                "rows": [dict(zip(cols, r)) for r in rows]}
@@ -69,6 +79,9 @@ def query_metric(principal: Principal, metric: str, dimensions: str = "",
         audit_event(principal, "query_metric", {"metric": metric}, sql, [mdef["base_model"]], 0, t0,
                     False, str(e))
         return f"ERROR: 指标查询失败: {e}"
+    finally:
+        _close_quietly(cur)
+        _close_quietly(con)
 
 
 def metric_names() -> list:
