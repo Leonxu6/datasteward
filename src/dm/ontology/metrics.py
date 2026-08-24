@@ -24,6 +24,13 @@ def _clean_name(value: object, *, field: str) -> str:
     return value
 
 
+def _identifier(value: object, *, field: str) -> str:
+    value = _clean_name(value, field=field)
+    if not _IDENT.fullmatch(value):
+        raise ValueError(f"{field} must be a SQL-safe identifier")
+    return value
+
+
 def _query_items(value: object, *, field: str) -> list[str]:
     if value is None:
         return []
@@ -68,7 +75,7 @@ def metric_catalog() -> list:
 def compile_metric(name: str, dimensions: list | None = None, filters: list | None = None,
                    limit: int = 100) -> tuple:
     """编译指标查询。返回 (sql, 定义)。维度/过滤不合法直接抛 ValueError（给调用方转成可读报错）。"""
-    name = _clean_name(name, field="metric name")
+    name = _identifier(name, field="metric name")
     dimensions = _query_items(dimensions, field="dimensions")
     filters = _query_items(filters, field="filters")
     limit = _query_limit(limit)
@@ -76,6 +83,14 @@ def compile_metric(name: str, dimensions: list | None = None, filters: list | No
     if not m:
         known = ", ".join(load_metrics().keys())
         raise ValueError(f"未知指标 '{name}'。可用指标：{known}")
+
+    expr = _identifier(m.get("expr"), field=f"metric '{name}' expr")
+    base_model = _identifier(m.get("base_model"), field=f"metric '{name}' base_model")
+    raw_allowed = m.get("dimensions", [])
+    if not isinstance(raw_allowed, list):
+        raise ValueError(f"metric '{name}' dimensions must be a list")
+    allowed = {_identifier(d, field=f"metric '{name}' dimension") for d in raw_allowed}
+
     dims: list[str] = []
     seen_dims: set[str] = set()
     for raw_dim in dimensions:
@@ -83,7 +98,6 @@ def compile_metric(name: str, dimensions: list | None = None, filters: list | No
         if dim and dim not in seen_dims:
             seen_dims.add(dim)
             dims.append(dim)
-    allowed = set(m.get("dimensions", []))
     bad = [d for d in dims if d not in allowed]
     if bad:
         raise ValueError(f"维度 {bad} 不在指标 '{name}' 的允许维度内：{sorted(allowed)}")
@@ -96,20 +110,18 @@ def compile_metric(name: str, dimensions: list | None = None, filters: list | No
         if not mt:
             raise ValueError(f"过滤表达式不合法：'{f}'（只接受 列 运算符 字面量，如 material_id='M0001'）")
         col = mt.group(1)
-        if col not in allowed and col != m["expr"]:
+        if col not in allowed and col != expr:
             raise ValueError(f"过滤列 '{col}' 不在指标 '{name}' 的允许维度内：{sorted(allowed)}")
         conds.append(f.strip())
 
     agg = m.get("agg", "sum").lower()
     if agg not in ("sum", "count", "count_distinct", "avg", "min", "max"):
         raise ValueError(f"不支持的聚合：{agg}")
-    expr = m["expr"]
-    if not _IDENT.match(expr):
-        raise ValueError(f"表达式列名不合法：{expr}")
     agg_sql = f"COUNT(DISTINCT `{expr}`)" if agg == "count_distinct" else f"{agg.upper()}(`{expr}`)"
 
     select = [f"`{d}`" for d in dims] + [f"{agg_sql} AS `{name}`"]
-    sql = f"SELECT {', '.join(select)} FROM `{_DW_SCHEMA}`.`{m['base_model']}`"
+    schema = _identifier(_DW_SCHEMA, field="DW schema")
+    sql = f"SELECT {', '.join(select)} FROM `{schema}`.`{base_model}`"
     if conds:
         sql += " WHERE " + " AND ".join(f"({c})" for c in conds)
     if dims:
