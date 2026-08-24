@@ -86,8 +86,9 @@ class _Conn:
         except Exception:
             try:
                 cur.close()
-            finally:
-                raise
+            except Exception:  # noqa: BLE001
+                pass
+            raise
         return _Result(cur)
 
     def execute(self, sql, params=None):
