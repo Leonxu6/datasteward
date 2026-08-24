@@ -58,6 +58,8 @@ def register_source(source: Source, *, replace: bool = False) -> Source:
     """Register one runtime source and return it; duplicates require explicit ``replace=True``."""
     if not isinstance(source, Source):
         raise TypeError(f"source 必须是 Source，实际为 {type(source).__name__}")
+    if not isinstance(replace, bool):
+        raise TypeError("replace 必须是布尔值")
     name = _normalize_source_name(source.name)
     if source.source_type not in _CONNECTORS:
         raise ValueError(f"不支持的源类型: {source.source_type}")
