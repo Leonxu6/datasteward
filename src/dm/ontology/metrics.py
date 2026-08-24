@@ -109,7 +109,6 @@ def load_metrics() -> dict:
 
 
 def metric_catalog() -> list:
-    """指标字典（对外展示/工具返回）：列表字段使用副本，避免调用方污染缓存。"""
     out = []
     for m in load_metrics().values():
         name = m["name"]
@@ -120,9 +119,7 @@ def metric_catalog() -> list:
             "unit": m.get("unit", ""),
             "owner": m.get("owner", ""),
             "dimensions": _string_list(m.get("dimensions", []), field=f"metric '{name}' dimensions"),
-            "required_markings": _string_list(
-                m.get("required_markings", []), field=f"metric '{name}' required_markings"
-            ),
+            "required_markings": _string_list(m.get("required_markings", []), field=f"metric '{name}' required_markings"),
             "base_model": m.get("base_model", ""),
         })
     return out
@@ -165,6 +162,7 @@ def compile_metric(name: str, dimensions: list | None = None, filters: list | No
         if not f.strip():
             continue
         conds.append(_validated_filter(f, name=name, allowed=allowed, expr=expr))
+    conds = list(dict.fromkeys(conds))
 
     agg = _aggregate(m.get("agg", "sum"), name=name)
     agg_sql = f"COUNT(DISTINCT `{expr}`)" if agg == "count_distinct" else f"{agg.upper()}(`{expr}`)"
