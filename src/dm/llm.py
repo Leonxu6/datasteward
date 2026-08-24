@@ -12,7 +12,13 @@ from dm.config import (LLM_API_KEY, LLM_BASE_URL, LLM_CONNECT_TIMEOUT, LLM_MODEL
 
 
 def _finite_number(value, *, field_name: str):
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{field_name} 必须是有限数字: {value!r}")
+    try:
+        finite = math.isfinite(value)
+    except OverflowError as exc:
+        raise ValueError(f"{field_name} 必须是有限数字: {value!r}") from exc
+    if not finite:
         raise ValueError(f"{field_name} 必须是有限数字: {value!r}")
     return value
 
