@@ -58,10 +58,13 @@ def test_webhook_url_validates_field_name():
         "https:///missing-host",
         "https://user:pass@example.com/hook",
         " https://example.com/hook",
+        "https://exa mple.com/hook",
+        "https://example.com/a b",
         "https://example.com:bad/hook",
         "https://example.com\\@evil.test/hook",
         "https://example.com:/hook",
         "https://example.com:0/hook",
+        "https://example.com/hook#ignored",
     ],
 )
 def test_webhook_url_rejects_unsafe_or_malformed_values(value):
