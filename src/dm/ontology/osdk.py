@@ -12,6 +12,14 @@ from dm.ontology.model import ObjectType, get_object_type, incoming_links
 from dm.warehouse.store import connect_ro
 
 
+def _positive_limit(value: object, *, field: str, maximum: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{field} must be an integer")
+    if value < 1 or value > maximum:
+        raise ValueError(f"{field} must be between 1 and {maximum}")
+    return value
+
+
 def _row_to_obj(ot: ObjectType, row: tuple, cols: list) -> dict:
     """一行 → 以 property api_name 为键的对象 dict。"""
     raw = dict(zip(cols, row))
@@ -32,6 +40,7 @@ def _mask_obj(ot: ObjectType, obj: dict, um: set) -> dict:
 def list_objects(api_name: str, limit: int = 50, order_by: Optional[str] = None, user=None) -> dict:
     """列出某对象类型的实例（≈ OSDK objects.X.page/iterate）。
     传入 user 时按对象层强制权限：表级 Marking 可见性 + 行级对象策略(WHERE) + 列级属性策略(屏蔽)。"""
+    limit = _positive_limit(limit, field="limit", maximum=500)
     ot = get_object_type(api_name)
     if not ot:
         return {"error": f"未知对象类型 {api_name}"}
@@ -49,7 +58,7 @@ def list_objects(api_name: str, limit: int = 50, order_by: Optional[str] = None,
     sql = f"SELECT * FROM `{ot.table}`" + where
     if order_by and ot.prop(order_by):
         sql += f" ORDER BY `{ot.prop(order_by).column}`"
-    sql += f" LIMIT {int(limit)}"
+    sql += f" LIMIT {limit}"
     con = connect_ro()
     try:
         cur = con.execute(sql)
@@ -104,6 +113,7 @@ def get_links(api_name: str, pk_value, per_link_limit: int = 20) -> dict:
     - incoming：引用本对象的子对象（如 供应商 ← 各采购单）
     多跳/跨域走知识图谱（Neo4j graph_query）；本处只做一跳的对象化遍历。
     """
+    per_link_limit = _positive_limit(per_link_limit, field="per_link_limit", maximum=200)
     ot = get_object_type(api_name)
     if not ot:
         return {"error": f"未知对象类型 {api_name}"}
@@ -127,7 +137,7 @@ def get_links(api_name: str, pk_value, per_link_limit: int = 20) -> dict:
         for lk in incoming_links(ot.api_name):
             child = get_object_type(lk.from_object)
             cur = con.execute(
-                f"SELECT * FROM `{child.table}` WHERE `{lk.from_property}` = %s LIMIT {int(per_link_limit)}",
+                f"SELECT * FROM `{child.table}` WHERE `{lk.from_property}` = %s LIMIT {per_link_limit}",
                 (pk_value,))
             cols = [d[0] for d in cur.description]
             rows = cur.fetchall()
