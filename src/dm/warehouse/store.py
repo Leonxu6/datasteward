@@ -79,6 +79,7 @@ class _Conn:
 
     def __init__(self, conn):
         self._conn = conn
+        self._closed = False
 
     def _run(self, method: str, sql, params):
         cur = self._conn.cursor()
@@ -105,6 +106,9 @@ class _Conn:
         self._conn.rollback()
 
     def close(self):
+        if self._closed:
+            return
+        self._closed = True
         try:
             self._conn.close()
         except Exception:  # noqa: BLE001
