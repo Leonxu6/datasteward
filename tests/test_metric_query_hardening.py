@@ -1,9 +1,10 @@
 import pytest
 
+import dm.ontology.metrics as metrics
 from dm.ontology.metrics import compile_metric
 
 
-@pytest.mark.parametrize("name", [None, 3, [], "", " total_stock", "total_stock\n"])
+@pytest.mark.parametrize("name", [None, 3, [], "", " total_stock", "total_stock\n", "bad-name"])
 def test_compile_metric_rejects_invalid_metric_names(name):
     with pytest.raises(ValueError):
         compile_metric(name)
@@ -35,3 +36,25 @@ def test_compile_metric_deduplicates_dimensions_preserving_order():
     assert sql.count("`material_id`") == 2  # SELECT + GROUP BY
     assert sql.count("`material_name`") == 2
     assert "GROUP BY `material_id`, `material_name`" in sql
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("expr", "amount;DROP"),
+        ("base_model", "fact sales"),
+        ("dimensions", ["customer_id", "bad-dimension"]),
+    ],
+)
+def test_compile_metric_rejects_unsafe_definition_identifiers(monkeypatch, field, value):
+    definition = {
+        "name": "sample_metric",
+        "agg": "sum",
+        "expr": "amount",
+        "base_model": "fact_sales",
+        "dimensions": ["customer_id"],
+    }
+    definition[field] = value
+    monkeypatch.setattr(metrics, "_CACHE", {"sample_metric": definition})
+    with pytest.raises(ValueError):
+        compile_metric("sample_metric")
