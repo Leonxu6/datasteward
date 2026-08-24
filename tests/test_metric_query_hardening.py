@@ -94,3 +94,16 @@ def test_compile_metric_accepts_valid_default_filters(monkeypatch):
     )
     sql, _ = compile_metric("sample_metric")
     assert "WHERE (customer_id='C1')" in sql
+
+
+@pytest.mark.parametrize("agg", [None, 3, "", " sum", "sum ", "median"])
+def test_compile_metric_rejects_invalid_aggregate_definitions(monkeypatch, agg):
+    monkeypatch.setattr(metrics, "_CACHE", {"sample_metric": _metric_definition(agg=agg)})
+    with pytest.raises(ValueError):
+        compile_metric("sample_metric")
+
+
+def test_compile_metric_normalizes_aggregate_case(monkeypatch):
+    monkeypatch.setattr(metrics, "_CACHE", {"sample_metric": _metric_definition(agg="AVG")})
+    sql, _ = compile_metric("sample_metric")
+    assert "AVG(`amount`)" in sql
