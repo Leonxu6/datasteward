@@ -23,6 +23,15 @@ def test_register_rejects_duplicate_without_explicit_replace(monkeypatch):
     assert catalog.SOURCES["dropzone"] is replacement
 
 
+def test_register_requires_boolean_replace_flag(monkeypatch):
+    source = Source(name="dropzone", source_type="file")
+    monkeypatch.setattr(catalog, "SOURCES", {"dropzone": source})
+    for replace in (1, 0, "true", None):
+        with pytest.raises(TypeError, match="replace"):
+            catalog.register_source(source, replace=replace)  # type: ignore[arg-type]
+    assert catalog.SOURCES["dropzone"] is source
+
+
 def test_register_rejects_unknown_connector_type_and_invalid_name(monkeypatch):
     monkeypatch.setattr(catalog, "SOURCES", {})
     with pytest.raises(ValueError, match="不支持"):
