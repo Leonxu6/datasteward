@@ -135,7 +135,7 @@ def env_http_url(name: str, default: str) -> str:
         raise ValueError(f"{name} 不能包含反斜杠")
     try:
         parsed = urlsplit(value)
-        _ = parsed.port
+        port = parsed.port
     except ValueError as exc:
         raise ValueError(f"{name} URL 格式无效") from exc
     if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
@@ -144,4 +144,6 @@ def env_http_url(name: str, default: str) -> str:
         raise ValueError(f"{name} 不能在 URL 中内嵌凭据")
     if parsed.query or parsed.fragment:
         raise ValueError(f"{name} 不能包含查询参数或片段")
+    if parsed.netloc.endswith(":") or port == 0:
+        raise ValueError(f"{name} 必须使用有效的非零端口")
     return value.rstrip("/")
