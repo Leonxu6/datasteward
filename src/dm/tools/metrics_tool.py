@@ -33,6 +33,23 @@ def _close_quietly(resource) -> None:
         pass
 
 
+def _rows_to_records(columns: list, rows: list) -> list[dict]:
+    if any(not isinstance(col, str) or not col for col in columns):
+        raise ValueError("metric query columns must be non-empty strings")
+    if len(set(columns)) != len(columns):
+        raise ValueError("metric query returned duplicate column names")
+    records: list[dict] = []
+    for row in rows:
+        try:
+            width = len(row)
+        except TypeError as exc:
+            raise ValueError("metric query rows must be sized sequences") from exc
+        if width != len(columns):
+            raise ValueError("metric query row length does not match cursor columns")
+        records.append(dict(zip(columns, row)))
+    return records
+
+
 def list_metrics(principal: Principal) -> str:
     t0 = time.time()
     cat = metric_catalog()
@@ -69,9 +86,10 @@ def query_metric(principal: Principal, metric: str, dimensions: str = "",
         cur = con.execute(sql)
         cols = [d[0] for d in cur.description] if cur.description else []
         rows = cur.fetchall()
+        records = _rows_to_records(cols, rows)
         out = {"metric": metric, "cn": mdef.get("cn", ""), "unit": mdef.get("unit", ""),
                "description": mdef.get("description", ""), "sql": sql, "columns": cols,
-               "rows": [dict(zip(cols, r)) for r in rows]}
+               "rows": records}
         audit_event(principal, "query_metric", {"metric": metric, "dimensions": dimensions,
                     "filters": filters}, sql, [mdef["base_model"]], len(rows), t0, True)
         return json.dumps(out, ensure_ascii=False, default=str, indent=2)
