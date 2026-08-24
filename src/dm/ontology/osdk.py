@@ -1,11 +1,4 @@
-"""OSDK-lite：本体的**只读**访问 API（对标 Palantir OSDK 的 objects.X.get/where/iterate）。
-
-对象数据来自 StarRocks（`connect_ro`）。返回以 **property api_name** 为键（对象语义），
-而非原始列名——消费方（智能体 / Object Explorer）按对象说话，不碰表结构。
-
-权限与审计：Phase 1 治理切片会在此之上包一层策略（行/列过滤 + JSONL 审计）；
-本模块只负责"取对象/取链接"，保持单一职责。
-"""
+"""OSDK-lite：本体的**只读**访问 API（对标 Palantir OSDK 的 objects.X.get/where/iterate）。"""
 from typing import Optional
 
 from dm.ontology.model import ObjectType, get_object_type, incoming_links
@@ -33,15 +26,22 @@ def _order_property(ot: ObjectType, order_by: object):
     return prop
 
 
-def _row_to_obj(ot: ObjectType, row: tuple, cols: list) -> dict:
-    """一行 → 以 property api_name 为键的对象 dict。"""
-    if len(row) != len(cols):
+def _row_to_raw(row, cols: list) -> dict:
+    try:
+        width = len(row)
+    except TypeError as exc:
+        raise ValueError("object query rows must be sized sequences") from exc
+    if width != len(cols):
         raise ValueError("object query row length does not match cursor columns")
     if any(not isinstance(col, str) or not col for col in cols):
         raise ValueError("object query columns must be non-empty strings")
     if len(set(cols)) != len(cols):
         raise ValueError("object query returned duplicate column names")
-    raw = dict(zip(cols, row))
+    return dict(zip(cols, row))
+
+
+def _row_to_obj(ot: ObjectType, row: tuple, cols: list) -> dict:
+    raw = _row_to_raw(row, cols)
     return {p.api_name: raw.get(p.column) for p in ot.properties}
 
 
@@ -99,9 +99,9 @@ def _fetch_row(ot: ObjectType, pk_value) -> Optional[dict]:
         row = cur.fetchone()
     finally:
         con.close()
-    if not row:
+    if row is None:
         return None
-    return dict(zip(cols, row))
+    return _row_to_raw(row, cols)
 
 
 def get_object(api_name: str, pk_value, user=None) -> dict:
