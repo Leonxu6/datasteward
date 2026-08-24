@@ -65,3 +65,21 @@ def test_query_metric_closes_resources_after_fetch_failure(monkeypatch):
     assert result.startswith("ERROR:")
     assert cursor.closed is True
     assert connection.closed is True
+
+
+@pytest.mark.parametrize(
+    ("columns", "rows", "message"),
+    [
+        (["value", "value"], [(1, 2)], "duplicate"),
+        (["value", ""], [(1, 2)], "non-empty strings"),
+        (["a", "b"], [(1,)], "row length"),
+        (["a"], [object()], "sized sequences"),
+    ],
+)
+def test_rows_to_records_rejects_malformed_results(columns, rows, message):
+    with pytest.raises(ValueError, match=message):
+        metrics_tool._rows_to_records(columns, rows)
+
+
+def test_rows_to_records_preserves_valid_rows():
+    assert metrics_tool._rows_to_records(["id", "amount"], [("A", 12)]) == [{"id": "A", "amount": 12}]
