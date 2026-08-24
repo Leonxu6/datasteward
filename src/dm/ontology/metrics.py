@@ -52,6 +52,20 @@ def _query_limit(value: object) -> int:
     return value
 
 
+def _validated_filter(value: object, *, name: str, allowed: set[str], expr: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"metric '{name}' filters must be non-empty strings")
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+        raise ValueError(f"metric '{name}' filter contains control characters")
+    mt = _FILTER.fullmatch(value)
+    if not mt:
+        raise ValueError(f"过滤表达式不合法：'{value}'（只接受 列 运算符 字面量，如 material_id='M0001'）")
+    col = mt.group(1)
+    if col not in allowed and col != expr:
+        raise ValueError(f"过滤列 '{col}' 不在指标 '{name}' 的允许维度内：{sorted(allowed)}")
+    return value.strip()
+
+
 def load_metrics() -> dict:
     """读 metrics.yaml → {name: 定义}。进程内缓存。"""
     global _CACHE
@@ -102,17 +116,14 @@ def compile_metric(name: str, dimensions: list | None = None, filters: list | No
     if bad:
         raise ValueError(f"维度 {bad} 不在指标 '{name}' 的允许维度内：{sorted(allowed)}")
 
-    conds = list(m.get("default_filters", []))
+    raw_defaults = m.get("default_filters", [])
+    if not isinstance(raw_defaults, list):
+        raise ValueError(f"metric '{name}' default_filters must be a list")
+    conds = [_validated_filter(f, name=name, allowed=allowed, expr=expr) for f in raw_defaults]
     for f in filters:
         if not f.strip():
             continue
-        mt = _FILTER.match(f)
-        if not mt:
-            raise ValueError(f"过滤表达式不合法：'{f}'（只接受 列 运算符 字面量，如 material_id='M0001'）")
-        col = mt.group(1)
-        if col not in allowed and col != expr:
-            raise ValueError(f"过滤列 '{col}' 不在指标 '{name}' 的允许维度内：{sorted(allowed)}")
-        conds.append(f.strip())
+        conds.append(_validated_filter(f, name=name, allowed=allowed, expr=expr))
 
     agg = m.get("agg", "sum").lower()
     if agg not in ("sum", "count", "count_distinct", "avg", "min", "max"):
