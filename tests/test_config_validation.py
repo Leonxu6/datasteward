@@ -9,10 +9,16 @@ from dm.config_validation import env_bool, env_float, env_http_url, env_int, env
 def test_env_text_defaults_and_validates_padding_controls(monkeypatch):
     monkeypatch.delenv("DM_X", raising=False)
     assert env_text("DM_X", "default") == "default"
-    for value in ("", " padded", "padded ", "bad\x00value"):
+    for value in ("", " padded", "padded "):
         monkeypatch.setenv("DM_X", value)
         with pytest.raises(ValueError):
             env_text("DM_X", "default")
+
+    # Operating systems reject NUL bytes before they can enter an environment
+    # variable, so exercise the same text validator through its default path.
+    monkeypatch.delenv("DM_X", raising=False)
+    with pytest.raises(ValueError, match="控制字符"):
+        env_text("DM_X", "bad\x00value")
 
 
 def test_env_text_can_explicitly_allow_empty(monkeypatch):
