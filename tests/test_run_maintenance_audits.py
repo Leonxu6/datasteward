@@ -38,3 +38,20 @@ def test_runner_reports_missing_and_timed_out_audits(tmp_path: Path):
 def test_runner_rejects_non_directory_roots(tmp_path: Path):
     with pytest.raises(ValueError, match="existing directory"):
         runner.run_audits(tmp_path / "missing", scripts=())
+
+
+@pytest.mark.parametrize(
+    "scripts",
+    [
+        ("../outside.py",),
+        ("nested/audit.py",),
+        ("nested\\audit.py",),
+        (" padded.py",),
+        ("audit.txt",),
+        ("same.py", "same.py"),
+    ],
+)
+def test_runner_rejects_unsafe_or_duplicate_script_selectors(tmp_path: Path, scripts: tuple[str, ...]):
+    (tmp_path / "scripts").mkdir()
+    with pytest.raises(ValueError, match="audit script names"):
+        runner.run_audits(tmp_path, scripts=scripts)
