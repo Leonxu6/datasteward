@@ -69,7 +69,8 @@ def run_audits(root: Path, *, scripts: tuple[str, ...] = _AUDITS) -> list[str]:
                 [sys.executable, str(path), str(root)],
                 cwd=root,
                 capture_output=True,
-                text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=30,
             )
         except subprocess.TimeoutExpired:
