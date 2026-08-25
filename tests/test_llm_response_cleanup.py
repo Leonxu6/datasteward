@@ -19,6 +19,13 @@ class _Response:
         self.closed = True
 
 
+class _ResponseWithoutClose:
+    status_code = 200
+
+    def json(self):
+        return {"choices": [{"message": {"content": "ok"}}]}
+
+
 def test_nonstream_success_closes_response(monkeypatch):
     response = _Response(payload={"choices": [{"message": {"content": "ok"}}]})
     monkeypatch.setattr(llm, "LLM_STREAMING", False)
@@ -37,3 +44,10 @@ def test_http_failure_closes_response(monkeypatch):
         llm.chat([{"role": "user", "content": "hello"}])
 
     assert response.closed is True
+
+
+def test_nonstream_response_without_close_does_not_mask_valid_content(monkeypatch):
+    monkeypatch.setattr(llm, "LLM_STREAMING", False)
+    monkeypatch.setattr(llm.requests, "post", lambda *args, **kwargs: _ResponseWithoutClose())
+
+    assert llm.chat([{"role": "user", "content": "hello"}]) == "ok"
