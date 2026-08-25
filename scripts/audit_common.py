@@ -20,7 +20,7 @@ def relative_files(root: Path, *, suffixes: set[str] | None = None) -> list[Path
     root = require_root(root)
     files: list[Path] = []
     for path in root.rglob("*"):
-        if not path.is_file():
+        if path.is_symlink() or not path.is_file():
             continue
         rel = path.relative_to(root)
         if any(part in IGNORED_PARTS for part in rel.parts):
