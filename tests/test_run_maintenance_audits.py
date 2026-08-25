@@ -24,6 +24,18 @@ def test_runner_executes_requested_audits_and_collects_failures(tmp_path: Path):
     assert run.call_count == 2
 
 
+def test_runner_preserves_stdout_and_stderr_for_failed_audits(tmp_path: Path):
+    scripts_dir = tmp_path / "scripts"
+    scripts_dir.mkdir()
+    (scripts_dir / "bad.py").write_text("# audit fixture\n", encoding="utf-8")
+    result = SimpleNamespace(returncode=1, stdout="audit context\n", stderr="traceback detail\n")
+
+    with patch.object(runner.subprocess, "run", return_value=result):
+        failures = runner.run_audits(tmp_path, scripts=("bad.py",))
+
+    assert failures == ["bad.py: audit context traceback detail"]
+
+
 def test_runner_reports_missing_and_timed_out_audits(tmp_path: Path):
     scripts_dir = tmp_path / "scripts"
     scripts_dir.mkdir()
