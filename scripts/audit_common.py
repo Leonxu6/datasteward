@@ -31,6 +31,13 @@ def relative_files(root: Path, *, suffixes: set[str] | None = None) -> list[Path
     return sorted(files)
 
 
+def _tracked_path(item: str) -> Path:
+    path = Path(item)
+    if path.is_absolute() or ".." in path.parts:
+        raise ValueError("tracked file list contained a path outside repository")
+    return path
+
+
 def tracked_files(root: Path) -> list[Path]:
     root = require_root(root)
     try:
@@ -38,7 +45,7 @@ def tracked_files(root: Path) -> list[Path]:
         text = result.stdout.decode("utf-8")
     except (FileNotFoundError, subprocess.SubprocessError, UnicodeDecodeError) as exc:
         raise ValueError("could not enumerate tracked repository files") from exc
-    return [Path(item) for item in text.split("\0") if item]
+    return [_tracked_path(item) for item in text.split("\0") if item]
 
 
 def print_failures(failures: list[str]) -> int:
