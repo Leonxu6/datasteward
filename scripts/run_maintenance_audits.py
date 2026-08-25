@@ -64,9 +64,10 @@ def run_audits(root: Path, *, scripts: tuple[str, ...] = _AUDITS) -> list[str]:
         if not path.is_file():
             failures.append(f"{script}: audit script is missing")
             continue
+        module = f"scripts.{Path(script).stem}"
         try:
             result = subprocess.run(
-                [sys.executable, str(path), str(root)],
+                [sys.executable, "-m", module, str(root)],
                 cwd=root,
                 capture_output=True,
                 encoding="utf-8",
