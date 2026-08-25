@@ -26,9 +26,30 @@ _AUDITS = (
 )
 
 
+def _validate_scripts(scripts: tuple[str, ...]) -> tuple[str, ...]:
+    if not isinstance(scripts, tuple):
+        raise ValueError("scripts must be a tuple of audit filenames")
+    seen: set[str] = set()
+    for script in scripts:
+        if (
+            not isinstance(script, str)
+            or not script
+            or script != script.strip()
+            or not script.endswith(".py")
+            or "/" in script
+            or "\\" in script
+        ):
+            raise ValueError("audit script names must be simple .py filenames")
+        if script in seen:
+            raise ValueError("audit script names must be unique")
+        seen.add(script)
+    return scripts
+
+
 def run_audits(root: Path, *, scripts: tuple[str, ...] = _AUDITS) -> list[str]:
     if not isinstance(root, Path) or not root.is_dir():
         raise ValueError("root must be an existing directory")
+    scripts = _validate_scripts(scripts)
     failures: list[str] = []
     script_dir = root / "scripts"
     for script in scripts:
