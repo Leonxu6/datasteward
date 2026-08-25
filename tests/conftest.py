@@ -9,8 +9,16 @@
 """
 import os
 import socket
+import sys
 import tempfile
 from pathlib import Path
+
+# Repository-local maintenance tooling lives outside the installable ``src`` tree.
+# Ensure those modules are importable even when pytest is launched through its
+# console entry point, whose sys.path does not necessarily include the checkout.
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 # 早于 dm 导入：把数据目录指向一个临时目录
 _TMP = Path(tempfile.mkdtemp(prefix="dm-test-"))
