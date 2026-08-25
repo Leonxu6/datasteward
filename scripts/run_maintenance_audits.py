@@ -46,6 +46,13 @@ def _validate_scripts(scripts: tuple[str, ...]) -> tuple[str, ...]:
     return scripts
 
 
+def _failure_detail(result: object) -> str:
+    stdout = getattr(result, "stdout", "") or ""
+    stderr = getattr(result, "stderr", "") or ""
+    detail = " ".join(f"{stdout}\n{stderr}".split()) or "audit failed"
+    return detail[:1000]
+
+
 def run_audits(root: Path, *, scripts: tuple[str, ...] = _AUDITS) -> list[str]:
     if not isinstance(root, Path) or not root.is_dir():
         raise ValueError("root must be an existing directory")
@@ -72,8 +79,7 @@ def run_audits(root: Path, *, scripts: tuple[str, ...] = _AUDITS) -> list[str]:
             failures.append(f"{script}: audit could not start ({exc})")
             continue
         if result.returncode:
-            detail = " ".join((result.stdout or result.stderr or "audit failed").split())[:1000]
-            failures.append(f"{script}: {detail}")
+            failures.append(f"{script}: {_failure_detail(result)}")
     return failures
 
 
