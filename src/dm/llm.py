@@ -13,20 +13,20 @@ from dm.config import (LLM_API_KEY, LLM_BASE_URL, LLM_CONNECT_TIMEOUT, LLM_MODEL
 
 def _finite_number(value, *, field_name: str):
     if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ValueError(f"{field_name} 必须是有限数字: {value!r}")
+        raise ValueError(f"{field_name} 必须是有限数字")
     try:
         finite = math.isfinite(value)
     except OverflowError as exc:
-        raise ValueError(f"{field_name} 必须是有限数字: {value!r}") from exc
+        raise ValueError(f"{field_name} 必须是有限数字") from exc
     if not finite:
-        raise ValueError(f"{field_name} 必须是有限数字: {value!r}")
+        raise ValueError(f"{field_name} 必须是有限数字")
     return value
 
 
 def _positive_number(value, *, field_name: str):
     value = _finite_number(value, field_name=field_name)
     if value <= 0:
-        raise ValueError(f"{field_name} 必须大于 0: {value!r}")
+        raise ValueError(f"{field_name} 必须大于 0")
     return value
 
 
@@ -34,13 +34,13 @@ def _optional_positive_int(value, *, field_name: str):
     if value is None:
         return None
     if isinstance(value, bool):
-        raise ValueError(f"{field_name} 必须是正整数，不能是布尔值: {value!r}")
+        raise ValueError(f"{field_name} 必须是正整数，不能是布尔值")
     try:
         parsed = operator.index(value)
     except TypeError as exc:
-        raise ValueError(f"{field_name} 必须是正整数: {value!r}") from exc
+        raise ValueError(f"{field_name} 必须是正整数") from exc
     if parsed <= 0:
-        raise ValueError(f"{field_name} 必须大于 0: {parsed}")
+        raise ValueError(f"{field_name} 必须大于 0")
     return parsed
 
 
@@ -128,6 +128,13 @@ def _stream_content(obj):
     return content
 
 
+def _close_response(response) -> None:
+    """Close requests-compatible responses when the adapter exposes cleanup."""
+    close = getattr(response, "close", None)
+    if callable(close):
+        close()
+
+
 def chat(messages: list, model: str | None = None, temperature: float = 0.2,
          timeout: int = 180, max_tokens: int | None = None) -> str:
     messages = _validate_messages(messages)
@@ -156,7 +163,7 @@ def chat(messages: list, model: str | None = None, temperature: float = 0.2,
         try:
             detail = r.text[:300]
         finally:
-            r.close()
+            _close_response(r)
         raise RuntimeError(f"LLM 调用失败 HTTP {r.status_code}: {detail}")
     if not LLM_STREAMING:
         try:
@@ -166,7 +173,7 @@ def chat(messages: list, model: str | None = None, temperature: float = 0.2,
                 raise RuntimeError("LLM 响应不是有效 JSON") from exc
             return _nonstream_content(data)
         finally:
-            r.close()
+            _close_response(r)
     parts: list[str] = []
     deadline = time.monotonic() + timeout
     try:
@@ -195,5 +202,5 @@ def chat(messages: list, model: str | None = None, temperature: float = 0.2,
     except requests.RequestException as e:
         raise RuntimeError(f"LLM 流式读取中断: {e}") from e
     finally:
-        r.close()
+        _close_response(r)
     return "".join(parts)
