@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off"}
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_MAX_NUMERIC_TEXT = 128
 
 
 def _env_name(value: object) -> str:
@@ -75,10 +76,15 @@ def env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
             raise ValueError(f"{name} 默认值必须是整数")
         result = default
     else:
+        if len(raw) > _MAX_NUMERIC_TEXT:
+            raise ValueError(f"{name} 数字文本过长")
         digits = raw[1:] if raw.startswith("-") else raw
         if not raw or raw != raw.strip() or raw.startswith("+") or not digits or not digits.isascii() or not digits.isdecimal():
             raise ValueError(f"{name} 必须是整数")
-        result = int(raw)
+        try:
+            result = int(raw)
+        except (ValueError, OverflowError) as exc:
+            raise ValueError(f"{name} 必须是整数") from exc
     if result < minimum or result > maximum:
         raise ValueError(f"{name} 必须在 {minimum}-{maximum} 范围内")
     return result
@@ -99,6 +105,8 @@ def env_float(name: str, default: float, *, minimum: float, maximum: float) -> f
         except OverflowError as exc:
             raise ValueError(f"{name} 默认值必须是有限数字") from exc
     else:
+        if len(raw) > _MAX_NUMERIC_TEXT:
+            raise ValueError(f"{name} 数字文本过长")
         if not raw or raw != raw.strip():
             raise ValueError(f"{name} 不能包含首尾空白")
         try:
