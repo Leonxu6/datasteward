@@ -5,10 +5,14 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   # 纯单元测试：无任何外部服务（stack 用例由 conftest 自动跳过）
   unit:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -21,6 +25,7 @@ jobs:
   # dbt 工程完整性：parse 纯离线，不连库
   dbt-parse:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -33,16 +38,18 @@ jobs:
   # compose 配置合法性
   compose-config:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - run: docker compose -f deploy/docker-compose.yml config -q
 
-  # 敏感词守门（零容忍清单见 scripts/audit_sensitive.py）
+  # 仓库维护门禁：敏感信息、文本/语法、供应链和安全静态约束
   audit:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python scripts/audit_sensitive.py
+      - run: python -m scripts.run_maintenance_audits

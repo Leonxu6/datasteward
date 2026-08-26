@@ -10,7 +10,7 @@ _REQUIRED = {
     "unit tests": "pytest -m \"not integration and not stack\" -q",
     "dbt parse": "dbt parse",
     "compose validation": "docker compose -f deploy/docker-compose.yml config -q",
-    "sensitive-data audit": "python scripts/audit_sensitive.py",
+    "maintenance audits": "python -m scripts.run_maintenance_audits",
 }
 
 
