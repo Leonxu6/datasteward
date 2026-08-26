@@ -10,6 +10,11 @@ import requests
 from dm.config import (LLM_API_KEY, LLM_BASE_URL, LLM_CONNECT_TIMEOUT, LLM_MODEL,
                        LLM_READ_TIMEOUT, LLM_STREAMING)
 
+_MAX_MESSAGES = 200
+_MAX_SERIALIZED_MESSAGES = 1_000_000
+_MAX_RESPONSE_CHARS = 1_000_000
+_ALLOWED_ROLES = {"system", "user", "assistant", "tool", "function", "developer"}
+
 
 def _finite_number(value, *, field_name: str):
     if isinstance(value, bool) or not isinstance(value, (int, float)):
@@ -66,29 +71,44 @@ def _header_value(value, *, field_name: str) -> str:
 
 def _gateway_base_url(value) -> str:
     value = _required_text(value, field_name="LLM_BASE_URL")
+    if any(ch.isspace() for ch in value) or "\\" in value:
+        raise ValueError("LLM_BASE_URL 不能包含空白或反斜杠")
     try:
         parsed = urlsplit(value)
         hostname = parsed.hostname
+        port = parsed.port
     except ValueError as exc:
         raise ValueError(f"LLM_BASE_URL 必须是有效的 HTTP(S) URL: {value!r}") from exc
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc or not hostname:
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc or not hostname:
         raise ValueError(f"LLM_BASE_URL 必须是有效的 HTTP(S) URL: {value!r}")
-    return value
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError("LLM_BASE_URL 不能内嵌凭据")
+    if parsed.query or parsed.fragment:
+        raise ValueError("LLM_BASE_URL 不能包含查询参数或片段")
+    if parsed.netloc.endswith(":") or port == 0:
+        raise ValueError("LLM_BASE_URL 必须使用有效的非零端口")
+    return value.rstrip("/")
 
 
 def _validate_messages(messages):
     if not isinstance(messages, list) or not messages:
         raise ValueError("messages 必须是非空列表")
+    if len(messages) > _MAX_MESSAGES:
+        raise ValueError(f"messages 不能超过 {_MAX_MESSAGES} 条")
     for index, message in enumerate(messages):
         if not isinstance(message, dict):
             raise ValueError(f"messages[{index}] 必须是对象")
-        _required_text(message.get("role"), field_name=f"messages[{index}].role")
+        role = _required_text(message.get("role"), field_name=f"messages[{index}].role")
+        if role not in _ALLOWED_ROLES:
+            raise ValueError(f"messages[{index}].role 不受支持")
         if "content" not in message:
             raise ValueError(f"messages[{index}] 缺少 content")
     try:
-        json.dumps(messages, ensure_ascii=False)
+        serialized = json.dumps(messages, ensure_ascii=False)
     except (TypeError, ValueError) as exc:
         raise ValueError("messages 必须可 JSON 序列化") from exc
+    if len(serialized) > _MAX_SERIALIZED_MESSAGES:
+        raise ValueError("messages 序列化后过大")
     return messages
 
 
@@ -96,30 +116,32 @@ def _nonstream_content(data) -> str:
     try:
         content = data["choices"][0]["message"].get("content")
     except (KeyError, IndexError, TypeError, AttributeError) as exc:
-        raise RuntimeError(f"LLM 响应结构异常: {str(data)[:300]}") from exc
+        raise RuntimeError("LLM 响应结构异常") from exc
     if content is None:
         return ""
     if not isinstance(content, str):
         raise RuntimeError(f"LLM 响应 content 不是文本: {type(content).__name__}")
+    if len(content) > _MAX_RESPONSE_CHARS:
+        raise RuntimeError("LLM 响应内容超过大小上限")
     return content
 
 
 def _stream_content(obj):
     if not isinstance(obj, dict):
-        raise RuntimeError(f"LLM 流式响应结构异常: {str(obj)[:300]}")
+        raise RuntimeError("LLM 流式响应结构异常")
     if obj.get("error"):
-        raise RuntimeError(f"LLM 流式响应报错: {str(obj)[:300]}")
+        raise RuntimeError("LLM 流式响应报错")
     choices = obj.get("choices") or []
     if not isinstance(choices, list):
-        raise RuntimeError(f"LLM 流式 choices 结构异常: {str(obj)[:300]}")
+        raise RuntimeError("LLM 流式 choices 结构异常")
     if not choices:
         return None
     choice = choices[0]
     if not isinstance(choice, dict):
-        raise RuntimeError(f"LLM 流式 choice 结构异常: {str(choice)[:300]}")
+        raise RuntimeError("LLM 流式 choice 结构异常")
     delta = choice.get("delta") or {}
     if not isinstance(delta, dict):
-        raise RuntimeError(f"LLM 流式 delta 结构异常: {str(delta)[:300]}")
+        raise RuntimeError("LLM 流式 delta 结构异常")
     content = delta.get("content")
     if content is None:
         return None
@@ -147,7 +169,7 @@ def chat(messages: list, model: str | None = None, temperature: float = 0.2,
     payload = {"model": model, "messages": messages, "temperature": temperature, "stream": bool(LLM_STREAMING)}
     if max_tokens is not None:
         payload["max_tokens"] = max_tokens
-    url = f"{base_url.rstrip('/')}/chat/completions"
+    url = f"{base_url}/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}"}
     try:
         if not LLM_STREAMING:
@@ -158,13 +180,10 @@ def chat(messages: list, model: str | None = None, temperature: float = 0.2,
             r = requests.post(url, json=payload, headers=headers, stream=True,
                               timeout=(connect_timeout, read_timeout))
     except requests.RequestException as e:
-        raise RuntimeError(f"LLM 网关不可达（{base_url}）: {e}") from e
+        raise RuntimeError(f"LLM 网关不可达（{base_url}）") from e
     if r.status_code != 200:
-        try:
-            detail = r.text[:300]
-        finally:
-            _close_response(r)
-        raise RuntimeError(f"LLM 调用失败 HTTP {r.status_code}: {detail}")
+        _close_response(r)
+        raise RuntimeError(f"LLM 调用失败 HTTP {r.status_code}")
     if not LLM_STREAMING:
         try:
             try:
@@ -175,6 +194,7 @@ def chat(messages: list, model: str | None = None, temperature: float = 0.2,
         finally:
             _close_response(r)
     parts: list[str] = []
+    total_chars = 0
     deadline = time.monotonic() + timeout
     try:
         for line in r.iter_lines(decode_unicode=True):
@@ -195,12 +215,15 @@ def chat(messages: list, model: str | None = None, temperature: float = 0.2,
             try:
                 obj = json.loads(data)
             except ValueError as exc:
-                raise RuntimeError(f"LLM 流式响应包含无效 JSON: {data[:200]}") from exc
+                raise RuntimeError("LLM 流式响应包含无效 JSON") from exc
             content = _stream_content(obj)
             if content is not None:
+                total_chars += len(content)
+                if total_chars > _MAX_RESPONSE_CHARS:
+                    raise RuntimeError("LLM 流式响应内容超过大小上限")
                 parts.append(content)
     except requests.RequestException as e:
-        raise RuntimeError(f"LLM 流式读取中断: {e}") from e
+        raise RuntimeError("LLM 流式读取中断") from e
     finally:
         _close_response(r)
     return "".join(parts)
