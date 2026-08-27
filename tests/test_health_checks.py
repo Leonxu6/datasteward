@@ -5,8 +5,8 @@ import pytest
 from dm.health import checks
 
 
-def _freshness_check():
-    return {"id": "freshness_test", "type": "freshness", "table": "inventory", "column": "update_time", "max_age_days": 30, "severity": "warn", "desc": "test freshness"}
+def _freshness_check(max_age_days=30):
+    return {"id": "freshness_test", "type": "freshness", "table": "inventory", "column": "update_time", "max_age_days": max_age_days, "severity": "warn", "desc": "test freshness"}
 
 
 def _volume_check(min_rows=1):
@@ -70,6 +70,14 @@ def test_expectation_check_fails_cleanly_on_invalid_count(monkeypatch):
     result = checks.run_check(_expectation_check())
     assert result["status"] == "fail"
     assert "invalid row count" in result["message"]
+
+
+@pytest.mark.parametrize("max_age_days", [None, True, -1, 1.5, "30"])
+def test_freshness_check_rejects_invalid_age_thresholds_before_queries(monkeypatch, max_age_days):
+    monkeypatch.setattr(checks, "_sr_scalar", lambda _sql: (_ for _ in ()).throw(AssertionError("queried warehouse")))
+    result = checks.run_check(_freshness_check(max_age_days))
+    assert result["status"] == "fail"
+    assert "max_age_days must be a non-negative integer" in result["message"]
 
 
 def test_freshness_check_fails_instead_of_marking_invalid_timestamp_fresh(monkeypatch):
