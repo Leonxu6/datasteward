@@ -9,6 +9,10 @@ def _freshness_check():
     return {"id": "freshness_test", "type": "freshness", "table": "inventory", "column": "update_time", "max_age_days": 30, "severity": "warn", "desc": "test freshness"}
 
 
+def _volume_check(min_rows=1):
+    return {"id": "volume_test", "type": "volume", "min_rows": min_rows, "severity": "error", "desc": "test volume"}
+
+
 def _parity_check():
     return {"id": "parity_test", "type": "parity", "table": "inventory", "severity": "error", "desc": "test parity"}
 
@@ -51,6 +55,14 @@ def test_malformed_check_definition_returns_failure_instead_of_raising():
     assert result["type"] == "unknown"
     assert result["severity"] == "error"
     assert "检查执行失败" in result["message"]
+
+
+@pytest.mark.parametrize("min_rows", [None, True, -1, 1.5, "1"])
+def test_volume_check_rejects_invalid_minimum_rows_before_queries(monkeypatch, min_rows):
+    monkeypatch.setattr(checks, "business_table_names", lambda: (_ for _ in ()).throw(AssertionError("queried tables")))
+    result = checks.run_check(_volume_check(min_rows))
+    assert result["status"] == "fail"
+    assert "min_rows must be a non-negative integer" in result["message"]
 
 
 def test_expectation_check_fails_cleanly_on_invalid_count(monkeypatch):
