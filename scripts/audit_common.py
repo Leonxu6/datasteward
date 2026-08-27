@@ -6,6 +6,7 @@ from pathlib import Path
 
 TEXT_SUFFIXES = {".md", ".py", ".toml", ".yml", ".yaml", ".txt", ".json", ".sh", ".sql", ".example"}
 IGNORED_PARTS = {".git", ".venv", "venv", "env", "__pycache__", ".pytest_cache", "build", "dist", "target", "dbt_packages"}
+NON_RUNTIME_ROOTS = {"tests", "scripts"}
 
 
 def require_root(root: object) -> Path:
@@ -46,6 +47,16 @@ def tracked_files(root: Path) -> list[Path]:
     except (FileNotFoundError, subprocess.SubprocessError, UnicodeDecodeError) as exc:
         raise ValueError("could not enumerate tracked repository files") from exc
     return [_tracked_path(item) for item in text.split("\0") if item]
+
+
+def production_python_files(root: Path) -> list[Path]:
+    """Return tracked runtime Python files, excluding tests and audit tooling."""
+    root = require_root(root)
+    return [
+        rel
+        for rel in tracked_files(root)
+        if rel.suffix == ".py" and rel.parts and rel.parts[0] not in NON_RUNTIME_ROOTS
+    ]
 
 
 def print_failures(failures: list[str]) -> int:
