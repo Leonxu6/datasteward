@@ -20,11 +20,14 @@ FORBIDDEN = [
     r"qwable", r"om-root-2026|DemateU8|demate-kg",
 ]
 TEXT_EXT_SKIP = {".png", ".jpg", ".jpeg", ".gif", ".ico", ".woff", ".woff2", ".jar", ".pyc"}
+_GIT_TIMEOUT = 10
 
 
 def tracked_files(root: Path) -> list[Path]:
-    out = subprocess.run(["git", "ls-files"], cwd=root, capture_output=True, text=True,
-                         encoding="utf-8", check=True).stdout
+    out = subprocess.run(
+        ["git", "ls-files"], cwd=root, capture_output=True, text=True,
+        encoding="utf-8", check=True, timeout=_GIT_TIMEOUT,
+    ).stdout
     return [root / p for p in out.splitlines() if p and (root / p).suffix.lower() not in TEXT_EXT_SKIP]
 
 
@@ -52,8 +55,10 @@ def _repository_root(value: str | None) -> Path:
         if not root.is_dir():
             raise ValueError("repository root must be an existing directory")
         return root
-    return Path(subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True,
-                               text=True, encoding="utf-8", check=True).stdout.strip())
+    return Path(subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"], capture_output=True,
+        text=True, encoding="utf-8", check=True, timeout=_GIT_TIMEOUT,
+    ).stdout.strip())
 
 
 def main(argv: list[str] | None = None) -> int:
