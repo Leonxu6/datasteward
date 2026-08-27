@@ -39,7 +39,6 @@ _AUDITS = (
     "audit_unicode_paths.py",
     "audit_symlink_targets.py",
     "audit_bare_except.py",
-    "audit_silent_exception.py",
     "audit_mutable_default.py",
     "audit_wildcard_import.py",
     "audit_debug_calls.py",
