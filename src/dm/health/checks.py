@@ -113,6 +113,7 @@ def run_check(chk: dict) -> dict:
                 return _result(chk, "warn", {"missing": sorted(missing), "extra": sorted(extra)}, f"结构漂移：缺 {sorted(missing)} 多 {sorted(extra)}")
             return _result(chk, "ok", len(actual), "结构一致")
         if t == "freshness":
+            max_age_days = _nonnegative_setting(chk["max_age_days"], field="max_age_days")
             mx = _sr_scalar(f"SELECT MAX(`{chk['column']}`) FROM `{chk['table']}`")
             if mx is None:
                 return _result(chk, "warn", None, "无时间数据")
@@ -121,8 +122,8 @@ def run_check(chk: dict) -> dict:
             age = (now - timestamp).days
             if age < 0:
                 return _result(chk, "warn", f"{age}天", "最新时间戳位于未来，检查源系统时钟或时区")
-            if age > chk["max_age_days"]:
-                return _result(chk, "warn", f"{age}天", f"数据 {age} 天未更新（阈值 {chk['max_age_days']} 天）")
+            if age > max_age_days:
+                return _result(chk, "warn", f"{age}天", f"数据 {age} 天未更新（阈值 {max_age_days} 天）")
             return _result(chk, "ok", f"{age}天", f"最新数据 {age} 天内")
         if t == "dbt":
             return _dbt_tests_result(chk)
