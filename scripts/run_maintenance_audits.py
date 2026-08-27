@@ -38,6 +38,21 @@ _AUDITS = (
     "audit_yaml_loading.py",
     "audit_unicode_paths.py",
     "audit_symlink_targets.py",
+    "audit_bare_except.py",
+    "audit_silent_exception.py",
+    "audit_mutable_default.py",
+    "audit_wildcard_import.py",
+    "audit_debug_calls.py",
+    "audit_os_system.py",
+    "audit_datetime_utcnow.py",
+    "audit_absolute_user_paths.py",
+    "audit_duplicate_definitions.py",
+    "audit_unsafe_chmod.py",
+    "audit_http_timeout.py",
+    "audit_urlopen_timeout.py",
+    "audit_subprocess_timeout.py",
+    "audit_async_blocking_sleep.py",
+    "audit_async_subprocess.py",
 )
 
 
