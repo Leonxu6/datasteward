@@ -53,6 +53,12 @@ def _nonnegative_count(value, *, field):
     return value
 
 
+def _nonnegative_setting(value, *, field):
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"{field} must be a non-negative integer")
+    return value
+
+
 def _result(chk, status, actual, message):
     check = chk if isinstance(chk, dict) else {}
     return {
@@ -72,10 +78,11 @@ def run_check(chk: dict) -> dict:
     try:
         t = chk["type"]
         if t == "volume":
+            min_rows = _nonnegative_setting(chk["min_rows"], field="min_rows")
             empties = []
             for name in business_table_names():
                 count = _nonnegative_count(_sr_scalar(f"SELECT COUNT(*) FROM `{name}`"), field=name)
-                if count < chk["min_rows"]:
+                if count < min_rows:
                     empties.append(name)
             if empties:
                 return _result(chk, "fail", empties, f"空表：{', '.join(empties)}")
