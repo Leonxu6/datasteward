@@ -40,6 +40,7 @@ def run_isolated(module: str, argv: list, timeout: int):
             [sys.executable, "-m", module, *argv],
             stdin=subprocess.DEVNULL, capture_output=True, text=True,
             encoding="utf-8", errors="replace", env=_sub_env(), timeout=timeout,
+            check=False,  # DMJSON is the protocol outcome; non-zero exit is interpreted below.
         )
     except subprocess.TimeoutExpired:
         raise RuntimeError(f"子进程超时（{timeout}s）: {module}") from None
