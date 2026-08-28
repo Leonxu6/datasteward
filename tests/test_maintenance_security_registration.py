@@ -32,5 +32,35 @@ def test_reliability_and_async_audits_are_registered():
     assert expected.issubset(set(_AUDITS))
 
 
+def test_portability_and_process_audits_are_registered():
+    expected = {
+        "audit_path_text_encoding.py",
+        "audit_open_text_encoding.py",
+        "audit_naive_datetime_now.py",
+        "audit_naive_fromtimestamp.py",
+        "audit_builtin_hash.py",
+        "audit_tar_extractall.py",
+        "audit_unpack_archive.py",
+        "audit_os_chdir.py",
+        "audit_os_umask.py",
+        "audit_locale_mutation.py",
+        "audit_warning_suppression.py",
+        "audit_socket_default_timeout.py",
+        "audit_signal_handlers.py",
+        "audit_sys_exit.py",
+        "audit_recursion_limit.py",
+        "audit_gc_disable.py",
+        "audit_random_seed.py",
+        "audit_asyncio_run.py",
+        "audit_environ_mutation.py",
+        "audit_logging_basic_config.py",
+        "audit_json_nan.py",
+        "audit_sql_interpolation.py",
+        "audit_subprocess_run_check.py",
+        "audit_thread_daemon.py",
+    }
+    assert expected.issubset(set(_AUDITS))
+
+
 def test_silent_exception_audit_remains_advisory():
     assert "audit_silent_exception.py" not in _AUDITS
