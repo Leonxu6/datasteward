@@ -1,4 +1,4 @@
-from scripts.run_maintenance_audits import _AUDITS
+from scripts.run_maintenance_audits import _ADVISORY_AUDITS, _AUDITS
 
 
 def test_new_syntax_supply_chain_and_security_audits_are_registered():
@@ -32,11 +32,10 @@ def test_reliability_and_async_audits_are_registered():
     assert expected.issubset(set(_AUDITS))
 
 
-def test_portability_and_process_audits_are_registered():
+def test_portability_and_process_blocking_audits_are_registered():
     expected = {
         "audit_path_text_encoding.py",
         "audit_open_text_encoding.py",
-        "audit_naive_datetime_now.py",
         "audit_naive_fromtimestamp.py",
         "audit_builtin_hash.py",
         "audit_tar_extractall.py",
@@ -52,14 +51,22 @@ def test_portability_and_process_audits_are_registered():
         "audit_gc_disable.py",
         "audit_random_seed.py",
         "audit_asyncio_run.py",
-        "audit_environ_mutation.py",
         "audit_logging_basic_config.py",
-        "audit_json_nan.py",
-        "audit_sql_interpolation.py",
         "audit_subprocess_run_check.py",
         "audit_thread_daemon.py",
     }
     assert expected.issubset(set(_AUDITS))
+
+
+def test_legacy_wide_audits_remain_visible_as_advisories():
+    expected = {
+        "audit_naive_datetime_now.py",
+        "audit_environ_mutation.py",
+        "audit_json_nan.py",
+        "audit_sql_interpolation.py",
+    }
+    assert expected == set(_ADVISORY_AUDITS)
+    assert expected.isdisjoint(set(_AUDITS))
 
 
 def test_silent_exception_audit_remains_advisory():
