@@ -7,12 +7,12 @@ import sys
 from importlib.resources import files
 
 
-def main():
+def main() -> int:
     app_path = str(files("dm.app") / "app.py")
     sys.argv = ["streamlit", "run", app_path, *sys.argv[1:]]
     from streamlit.web import cli as stcli
-    sys.exit(stcli.main())
+    return int(stcli.main())
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
