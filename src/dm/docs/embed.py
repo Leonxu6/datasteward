@@ -22,8 +22,36 @@ BACKEND = os.environ.get("DM_EMBED_BACKEND", "fastembed")
 MODEL_NAME = os.environ.get("DM_EMBED_MODEL", "BAAI/bge-small-zh-v1.5")
 DIM = int(os.environ.get("DM_EMBED_DIM", "512"))
 CACHE_DIR = os.environ.get("DM_EMBED_CACHE") or str(Path.home() / ".cache" / "dm_fastembed")
+_MAX_BATCH = 256
+_MAX_TEXT_CHARS = 20_000
 
 _MODEL = None
+
+
+def _request_texts(texts: object) -> list[str]:
+    if isinstance(texts, str):
+        values = [texts]
+    else:
+        if texts is None or isinstance(texts, (bytes, bytearray, dict)):
+            raise ValueError("texts must be text or a non-string iterable of text")
+        try:
+            values = list(texts)
+        except TypeError as exc:
+            raise ValueError("texts must be iterable") from exc
+    if not values:
+        raise ValueError("texts must contain at least one item")
+    if len(values) > _MAX_BATCH:
+        raise ValueError(f"embedding batch must contain at most {_MAX_BATCH} texts")
+    result: list[str] = []
+    for text in values:
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError("embedding texts must be non-empty strings")
+        if len(text) > _MAX_TEXT_CHARS:
+            raise ValueError(f"embedding text must be at most {_MAX_TEXT_CHARS} characters")
+        if any(ord(ch) < 9 or 13 < ord(ch) < 32 or ord(ch) == 127 for ch in text):
+            raise ValueError("embedding text contains unsupported control characters")
+        result.append(text)
+    return result
 
 
 @contextlib.contextmanager
@@ -61,7 +89,7 @@ def _fastembed_model():
 def _hash_vec(text):
     """确定性、L2 归一化的伪向量：字符 bigram 落桶。仅供测试，共享子串越多越相近。"""
     v = [0.0] * DIM
-    s = (text or "").replace(" ", "").replace("\n", "")
+    s = text.replace(" ", "").replace("\n", "")
     for i in range(max(0, len(s) - 1)):
         bg = s[i:i + 2]
         h = 0
@@ -74,9 +102,9 @@ def _hash_vec(text):
 
 def embed(texts, is_query=False):
     """文本列表 → 向量列表（list[list[float]]，长度 DIM）。is_query 时走查询侧编码。"""
-    if isinstance(texts, str):
-        texts = [texts]
-    texts = list(texts)
+    if not isinstance(is_query, bool):
+        raise ValueError("is_query must be boolean")
+    texts = _request_texts(texts)
     if os.environ.get("DM_EMBED_BACKEND", BACKEND) == "hash":  # 动态读取，便于测试切 hash 后端
         return [_hash_vec(t) for t in texts]
     # 全程 fd 级静默 stdout：模型加载 + 编码都可能打印，绝不能污染 stdio-MCP 的 JSON-RPC 通道
