@@ -22,6 +22,11 @@ def test_user_rejects_malformed_identity_fields_and_attrs():
         model.User("alice", purpose="audit\n")
 
 
+def test_user_rejects_roles_outside_the_access_registry():
+    with pytest.raises(ValueError, match="unsupported user role"):
+        model.User("alice", role="guest")
+
+
 def test_column_markings_returns_a_defensive_copy(monkeypatch):
     monkeypatch.setitem(model.COLUMN_MARKINGS, ("orders", "price"), ["FIN"])
     markings = model.column_markings("orders", "price")
