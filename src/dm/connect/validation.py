@@ -1,4 +1,7 @@
 """连接配置的轻量规范化与前置校验。"""
+import re
+
+_ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 def normalize_required_text(value, *, field_name: str) -> str:
@@ -17,8 +20,8 @@ def normalize_required_text(value, *, field_name: str) -> str:
 def normalize_env_name(value, *, field_name: str = "credential_env") -> str:
     """校验环境变量引用名，避免无效键在 ``os.environ`` 访问时才以底层异常失败。"""
     value = normalize_required_text(value, field_name=field_name)
-    if "=" in value:
-        raise ValueError(f"{field_name} 不能包含 '=': {value!r}")
+    if not _ENV_NAME.fullmatch(value):
+        raise ValueError(f"{field_name} 必须是 shell-safe 环境变量名: {value!r}")
     return value
 
 
