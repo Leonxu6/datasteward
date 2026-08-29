@@ -46,12 +46,17 @@ def iter_nodes(manifest: dict, *, resource_type: str) -> Iterator[tuple[str, dic
     if not isinstance(nodes, dict):
         return
     for unique_id, node in nodes.items():
-        if not isinstance(unique_id, str) or not unique_id or unique_id != unique_id.strip() or not isinstance(node, dict):
+        if not isinstance(node, dict):
+            continue
+        try:
+            unique_id = _clean_text(unique_id, field="dbt unique_id")
+        except ValueError:
             continue
         if node.get("resource_type") != resource_type:
             continue
-        name = node.get("name")
-        if not isinstance(name, str) or not name or name != name.strip():
+        try:
+            _clean_text(node.get("name"), field="dbt node name")
+        except ValueError:
             continue
         yield unique_id, node
 
@@ -69,10 +74,12 @@ def parent_names(manifest: dict, unique_id: str) -> list[str]:
     result: list[str] = []
     seen: set[str] = set()
     for parent in parents:
-        if not isinstance(parent, str) or not parent or parent != parent.strip():
+        try:
+            parent = _clean_text(parent, field="dbt parent unique_id")
+            name = _clean_text(parent.rsplit(".", 1)[-1], field="dbt parent name")
+        except ValueError:
             continue
-        name = parent.rsplit(".", 1)[-1]
-        if name and name not in seen:
+        if name not in seen:
             result.append(name)
             seen.add(name)
     return result
