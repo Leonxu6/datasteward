@@ -71,6 +71,46 @@ def _request_texts(texts: object) -> list[str]:
     return result
 
 
+def _validated_vector(value: object) -> list[float]:
+    if value is None or isinstance(value, (str, bytes, bytearray, dict)):
+        raise RuntimeError("embedding model returned a non-vector value")
+    try:
+        iterator = iter(value)
+    except TypeError as exc:
+        raise RuntimeError("embedding model returned a non-vector value") from exc
+    result: list[float] = []
+    for component in iterator:
+        if len(result) >= DIM:
+            raise RuntimeError(f"embedding vector must contain exactly {DIM} values")
+        if isinstance(component, bool):
+            raise RuntimeError("embedding vector values must be finite numbers")
+        try:
+            number = float(component)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise RuntimeError("embedding vector values must be finite numbers") from exc
+        if not math.isfinite(number):
+            raise RuntimeError("embedding vector values must be finite numbers")
+        result.append(number)
+    if len(result) != DIM:
+        raise RuntimeError(f"embedding vector must contain exactly {DIM} values")
+    return result
+
+
+def _validated_vectors(values, *, expected: int) -> list[list[float]]:
+    try:
+        iterator = iter(values)
+    except TypeError as exc:
+        raise RuntimeError("embedding model output must be iterable") from exc
+    result: list[list[float]] = []
+    for value in iterator:
+        if len(result) >= expected:
+            raise RuntimeError("embedding model returned more vectors than requested texts")
+        result.append(_validated_vector(value))
+    if len(result) != expected:
+        raise RuntimeError("embedding model returned fewer vectors than requested texts")
+    return result
+
+
 @contextlib.contextmanager
 def _silence_stdout():
     """把底层 fd1(stdout) 临时重定向到 stderr。
@@ -131,7 +171,7 @@ def embed(texts, is_query=False):
             gen = model.query_embed(texts)      # bge 查询侧由 fastembed 自动加指令前缀
         else:
             gen = model.embed(texts)
-        return [list(map(float, v)) for v in gen]
+        return _validated_vectors(gen, expected=len(texts))
 
 
 def embed_one(text, is_query=False):
