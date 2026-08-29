@@ -35,12 +35,29 @@ def test_readiness_rejects_scalar_columns_and_primary_keys():
         build_readiness_report("erp", [_dataset(primary_key="id")], ["orders"])
 
 
+def test_readiness_rejects_duplicate_or_malformed_columns():
+    with pytest.raises(ValueError, match="duplicate"):
+        build_readiness_report("erp", [_dataset(columns=["id", "id"])], ["orders"])
+    for columns in ([" id"], [""], ["name\n"], [7]):
+        with pytest.raises(ValueError, match="column"):
+            build_readiness_report("erp", [_dataset(columns=columns, primary_key=[])], ["orders"])
+
+
 def test_readiness_rejects_duplicate_or_malformed_primary_key_columns():
     with pytest.raises(ValueError, match="duplicate"):
         build_readiness_report("erp", [_dataset(primary_key=["id", "id"])], ["orders"])
     for primary_key in ([" id"], [""], [7]):
         with pytest.raises(ValueError):
             build_readiness_report("erp", [_dataset(primary_key=primary_key)], ["orders"])
+
+
+def test_readiness_rejects_primary_keys_outside_dataset_columns():
+    with pytest.raises(ValueError, match="unknown columns"):
+        build_readiness_report(
+            "erp",
+            [_dataset(columns=["id", "name"], primary_key=["missing_id"])],
+            ["orders"],
+        )
 
 
 def test_readiness_keeps_stable_mapping_summary():
