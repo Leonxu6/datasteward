@@ -2,8 +2,11 @@
 
 Runtime registration is intentionally strict: source names are user-facing
 identities, so names that differ only by case are rejected rather than becoming
-platform- or UI-dependent aliases.
+platform- or UI-dependent aliases. Mutable Source definitions are copied at the
+catalog boundary so callers cannot rewrite global connection policy in-place.
 """
+from copy import deepcopy
+
 from dm.connect.base import Connector, Source
 from dm.connect.file import FileConnector, default_file_source
 from dm.connect.postgres import PostgresConnector, default_pg_source
@@ -47,6 +50,10 @@ def _find_casefold_collision(name: str, names) -> str | None:
     return None
 
 
+def _source_copy(source: Source) -> Source:
+    return deepcopy(source)
+
+
 def _source_map(sources) -> dict[str, Source]:
     if isinstance(sources, (str, bytes, bytearray, dict)):
         raise TypeError("源目录必须是 Source 集合")
@@ -61,7 +68,7 @@ def _source_map(sources) -> dict[str, Source]:
         if collision:
             raise ValueError(f"源名称大小写冲突: {name} 与 {collision}")
         _normalize_source_type(source.source_type)
-        result[name] = source
+        result[name] = _source_copy(source)
     return result
 
 
@@ -73,15 +80,16 @@ SOURCES: dict[str, Source] = default_sources()
 
 
 def list_sources() -> list:
-    return list(SOURCES.values())
+    return [_source_copy(source) for source in SOURCES.values()]
 
 
 def get_source(name: str) -> Source | None:
-    return SOURCES.get(_normalize_source_name(name))
+    source = SOURCES.get(_normalize_source_name(name))
+    return _source_copy(source) if source is not None else None
 
 
 def register_source(source: Source, *, replace: bool = False) -> Source:
-    """Register one runtime source and return it; duplicates require explicit ``replace=True``."""
+    """Register one runtime source and return an isolated copy; duplicates require explicit ``replace=True``."""
     if not isinstance(source, Source):
         raise TypeError(f"source 必须是 Source，实际为 {type(source).__name__}")
     if not isinstance(replace, bool):
@@ -93,15 +101,16 @@ def register_source(source: Source, *, replace: bool = False) -> Source:
         raise ValueError(f"源名称大小写冲突: {name} 与 {collision}")
     if name in SOURCES and not replace:
         raise KeyError(f"源已存在: {name}")
-    SOURCES[name] = source
-    return source
+    stored = _source_copy(source)
+    SOURCES[name] = stored
+    return _source_copy(stored)
 
 
 def unregister_source(name: str) -> Source:
-    """Remove one runtime source, returning the removed definition."""
+    """Remove one runtime source, returning an isolated copy of the removed definition."""
     name = _normalize_source_name(name)
     try:
-        return SOURCES.pop(name)
+        return _source_copy(SOURCES.pop(name))
     except KeyError as exc:
         raise KeyError(f"未知源: {name}") from exc
 
@@ -111,7 +120,7 @@ def get_connector(name_or_source) -> Connector:
     if isinstance(name_or_source, str):
         source = get_source(name_or_source)
     elif isinstance(name_or_source, Source):
-        source = name_or_source
+        source = _source_copy(name_or_source)
         _normalize_source_name(source.name)
         _normalize_source_type(source.source_type)
     else:
