@@ -19,7 +19,11 @@ def connect(autocommit=True):
         dbname=SRC_PG_DB,
         connect_timeout=15,
     )
-    connection.autocommit = autocommit
+    try:
+        connection.autocommit = autocommit
+    except Exception:
+        connection.close()
+        raise
     return connection
 
 
