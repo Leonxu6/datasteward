@@ -32,19 +32,17 @@ def build_readiness_report(source_name: str, datasets, known_object_types) -> di
     seen: set[str] = set()
     for dataset in datasets:
         name = _clean_name(getattr(dataset, "name", None), field="dataset name")
-        columns = getattr(dataset, "columns", None)
+        columns_value = getattr(dataset, "columns", None)
         primary_key = getattr(dataset, "primary_key", None)
         if name in seen:
             raise ValueError(f"duplicate dataset name: {name}")
         seen.add(name)
-        if columns is None:
-            raise ValueError(f"dataset {name} has no columns collection")
-        if isinstance(columns, (str, bytes, bytearray, dict)):
-            raise ValueError(f"dataset {name} columns must be a sized collection")
-        try:
-            column_count = len(columns)
-        except TypeError as exc:
-            raise ValueError(f"dataset {name} columns are not sized") from exc
+
+        column_values = _materialize_iterable(columns_value, field=f"dataset {name} columns")
+        columns = [_clean_name(column, field=f"dataset {name} column") for column in column_values]
+        if len(columns) != len(set(columns)):
+            raise ValueError(f"dataset {name} columns contain duplicate names")
+
         if primary_key is None:
             pk = []
         else:
@@ -52,7 +50,10 @@ def build_readiness_report(source_name: str, datasets, known_object_types) -> di
             pk = [_clean_name(column, field=f"dataset {name} primary key column") for column in pk_values]
             if len(pk) != len(set(pk)):
                 raise ValueError(f"dataset {name} primary key contains duplicate columns")
-        rows.append({"name": name, "columns": column_count, "pk": pk, "mapped": name in known})
+            missing = [column for column in pk if column not in columns]
+            if missing:
+                raise ValueError(f"dataset {name} primary key references unknown columns: {missing}")
+        rows.append({"name": name, "columns": len(columns), "pk": pk, "mapped": name in known})
 
     mapped = [row["name"] for row in rows if row["mapped"]]
     unmapped = [row["name"] for row in rows if not row["mapped"]]
