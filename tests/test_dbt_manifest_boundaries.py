@@ -25,7 +25,9 @@ def test_iter_nodes_skips_malformed_unique_ids_and_names():
         "nodes": {
             "model.good": {"resource_type": "model", "name": "good"},
             " model.bad": {"resource_type": "model", "name": "bad"},
+            "model.control\n": {"resource_type": "model", "name": "bad"},
             "model.empty": {"resource_type": "model", "name": ""},
+            "model.bad-name": {"resource_type": "model", "name": "bad\n"},
             7: {"resource_type": "model", "name": "numeric-id"},
         }
     }
@@ -34,14 +36,14 @@ def test_iter_nodes_skips_malformed_unique_ids_and_names():
     ]
 
 
-def test_parent_names_validates_lookup_key_and_skips_padded_parents():
+def test_parent_names_validates_lookup_key_and_skips_malformed_parents():
     manifest = {
         "parent_map": {
-            "model.child": ["model.a", " model.b", "model.a", 7, "seed.c"]
+            "model.child": ["model.a", " model.b", "model.bad\n", "model.a", 7, "seed.c"]
         }
     }
     assert dbt_manifest.parent_names(manifest, "model.child") == ["a", "c"]
-    for unique_id in ("", " model.child", 7):
+    for unique_id in ("", " model.child", "model.child\n", 7):
         with pytest.raises(ValueError):
             dbt_manifest.parent_names(manifest, unique_id)
 
