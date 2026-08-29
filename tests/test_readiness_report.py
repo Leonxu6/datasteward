@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from dm.connect.base import ColumnDef
 from dm.connect.readiness import build_readiness_report
 
 
@@ -26,6 +27,16 @@ def test_readiness_report_maps_known_object_types_and_preserves_order():
     }
 
 
+def test_readiness_report_accepts_real_introspection_column_objects():
+    report = build_readiness_report(
+        "erp",
+        [dataset("orders", (ColumnDef("id", "integer"), ColumnDef("status", "varchar")), ("id",))],
+        set(),
+    )
+    assert report["datasets"][0]["columns"] == 2
+    assert report["datasets"][0]["pk"] == ["id"]
+
+
 def test_readiness_report_rejects_duplicate_or_invalid_dataset_names():
     with pytest.raises(ValueError, match="duplicate"):
         build_readiness_report("source", [dataset("orders"), dataset("orders")], set())
@@ -35,7 +46,7 @@ def test_readiness_report_rejects_duplicate_or_invalid_dataset_names():
 
 
 def test_readiness_report_rejects_missing_dataset_collection_and_columns():
-    with pytest.raises(ValueError, match="no dataset"):
+    with pytest.raises(ValueError, match="introspect result"):
         build_readiness_report("source", None, set())
     with pytest.raises(ValueError, match="columns"):
         build_readiness_report("source", [SimpleNamespace(name="orders", primary_key=[])], set())
