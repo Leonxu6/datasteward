@@ -109,6 +109,8 @@ class Source:
         key = normalize_required_text(key, field_name="credential key")
         if not isinstance(default, str):
             raise ValueError("credential default must be text")
+        if not isinstance(self.credential_env, dict):
+            raise ValueError("credential_env must be a mapping")
         if key not in self.credential_env:
             return default
         env_name = normalize_env_name(
