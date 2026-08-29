@@ -17,6 +17,38 @@ def _query_text(cypher: object) -> str:
     return cypher
 
 
+def _nonnegative_count(value: object, *, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise RuntimeError(f"graph statistics returned invalid {field}")
+    return value
+
+
+def _single_count(record: object, *, field: str) -> int:
+    if record is None:
+        raise RuntimeError(f"graph statistics returned no {field} row")
+    try:
+        value = record["c"]
+    except (KeyError, TypeError) as exc:
+        raise RuntimeError(f"graph statistics returned malformed {field} row") from exc
+    return _nonnegative_count(value, field=field)
+
+
+def _distribution(records, *, key: str, field: str) -> dict[str, int]:
+    result: dict[str, int] = {}
+    for record in records:
+        try:
+            name = record[key]
+            count = record["c"]
+        except (KeyError, TypeError) as exc:
+            raise RuntimeError(f"graph statistics returned malformed {field} row") from exc
+        if not isinstance(name, str) or not name or name != name.strip():
+            raise RuntimeError(f"graph statistics returned invalid {field} name")
+        if name in result:
+            raise RuntimeError(f"graph statistics returned duplicate {field} name: {name}")
+        result[name] = _nonnegative_count(count, field=f"{field} count")
+    return result
+
+
 def driver():
     from neo4j import GraphDatabase
     # 关掉 driver 的 notification 噪声（如 coalesce 引用可选属性 title 时的 property-not-exist 警告）
@@ -53,13 +85,22 @@ def counts():
     drv = driver()
     try:
         with drv.session() as s:
-            n = s.run("MATCH (n) RETURN count(n) AS c").single()["c"]
-            e = s.run("MATCH ()-[r]->() RETURN count(r) AS c").single()["c"]
-            labels = {r["label"]: r["c"] for r in s.run(
-                "MATCH (n) UNWIND labels(n) AS label RETURN label, count(*) AS c ORDER BY c DESC")}
-            rels = {r["t"]: r["c"] for r in s.run(
-                "MATCH ()-[r]->() RETURN type(r) AS t, count(*) AS c ORDER BY c DESC")}
-            extracted = s.run("MATCH ()-[r {source:'doc'}]->() RETURN count(r) AS c").single()["c"]
+            n = _single_count(s.run("MATCH (n) RETURN count(n) AS c").single(), field="node count")
+            e = _single_count(s.run("MATCH ()-[r]->() RETURN count(r) AS c").single(), field="edge count")
+            labels = _distribution(
+                s.run("MATCH (n) UNWIND labels(n) AS label RETURN label, count(*) AS c ORDER BY c DESC"),
+                key="label",
+                field="label",
+            )
+            rels = _distribution(
+                s.run("MATCH ()-[r]->() RETURN type(r) AS t, count(*) AS c ORDER BY c DESC"),
+                key="t",
+                field="relationship type",
+            )
+            extracted = _single_count(
+                s.run("MATCH ()-[r {source:'doc'}]->() RETURN count(r) AS c").single(),
+                field="document-extracted edge count",
+            )
             return {"nodes": n, "edges": e, "by_label": labels, "by_rel": rels, "doc_extracted": extracted}
     finally:
         drv.close()
