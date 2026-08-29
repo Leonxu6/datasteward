@@ -7,9 +7,16 @@ from dm.connect import catalog
 def test_register_and_unregister_runtime_source(monkeypatch):
     monkeypatch.setattr(catalog, "SOURCES", {})
     source = Source(name="dropzone", source_type="file", params={"dir": "/tmp/drop"})
-    assert catalog.register_source(source) is source
-    assert catalog.get_source("dropzone") is source
-    assert catalog.unregister_source("dropzone") is source
+
+    registered = catalog.register_source(source)
+    fetched = catalog.get_source("dropzone")
+    removed = catalog.unregister_source("dropzone")
+
+    assert registered == source and registered is not source
+    assert fetched == source and fetched is not source and fetched is not registered
+    assert removed == source and removed is not source
+    registered.params["dir"] = "/tmp/changed"
+    assert source.params["dir"] == "/tmp/drop"
     assert catalog.get_source("dropzone") is None
 
 
@@ -19,8 +26,11 @@ def test_register_rejects_duplicate_without_explicit_replace(monkeypatch):
     monkeypatch.setattr(catalog, "SOURCES", {"dropzone": original})
     with pytest.raises(KeyError, match="已存在"):
         catalog.register_source(replacement)
-    assert catalog.register_source(replacement, replace=True) is replacement
-    assert catalog.SOURCES["dropzone"] is replacement
+
+    registered = catalog.register_source(replacement, replace=True)
+    assert registered == replacement and registered is not replacement
+    assert catalog.SOURCES["dropzone"] == replacement
+    assert catalog.SOURCES["dropzone"] is not replacement
 
 
 def test_register_requires_boolean_replace_flag(monkeypatch):
