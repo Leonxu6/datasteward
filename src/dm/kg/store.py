@@ -4,6 +4,18 @@
 """
 from dm.config import NEO4J_PASSWORD, NEO4J_URI, NEO4J_USER
 
+_MAX_CYPHER_BYTES = 100_000
+
+
+def _query_text(cypher: object) -> str:
+    if not isinstance(cypher, str) or not cypher.strip():
+        raise ValueError("cypher must be non-empty text")
+    if len(cypher.encode("utf-8")) > _MAX_CYPHER_BYTES:
+        raise ValueError(f"cypher must be at most {_MAX_CYPHER_BYTES} UTF-8 bytes")
+    if any(ord(ch) < 9 or 13 < ord(ch) < 32 or ord(ch) == 127 for ch in cypher):
+        raise ValueError("cypher contains unsupported control characters")
+    return cypher
+
 
 def driver():
     from neo4j import GraphDatabase
@@ -16,6 +28,7 @@ def driver():
 
 
 def run_write(cypher, **params):
+    cypher = _query_text(cypher)
     drv = driver()
     try:
         with drv.session() as s:
@@ -26,6 +39,7 @@ def run_write(cypher, **params):
 
 def run_read(cypher, **params):
     """只读查询 → list[dict]。"""
+    cypher = _query_text(cypher)
     drv = driver()
     try:
         with drv.session() as s:
