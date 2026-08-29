@@ -21,6 +21,12 @@ def _clean_name(value, *, field: str) -> str:
     return value
 
 
+def _column_name(value, *, dataset: str) -> str:
+    """Accept connector ``ColumnDef`` objects as well as lightweight string fixtures."""
+    raw = value if isinstance(value, str) else getattr(value, "name", None)
+    return _clean_name(raw, field=f"dataset {dataset} column")
+
+
 def build_readiness_report(source_name: str, datasets, known_object_types) -> dict:
     """Build a stable report from introspected dataset definitions."""
     source_name = _clean_name(source_name, field="source_name")
@@ -39,7 +45,7 @@ def build_readiness_report(source_name: str, datasets, known_object_types) -> di
         seen.add(name)
 
         column_values = _materialize_iterable(columns_value, field=f"dataset {name} columns")
-        columns = [_clean_name(column, field=f"dataset {name} column") for column in column_values]
+        columns = [_column_name(column, dataset=name) for column in column_values]
         if len(columns) != len(set(columns)):
             raise ValueError(f"dataset {name} columns contain duplicate names")
 
