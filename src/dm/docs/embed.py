@@ -52,13 +52,16 @@ def _request_texts(texts: object) -> list[str]:
         if texts is None or isinstance(texts, (bytes, bytearray, dict)):
             raise ValueError("texts must be text or a non-string iterable of text")
         try:
-            values = list(texts)
+            iterator = iter(texts)
         except TypeError as exc:
             raise ValueError("texts must be iterable") from exc
+        values = []
+        for text in iterator:
+            if len(values) >= _MAX_BATCH:
+                raise ValueError(f"embedding batch must contain at most {_MAX_BATCH} texts")
+            values.append(text)
     if not values:
         raise ValueError("texts must contain at least one item")
-    if len(values) > _MAX_BATCH:
-        raise ValueError(f"embedding batch must contain at most {_MAX_BATCH} texts")
     result: list[str] = []
     for text in values:
         if not isinstance(text, str) or not text.strip():
