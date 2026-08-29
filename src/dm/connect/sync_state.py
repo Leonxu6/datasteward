@@ -16,16 +16,18 @@ def _path(value, *, field: str) -> Path:
         path = Path(value)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"{field} must be a valid filesystem path") from exc
-    if not path.name:
+    if path.name in {"", ".", ".."}:
         raise ValueError(f"{field} must name a file")
     return path
 
 
 def _table_name(value, *, field: str) -> str:
-    if not isinstance(value, str) or not value or value != value.strip():
+    if not isinstance(value, str) or not value:
         raise ValueError(f"invalid {field}: {value!r}")
     if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
         raise ValueError(f"invalid {field}: control characters are not allowed")
+    if value != value.strip():
+        raise ValueError(f"invalid {field}: {value!r}")
     return value
 
 
