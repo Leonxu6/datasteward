@@ -69,6 +69,8 @@ class User:
     def __post_init__(self) -> None:
         self.name = _clean_lookup(self.name, field="user name")
         self.role = _clean_lookup(self.role, field="user role")
+        if self.role not in ROLES:
+            raise ValueError(f"unsupported user role: {self.role}")
         if self.purpose:
             self.purpose = _clean_lookup(self.purpose, field="user purpose")
         if not isinstance(self.attrs, dict):
