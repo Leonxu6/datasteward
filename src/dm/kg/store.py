@@ -55,7 +55,7 @@ def driver():
     try:
         return GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD),
                                     notifications_min_severity="OFF")
-    except (TypeError, ValueError):  # 老版本驱动无此参数
+    except TypeError:  # 老版本驱动无此参数
         return GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
 
 
