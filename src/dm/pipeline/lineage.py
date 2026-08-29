@@ -1,117 +1,176 @@
-"""数据血缘（Lineage）——从数据集/transform/源注册表自动生成端到端血缘图。
+"""Data lineage helpers built from the live source/dataset/transform registries.
 
-对标 Palantir：血缘是**构建的副产品**（transform 声明 inputs/outputs 即登记依赖），
-三大用途——影响分析（正向）、调试溯源（反向）、合规（provenance）。
-
-关键不变量：**安全随血缘传播**（security travels with the data）——
-给上游（源/raw 数据集）打的 Marking 会沿血缘自动累加到所有下游数据集（`effective_markings`）。
-这与 Palantir "marking 沿数据依赖继承"一致；权限层（security/）据此在查询时施加行列过滤。
-
-节点：source / dataset(raw|refined) / transform；边：源→raw(sync)、raw→transform(input)、transform→refined(output)。
-列级血缘（v0）：沿 transform.column_map 反向追溯到 raw 列与源。
+Lineage is derived state. Runtime source and dataset registration must therefore be
+visible immediately rather than being frozen at import time. Security markings use
+the same live graph so access-control decisions cannot lag behind registry changes.
 """
+from __future__ import annotations
+
 from dm.connect.catalog import SOURCES
 from dm.datasets.model import DATASETS, TRANSFORMS
 
 
-def _build_graph():
-    nodes: dict = {}
-    edges: list = []  # (from_id, to_id, kind)
-    for s in SOURCES.values():
-        nodes[f"source:{s.name}"] = {"id": f"source:{s.name}", "type": "source", "label": s.name}
-    for d in DATASETS.values():
-        nid = f"dataset:{d.name}"
-        nodes[nid] = {"id": nid, "type": "dataset", "tier": d.tier, "label": d.name}
-        if d.source and f"source:{d.source}" in nodes:
-            edges.append((f"source:{d.source}", nid, "sync"))
-    for t in TRANSFORMS.values():
-        tid = f"transform:{t.name}"
-        nodes[tid] = {"id": tid, "type": "transform", "kind": t.kind, "label": t.name}
-        for inp in t.inputs:
-            if f"dataset:{inp}" in nodes:
-                edges.append((f"dataset:{inp}", tid, "input"))
-        for out in t.outputs:
-            if f"dataset:{out}" in nodes:
-                edges.append((tid, f"dataset:{out}", "output"))
+def _clean_name(value: object, *, field: str) -> str:
+    if not isinstance(value, str) or not value or value != value.strip():
+        raise ValueError(f"{field} must be non-empty unpadded text")
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+        raise ValueError(f"{field} contains control characters")
+    return value
+
+
+def _require_dataset(name: object) -> str:
+    clean = _clean_name(name, field="dataset_name")
+    if clean not in DATASETS:
+        raise KeyError(f"unknown dataset: {clean}")
+    return clean
+
+
+def _build_graph() -> tuple[dict[str, dict], list[tuple[str, str, str]]]:
+    nodes: dict[str, dict] = {}
+    edges: list[tuple[str, str, str]] = []
+    for source in SOURCES.values():
+        node_id = f"source:{source.name}"
+        nodes[node_id] = {"id": node_id, "type": "source", "label": source.name}
+    for dataset in DATASETS.values():
+        node_id = f"dataset:{dataset.name}"
+        nodes[node_id] = {
+            "id": node_id,
+            "type": "dataset",
+            "tier": dataset.tier,
+            "label": dataset.name,
+        }
+        source_id = f"source:{dataset.source}" if dataset.source else None
+        if source_id and source_id in nodes:
+            edges.append((source_id, node_id, "sync"))
+    for transform in TRANSFORMS.values():
+        transform_id = f"transform:{transform.name}"
+        nodes[transform_id] = {
+            "id": transform_id,
+            "type": "transform",
+            "kind": transform.kind,
+            "label": transform.name,
+        }
+        for input_name in transform.inputs:
+            input_id = f"dataset:{input_name}"
+            if input_id in nodes:
+                edges.append((input_id, transform_id, "input"))
+        for output_name in transform.outputs:
+            output_id = f"dataset:{output_name}"
+            if output_id in nodes:
+                edges.append((transform_id, output_id, "output"))
     return nodes, edges
 
 
-_NODES, _EDGES = _build_graph()
-
-
 def lineage_graph() -> dict:
-    """全量血缘图（供治理台血缘页渲染）。"""
-    return {"nodes": list(_NODES.values()),
-            "edges": [{"from": a, "to": b, "kind": k} for a, b, k in _EDGES]}
+    """Return a fresh deterministic graph for the current registries."""
+    nodes, edges = _build_graph()
+    ordered_nodes = [nodes[node_id] for node_id in sorted(nodes)]
+    ordered_edges = sorted(edges, key=lambda edge: (edge[0], edge[1], edge[2]))
+    return {
+        "nodes": ordered_nodes,
+        "edges": [{"from": source, "to": target, "kind": kind} for source, target, kind in ordered_edges],
+    }
 
 
-def _walk(start_id: str, upstream: bool) -> list:
-    """沿边 BFS 收集上游（upstream=True）或下游节点 id。"""
-    seen, stack = set(), [start_id]
-    while stack:
-        n = stack.pop()
-        for a, b, _ in _EDGES:
-            nxt = a if (upstream and b == n) else (b if (not upstream and a == n) else None)
-            if nxt and nxt not in seen:
-                seen.add(nxt)
-                stack.append(nxt)
-    return [_NODES[i] for i in seen if i in _NODES]
+def _walk(start_id: str, upstream: bool) -> list[dict]:
+    """Breadth-first traversal with stable shortest-distance ordering."""
+    nodes, edges = _build_graph()
+    if start_id not in nodes:
+        return []
+    seen = {start_id}
+    frontier = [start_id]
+    result: list[dict] = []
+    while frontier:
+        next_frontier: list[str] = []
+        for node_id in frontier:
+            neighbours = {
+                source if upstream and target == node_id else target
+                for source, target, _ in edges
+                if (upstream and target == node_id) or (not upstream and source == node_id)
+            }
+            for neighbour in sorted(neighbours):
+                if neighbour in seen or neighbour not in nodes:
+                    continue
+                seen.add(neighbour)
+                next_frontier.append(neighbour)
+                result.append(nodes[neighbour])
+        frontier = next_frontier
+    return result
 
 
-def ancestry(dataset_name: str) -> list:
-    """某数据集的上游（它从哪来）——调试/溯源。"""
-    return _walk(f"dataset:{dataset_name}", upstream=True)
+def ancestry(dataset_name: str) -> list[dict]:
+    """Return all upstream nodes for a known dataset."""
+    name = _require_dataset(dataset_name)
+    return _walk(f"dataset:{name}", upstream=True)
 
 
-def impact(dataset_name: str) -> list:
-    """某数据集的下游（改它会牵连谁）——影响分析。"""
-    return _walk(f"dataset:{dataset_name}", upstream=False)
+def impact(dataset_name: str) -> list[dict]:
+    """Return all downstream nodes for a known dataset."""
+    name = _require_dataset(dataset_name)
+    return _walk(f"dataset:{name}", upstream=False)
 
 
-def column_lineage(dataset_name: str, column: str) -> list:
-    """列级血缘：沿 transform.column_map 反向追溯该列的来源链。"""
-    chain = [{"dataset": dataset_name, "column": column}]
-    cur_ds, cur_col = dataset_name, column
-    seen = set()
+def column_lineage(dataset_name: str, column: str) -> list[dict]:
+    """Trace one column backwards while refusing ambiguous transform mappings."""
+    current_dataset = _require_dataset(dataset_name)
+    current_column = _clean_name(column, field="column")
+    chain: list[dict] = [{"dataset": current_dataset, "column": current_column}]
+    seen: set[tuple[str, str]] = set()
+
     while True:
-        key = (cur_ds, cur_col)
+        key = (current_dataset, current_column)
         if key in seen:
-            break
+            raise ValueError(f"cyclic column lineage detected at {current_dataset}.{current_column}")
         seen.add(key)
-        producer = next((t for t in TRANSFORMS.values() if cur_ds in t.outputs), None)
-        if not producer:
-            ds = DATASETS.get(cur_ds)
-            if ds and ds.source:
-                chain.append({"source": ds.source, "column": cur_col})
-            break
-        src_cols = producer.column_map.get(cur_col, [])
-        if not src_cols:
-            break
-        cur_col = src_cols[0]
-        cur_ds = producer.inputs[0] if producer.inputs else None
-        if not cur_ds:
-            break
-        chain.append({"dataset": cur_ds, "column": cur_col, "via": producer.name})
-    return chain
+
+        producers = [transform for transform in TRANSFORMS.values() if current_dataset in transform.outputs]
+        if len(producers) > 1:
+            names = ", ".join(sorted(transform.name for transform in producers))
+            raise ValueError(f"ambiguous producers for {current_dataset}: {names}")
+        if not producers:
+            dataset = DATASETS.get(current_dataset)
+            if dataset and dataset.source:
+                chain.append({"source": dataset.source, "column": current_column})
+            return chain
+
+        producer = producers[0]
+        source_columns = producer.column_map.get(current_column, [])
+        if not source_columns:
+            return chain
+        if len(source_columns) != 1:
+            raise ValueError(
+                f"ambiguous source columns for {current_dataset}.{current_column} via {producer.name}"
+            )
+        if len(producer.inputs) != 1:
+            raise ValueError(
+                f"column lineage for {producer.name} requires exactly one input dataset"
+            )
+
+        source_column = _clean_name(source_columns[0], field="source column")
+        source_dataset = _clean_name(producer.inputs[0], field="source dataset")
+        if source_dataset not in DATASETS:
+            raise ValueError(f"transform {producer.name} references unknown input dataset: {source_dataset}")
+        current_dataset, current_column = source_dataset, source_column
+        chain.append({"dataset": current_dataset, "column": current_column, "via": producer.name})
 
 
 def _live_markings(node_id: str) -> list:
     kind, _, name = node_id.partition(":")
     if kind == "source":
-        s = SOURCES.get(name)
-        return list(s.markings) if s else []
+        source = SOURCES.get(name)
+        return list(source.markings) if source else []
     if kind == "dataset":
-        d = DATASETS.get(name)
-        return list(d.markings) if d else []
+        dataset = DATASETS.get(name)
+        return list(dataset.markings) if dataset else []
     return []
 
 
 def effective_markings(dataset_name: str) -> list:
-    """某数据集的**有效 Marking** = 自身 + 全部上游（源/数据集）Marking 的并集。
-    这就是"安全随血缘传播"：给源/上游打标，下游自动继承。权限层据此做行列过滤。"""
-    nid = f"dataset:{dataset_name}"
-    ids = set(n["id"] for n in _walk(nid, upstream=True)) | {nid}
-    marks = set()
-    for i in ids:
-        marks.update(_live_markings(i))
-    return sorted(marks)
+    """Return the union of markings on a dataset and every live upstream node."""
+    name = _require_dataset(dataset_name)
+    node_id = f"dataset:{name}"
+    node_ids = {node["id"] for node in _walk(node_id, upstream=True)} | {node_id}
+    markings: set[str] = set()
+    for upstream_id in node_ids:
+        markings.update(_live_markings(upstream_id))
+    return sorted(markings)
