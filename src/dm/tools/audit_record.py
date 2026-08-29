@@ -5,6 +5,8 @@ import json
 import math
 from collections.abc import Iterable
 
+_MAX_LABELS = 100
+
 
 def _safe_repr(value: object, *, limit: int = 1000) -> str:
     try:
@@ -41,20 +43,22 @@ def safe_json(value) -> str:
 
 
 def join_labels(values: Iterable | None) -> str:
-    """Join optional labels, treating a scalar string as one label rather than characters."""
+    """Join optional labels without materializing an unbounded external iterable."""
     if values is None:
         return ""
     if isinstance(values, str):
-        values = [values]
+        iterator = iter([values])
     elif isinstance(values, (bytes, bytearray, dict)):
         raise ValueError("labels must be text values, not bytes or mappings")
     else:
         try:
-            values = list(values)
+            iterator = iter(values)
         except TypeError as exc:
             raise ValueError("labels must be iterable") from exc
     result: list[str] = []
-    for value in values:
+    for value in iterator:
+        if len(result) >= _MAX_LABELS:
+            raise ValueError(f"labels must contain at most {_MAX_LABELS} values")
         try:
             text = str(value).strip()
         except Exception:  # noqa: BLE001
