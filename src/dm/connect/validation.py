@@ -1,7 +1,7 @@
 """连接配置的轻量规范化与前置校验。"""
 import re
 
-_ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*$")
 
 
 def normalize_required_text(value, *, field_name: str) -> str:
@@ -18,10 +18,10 @@ def normalize_required_text(value, *, field_name: str) -> str:
 
 
 def normalize_env_name(value, *, field_name: str = "credential_env") -> str:
-    """校验环境变量引用名，避免无效键在 ``os.environ`` 访问时才以底层异常失败。"""
+    """校验环境变量引用名，同时兼容外部 secret stores 常见的点号/连字符键名。"""
     value = normalize_required_text(value, field_name=field_name)
     if not _ENV_NAME.fullmatch(value):
-        raise ValueError(f"{field_name} 必须是 shell-safe 环境变量名: {value!r}")
+        raise ValueError(f"{field_name} 必须是可移植环境引用名: {value!r}")
     return value
 
 
