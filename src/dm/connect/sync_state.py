@@ -9,8 +9,21 @@ from pathlib import Path
 from typing import Iterable
 
 
+def _path(value, *, field: str) -> Path:
+    if not isinstance(value, (str, os.PathLike)):
+        raise ValueError(f"{field} must be a filesystem path")
+    try:
+        path = Path(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field} must be a valid filesystem path") from exc
+    if not path.name:
+        raise ValueError(f"{field} must name a file")
+    return path
+
+
 def load_json_mapping(path: Path) -> dict:
     """Load a JSON object, returning an empty mapping for missing/corrupt/non-object files."""
+    path = _path(path, field="state path")
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError, UnicodeError):
@@ -20,6 +33,7 @@ def load_json_mapping(path: Path) -> dict:
 
 def atomic_write_json(path: Path, value: dict) -> None:
     """Atomically replace a JSON state file so crashes cannot leave partial content."""
+    path = _path(path, field="state path")
     if not isinstance(value, dict):
         raise TypeError("value must be a dict")
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -27,7 +41,7 @@ def atomic_write_json(path: Path, value: dict) -> None:
     temp_path = Path(temp_name)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(value, handle, ensure_ascii=False, indent=1, default=str)
+            json.dump(value, handle, ensure_ascii=False, indent=1, default=str, allow_nan=False)
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
@@ -38,9 +52,19 @@ def atomic_write_json(path: Path, value: dict) -> None:
 
 
 def max_non_null(values: Iterable):
-    """Return the maximum non-null cursor value, or ``None`` when all values are null."""
-    candidates = [value for value in values if value is not None]
-    return max(candidates) if candidates else None
+    """Return the maximum non-null cursor value with a stable error for mixed domains."""
+    if values is None or isinstance(values, (str, bytes, bytearray, dict)):
+        raise ValueError("watermark values must be a non-string iterable")
+    try:
+        candidates = [value for value in values if value is not None]
+    except TypeError as exc:
+        raise ValueError("watermark values must be iterable") from exc
+    if not candidates:
+        return None
+    try:
+        return max(candidates)
+    except TypeError as exc:
+        raise ValueError("watermark values must be mutually comparable") from exc
 
 
 def serialize_watermark(value):
@@ -54,10 +78,27 @@ def validate_requested_names(requested: Iterable[str] | None, available: Iterabl
     """Validate explicitly requested table names instead of silently ignoring typos."""
     if requested is None:
         return None
-    allowed = set(available)
+    if isinstance(requested, (str, bytes, bytearray, dict)):
+        raise ValueError("requested table names must be a non-string iterable")
+    if available is None or isinstance(available, (str, bytes, bytearray, dict)):
+        raise ValueError("available table names must be a non-string iterable")
+    try:
+        available_values = list(available)
+    except TypeError as exc:
+        raise ValueError("available table names must be iterable") from exc
+    allowed: set[str] = set()
+    for name in available_values:
+        if not isinstance(name, str) or not name or name != name.strip():
+            raise ValueError(f"invalid available table name: {name!r}")
+        allowed.add(name)
+
     result: list[str] = []
     seen: set[str] = set()
-    for name in requested:
+    try:
+        iterator = iter(requested)
+    except TypeError as exc:
+        raise ValueError("requested table names must be iterable") from exc
+    for name in iterator:
         if not isinstance(name, str) or not name or name != name.strip():
             raise ValueError(f"invalid table name: {name!r}")
         if name not in allowed:
