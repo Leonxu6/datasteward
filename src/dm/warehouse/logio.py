@@ -8,6 +8,16 @@ from datetime import date, datetime
 from pathlib import Path
 
 _LOG_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+_MAX_LINE_BYTES = 1024 * 1024
+
+
+def _log_dir(value) -> Path:
+    if not isinstance(value, (str, os.PathLike)):
+        raise ValueError("log_dir must be a filesystem path")
+    try:
+        return Path(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("log_dir must be a valid filesystem path") from exc
 
 
 def normalize_log_name(name) -> str:
@@ -18,7 +28,7 @@ def normalize_log_name(name) -> str:
 
 
 def log_path(log_dir: Path, name) -> Path:
-    return log_dir / f"{normalize_log_name(name)}.jsonl"
+    return _log_dir(log_dir) / f"{normalize_log_name(name)}.jsonl"
 
 
 def _json_default(value):
@@ -37,13 +47,17 @@ def encode_record(record: dict) -> bytes:
         separators=(",", ":"),
         allow_nan=False,
     )
-    return (line + "\n").encode("utf-8")
+    payload = (line + "\n").encode("utf-8")
+    if len(payload) > _MAX_LINE_BYTES:
+        raise ValueError(f"JSONL record exceeds {_MAX_LINE_BYTES} bytes")
+    return payload
 
 
 def append_jsonl(log_dir: Path, name, record: dict) -> None:
-    """Append one complete UTF-8 JSON line using an O_APPEND file descriptor."""
-    log_dir.mkdir(parents=True, exist_ok=True)
-    path = log_path(log_dir, name)
+    """Append and fsync one complete bounded UTF-8 JSON line."""
+    directory = _log_dir(log_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    path = log_path(directory, name)
     payload = encode_record(record)
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o640)
     try:
@@ -53,23 +67,35 @@ def append_jsonl(log_dir: Path, name, record: dict) -> None:
             if written <= 0:
                 raise OSError(f"short JSONL append stalled after {offset}/{len(payload)} bytes")
             offset += written
+        os.fsync(fd)
     finally:
         os.close(fd)
 
 
 def read_jsonl(log_dir: Path, name) -> list[dict]:
-    """Read valid JSON-object lines while tolerating interrupted/corrupt records."""
+    """Read bounded valid JSON-object lines while skipping corrupt/oversized records."""
     path = log_path(log_dir, name)
     if not path.exists():
         return []
     output: list[dict] = []
-    with path.open("r", encoding="utf-8") as handle:
-        for line in handle:
-            line = line.strip()
+    with path.open("rb") as handle:
+        while True:
+            line = handle.readline(_MAX_LINE_BYTES + 1)
             if not line:
+                break
+            if len(line) > _MAX_LINE_BYTES:
+                if not line.endswith(b"\n"):
+                    while line and not line.endswith(b"\n"):
+                        line = handle.readline(_MAX_LINE_BYTES + 1)
                 continue
             try:
-                value = json.loads(line)
+                text = line.decode("utf-8").strip()
+            except UnicodeDecodeError:
+                continue
+            if not text:
+                continue
+            try:
+                value = json.loads(text)
             except json.JSONDecodeError:
                 continue
             if isinstance(value, dict):
