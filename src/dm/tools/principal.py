@@ -4,8 +4,9 @@
 长度/控制字符/通道格式校验，避免脏环境变量或外部通道字段污染授权与日志。
 """
 import os
+import secrets
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 from dm.security import User
 from dm.tools.identity import normalize_channel, normalize_identity_text
@@ -36,11 +37,16 @@ class Principal:
         return User(name=self.user, role=self.role, purpose=self.purpose, attrs=attrs)
 
 
+def _generated_session_id() -> str:
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    return f"mcp-{timestamp}-{secrets.token_hex(6)}"
+
+
 def principal_from_env() -> Principal:
     """从环境变量构建 Principal（stdio MCP 壳兼容路径）。"""
     session_id = os.environ.get("DM_SESSION_ID")
     if session_id is None or session_id == "":
-        session_id = "mcp-" + datetime.now().strftime("%Y%m%d%H%M%S")
+        session_id = _generated_session_id()
     return Principal(
         user=os.environ.get("DM_USER", "anonymous"),
         role=os.environ.get("DM_ROLE", "仓管"),
