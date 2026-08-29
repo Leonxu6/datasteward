@@ -21,6 +21,14 @@ def _path(value, *, field: str) -> Path:
     return path
 
 
+def _table_name(value, *, field: str) -> str:
+    if not isinstance(value, str) or not value or value != value.strip():
+        raise ValueError(f"invalid {field}: {value!r}")
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+        raise ValueError(f"invalid {field}: control characters are not allowed")
+    return value
+
+
 def load_json_mapping(path: Path) -> dict:
     """Load a JSON object, returning an empty mapping for missing/corrupt/non-object files."""
     path = _path(path, field="state path")
@@ -87,9 +95,10 @@ def validate_requested_names(requested: Iterable[str] | None, available: Iterabl
     except TypeError as exc:
         raise ValueError("available table names must be iterable") from exc
     allowed: set[str] = set()
-    for name in available_values:
-        if not isinstance(name, str) or not name or name != name.strip():
-            raise ValueError(f"invalid available table name: {name!r}")
+    for value in available_values:
+        name = _table_name(value, field="available table name")
+        if name in allowed:
+            raise ValueError(f"duplicate available table name: {name}")
         allowed.add(name)
 
     result: list[str] = []
@@ -98,9 +107,8 @@ def validate_requested_names(requested: Iterable[str] | None, available: Iterabl
         iterator = iter(requested)
     except TypeError as exc:
         raise ValueError("requested table names must be iterable") from exc
-    for name in iterator:
-        if not isinstance(name, str) or not name or name != name.strip():
-            raise ValueError(f"invalid table name: {name!r}")
+    for value in iterator:
+        name = _table_name(value, field="table name")
         if name not in allowed:
             raise ValueError(f"unknown table: {name}")
         if name not in seen:
