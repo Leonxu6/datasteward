@@ -10,6 +10,7 @@ _WRITE = re.compile(
     re.I,
 )
 _IDENTIFIER = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
+_TRAILING_LIMIT = re.compile(r"\blimit\s+(\d+)\s*$", re.I)
 _MAX_CYPHER_LENGTH = 20_000
 
 
@@ -82,7 +83,12 @@ def restricted_cypher(cypher: str, limit: int = 50):
     if _WRITE.search(query):
         return {"mode": "cypher", "error": "只读：检测到写/管理/过程调用关键字，已拒绝"}
     row_limit = _bounded_int(limit, field="limit", minimum=1, maximum=200)
-    if not re.search(r"\blimit\b", query, re.I):
+    trailing_limit = _TRAILING_LIMIT.search(query)
+    if trailing_limit:
+        requested = int(trailing_limit.group(1))
+        effective = min(requested, row_limit)
+        query = query[:trailing_limit.start()] + f"LIMIT {effective}"
+    else:
         query += f" LIMIT {row_limit}"
     rows = run_read(query)
     return {"mode": "cypher", "cypher": query, "count": len(rows), "rows": rows}
