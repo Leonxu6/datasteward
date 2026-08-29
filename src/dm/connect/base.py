@@ -107,6 +107,8 @@ class Source:
     def secret(self, key: str, default: str = "") -> str:
         """按引用从环境变量解析一个凭据（值绝不落在 Source 对象里）。"""
         key = normalize_required_text(key, field_name="credential key")
+        if not isinstance(default, str):
+            raise ValueError("credential default must be text")
         if key not in self.credential_env:
             return default
         env_name = normalize_env_name(
