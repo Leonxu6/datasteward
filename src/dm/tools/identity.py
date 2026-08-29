@@ -2,6 +2,20 @@
 from __future__ import annotations
 
 
+def _field_name(value: object) -> str:
+    if not isinstance(value, str) or not value or value != value.strip():
+        raise ValueError("field_name must be non-empty unpadded text")
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+        raise ValueError("field_name must not contain control characters")
+    return value
+
+
+def _max_length(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError("max_length must be a positive integer")
+    return value
+
+
 def normalize_identity_text(
     value,
     *,
@@ -11,6 +25,10 @@ def normalize_identity_text(
     allow_empty: bool = True,
 ) -> str:
     """Normalize audit/PBAC identity text without silently trimming malformed input."""
+    field_name = _field_name(field_name)
+    max_length = _max_length(max_length)
+    if not isinstance(allow_empty, bool):
+        raise ValueError("allow_empty must be boolean")
     if value is None:
         value = default
     if not isinstance(value, str):
