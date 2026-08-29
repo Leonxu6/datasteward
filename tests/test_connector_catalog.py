@@ -7,13 +7,16 @@ from dm.connect.catalog import get_connector, get_source
 from dm.connect.file import FileConnector
 
 
-def test_get_connector_accepts_source_objects():
-    source = Source(name="drop", source_type="file")
+def test_get_connector_accepts_source_objects_without_sharing_mutable_state():
+    source = Source(name="drop", source_type="file", params={"dir": "/tmp/drop"})
 
     connector = get_connector(source)
 
     assert isinstance(connector, FileConnector)
-    assert connector.source is source
+    assert connector.source == source
+    assert connector.source is not source
+    connector.source.params["dir"] = "/tmp/changed"
+    assert source.params["dir"] == "/tmp/drop"
 
 
 def test_get_connector_rejects_unknown_source_names():
