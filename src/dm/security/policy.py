@@ -20,6 +20,39 @@ from dm.security.model import (
 )
 
 
+def _clean_name(value: object, *, field: str) -> str:
+    if not isinstance(value, str) or not value or value != value.strip():
+        raise ValueError(f"{field} must be non-empty unpadded text")
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+        raise ValueError(f"{field} contains control characters")
+    return value
+
+
+def _clean_tables(values: object) -> list[str]:
+    if isinstance(values, (str, bytes, bytearray, dict)):
+        raise ValueError("tables_touched must be a sequence of table names")
+    try:
+        raw = list(values)
+    except TypeError as exc:
+        raise ValueError("tables_touched must be a sequence of table names") from exc
+    out: list[str] = []
+    seen: set[str] = set()
+    for value in raw:
+        table = _clean_name(value, field="table")
+        if table not in seen:
+            out.append(table)
+            seen.add(table)
+    return out
+
+
+def _clean_sql(sql: object) -> str:
+    if not isinstance(sql, str) or not sql.strip():
+        raise ValueError("sql must be non-empty text")
+    if any(ord(ch) < 32 and ch not in "\t\n\r" for ch in sql) or "\x7f" in sql:
+        raise ValueError("sql contains unsafe control characters")
+    return sql
+
+
 def user_from_env() -> User:
     """从环境变量构建当前用户（由 agent/通道经 mcp-config 注入；默认最小权限 仓管）。"""
     attrs = {}
@@ -48,11 +81,10 @@ def effective_user_markings(user: User) -> set:
 def _table_required_markings(table: str) -> set:
     """表的对象级强制 Marking = 显式表标 + 沿血缘传播来的有效 Marking（安全随数据跑）。"""
     marks = set(table_markings(table))
-    try:  # 惰性导入，避免 security→lineage→datasets→ontology 的导入环
-        from dm.pipeline.lineage import effective_markings
-        marks |= set(effective_markings(table))
-    except Exception:  # noqa: BLE001
-        pass
+    # 惰性导入避免 security→lineage→datasets→ontology 的导入环。
+    # 这里故意 fail closed：血缘标记计算异常时不能假装表没有继承标记。
+    from dm.pipeline.lineage import effective_markings
+    marks |= set(effective_markings(table))
     return marks
 
 
@@ -67,6 +99,10 @@ def _disallowed_columns(um: set, tables: list) -> list:
 
 def enforce_query(user: User, sql: str, tables_touched: list) -> dict:
     """读查询的权限判定。返回 {allow, reason, mask_columns, hit_markings}。"""
+    if not isinstance(user, User):
+        raise ValueError("user must be a User")
+    sql = _clean_sql(sql)
+    tables_touched = _clean_tables(tables_touched)
     um = effective_user_markings(user)
     low = sql.lower()
 
@@ -99,6 +135,16 @@ def enforce_query(user: User, sql: str, tables_touched: list) -> dict:
 def apply_mask(columns: list, rows: list, mask_columns: list) -> tuple:
     """把结果里 mask_columns 命中的列值屏蔽为 None（property policy 的 null 语义）。
     返回 (rows, masked_present)：masked_present 为实际出现在结果里的被屏蔽列名。"""
+    columns = list(columns)
+    rows = list(rows)
+    mask_columns = list(mask_columns)
+    for row in rows:
+        try:
+            size = len(row)
+        except TypeError as exc:
+            raise ValueError("query rows must be sized sequences") from exc
+        if size != len(columns):
+            raise ValueError("query row width does not match result columns")
     mset = set(mask_columns)
     idx = [i for i, c in enumerate(columns) if c in mset]
     if not idx:
@@ -115,6 +161,9 @@ def apply_mask(columns: list, rows: list, mask_columns: list) -> tuple:
 
 def can_read_table(user: User, table: str) -> bool:
     """对象/表级可见性（含沿血缘传播的 Marking；供 ontology OSDK 用）。"""
+    if not isinstance(user, User):
+        raise ValueError("user must be a User")
+    table = _clean_name(table, field="table")
     return _table_required_markings(table) <= effective_user_markings(user)
 
 
@@ -122,18 +171,25 @@ def row_filter(user: User, table: str):
     """行级对象策略（Palantir object policy = 行级）：
     返回 (column, value) 表示该用户对本表"只可见 column==value 的行"；无策略则 None。
     与列级属性策略叠加即"单元格级"。"""
+    if not isinstance(user, User):
+        raise ValueError("user must be a User")
+    table = _clean_name(table, field="table")
     pol = ROW_POLICIES.get(table)
     if not pol or user.role != pol["role"]:
         return None
     val = user.attrs.get(pol["attr"])
-    return (pol["column"], val) if val else None
+    if val is None or val == "":
+        raise PermissionError(f"missing required row-policy attribute: {pol['attr']}")
+    return pol["column"], val
 
 
 def apply_row_policies(user: User, sql: str, tables_touched: list) -> str:
     """对 run_sql 施加行级策略：把受限表的 FROM/JOIN 引用替换为过滤子查询
     （别名保留为表名，后续列引用不变）。这样原始 SQL 的 join/列/where 都不动，仅收窄可见行。"""
-    out = sql
-    for t in tables_touched:
+    if not isinstance(user, User):
+        raise ValueError("user must be a User")
+    out = _clean_sql(sql)
+    for t in _clean_tables(tables_touched):
         rf = row_filter(user, t)
         if not rf:
             continue
@@ -146,6 +202,9 @@ def apply_row_policies(user: User, sql: str, tables_touched: list) -> str:
 
 def can_execute_action(user: User, action: str) -> tuple:
     """写回 Action 的执行判定（**独立于读权限**）。返回 (allow, reason)。"""
+    if not isinstance(user, User):
+        raise ValueError("user must be a User")
+    action = _clean_name(action, field="action")
     perm = ACTION_PERMISSIONS.get(action)
     if not perm:
         return False, f"未知 Action：{action}"
