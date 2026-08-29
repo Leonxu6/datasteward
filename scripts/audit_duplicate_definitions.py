@@ -3,11 +3,19 @@ from __future__ import annotations
 import argparse,ast
 from pathlib import Path
 from scripts.audit_common import print_failures,require_root,tracked_files
+
+def _property_mutator(node):
+    if not isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef)):return False
+    for decorator in node.decorator_list:
+        if isinstance(decorator,ast.Attribute) and decorator.attr in {'setter','deleter'}:
+            if isinstance(decorator.value,ast.Name) and decorator.value.id==node.name:return True
+    return False
+
 def _dupes(body,scope):
     seen=set();out=[]
     for n in body:
         if not isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef)):continue
-        if n.name in seen:out.append(f"duplicate definition {scope}{n.name} on line {n.lineno}")
+        if n.name in seen and not _property_mutator(n):out.append(f"duplicate definition {scope}{n.name} on line {n.lineno}")
         seen.add(n.name)
     return out
 def audit_source(source:str)->list[str]:
