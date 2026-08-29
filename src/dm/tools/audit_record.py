@@ -14,13 +14,21 @@ def _safe_repr(value: object, *, limit: int = 1000) -> str:
     return rendered[:limit]
 
 
+def _safe_json_default(value: object) -> str:
+    """Render unknown JSON values without trusting user-defined ``__str__`` methods."""
+    try:
+        return str(value)
+    except Exception:  # noqa: BLE001
+        raise TypeError("value could not be converted to text")
+
+
 def safe_json(value) -> str:
     """Serialize tool arguments as standards-compliant JSON without breaking auditing."""
     try:
         return json.dumps(
             value,
             ensure_ascii=False,
-            default=str,
+            default=_safe_json_default,
             sort_keys=True,
             allow_nan=False,
         )
