@@ -2,36 +2,56 @@
 from __future__ import annotations
 
 
+def _materialize_iterable(value, *, field: str) -> list:
+    if value is None:
+        raise ValueError(f"{field} must be provided")
+    if isinstance(value, (str, bytes, bytearray, dict)):
+        raise ValueError(f"{field} must be a collection, not a scalar mapping/string")
+    try:
+        return list(value)
+    except TypeError as exc:
+        raise ValueError(f"{field} must be iterable") from exc
+
+
+def _clean_name(value, *, field: str) -> str:
+    if not isinstance(value, str) or not value or value != value.strip():
+        raise ValueError(f"{field} must be non-empty unpadded text")
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+        raise ValueError(f"{field} contains control characters")
+    return value
+
+
 def build_readiness_report(source_name: str, datasets, known_object_types) -> dict:
     """Build a stable report from introspected dataset definitions."""
-    if not isinstance(source_name, str) or not source_name or source_name != source_name.strip():
-        raise ValueError("source_name must be a non-empty unpadded string")
-    if datasets is None:
-        raise ValueError("introspect returned no dataset list")
-    try:
-        datasets = list(datasets)
-    except TypeError as exc:
-        raise ValueError("introspect result must be iterable") from exc
+    source_name = _clean_name(source_name, field="source_name")
+    datasets = _materialize_iterable(datasets, field="introspect result")
+    known_values = _materialize_iterable(known_object_types, field="known_object_types")
+    known = {_clean_name(name, field="known object type") for name in known_values}
 
-    known = set(known_object_types)
     rows = []
     seen: set[str] = set()
     for dataset in datasets:
-        name = getattr(dataset, "name", None)
+        name = _clean_name(getattr(dataset, "name", None), field="dataset name")
         columns = getattr(dataset, "columns", None)
         primary_key = getattr(dataset, "primary_key", None)
-        if not isinstance(name, str) or not name or name != name.strip():
-            raise ValueError(f"invalid dataset name: {name!r}")
         if name in seen:
             raise ValueError(f"duplicate dataset name: {name}")
         seen.add(name)
         if columns is None:
             raise ValueError(f"dataset {name} has no columns collection")
+        if isinstance(columns, (str, bytes, bytearray, dict)):
+            raise ValueError(f"dataset {name} columns must be a sized collection")
         try:
             column_count = len(columns)
         except TypeError as exc:
             raise ValueError(f"dataset {name} columns are not sized") from exc
-        pk = list(primary_key or [])
+        if primary_key is None:
+            pk = []
+        else:
+            pk_values = _materialize_iterable(primary_key, field=f"dataset {name} primary_key")
+            pk = [_clean_name(column, field=f"dataset {name} primary key column") for column in pk_values]
+            if len(pk) != len(set(pk)):
+                raise ValueError(f"dataset {name} primary key contains duplicate columns")
         rows.append({"name": name, "columns": column_count, "pk": pk, "mapped": name in known})
 
     mapped = [row["name"] for row in rows if row["mapped"]]
