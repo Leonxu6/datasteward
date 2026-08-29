@@ -71,3 +71,18 @@ def test_restricted_cypher_adds_a_validated_limit(monkeypatch):
     for value in (True, 0, 201, "50"):
         with pytest.raises(ValueError):
             query.restricted_cypher("MATCH (n) RETURN n", limit=value)
+
+
+def test_restricted_cypher_caps_existing_numeric_limits(monkeypatch):
+    calls = []
+    monkeypatch.setattr(query, "run_read", lambda cypher, **params: calls.append(cypher) or [])
+    query.restricted_cypher("MATCH (n) RETURN n LIMIT 5000", limit=40)
+    query.restricted_cypher("MATCH (n) RETURN n LIMIT 10", limit=40)
+    assert calls == ["MATCH (n) RETURN n LIMIT 40", "MATCH (n) RETURN n LIMIT 10"]
+
+
+def test_restricted_cypher_does_not_treat_limit_inside_text_as_a_row_cap(monkeypatch):
+    calls = []
+    monkeypatch.setattr(query, "run_read", lambda cypher, **params: calls.append(cypher) or [])
+    query.restricted_cypher('RETURN "limit" AS label', limit=30)
+    assert calls == ['RETURN "limit" AS label LIMIT 30']
