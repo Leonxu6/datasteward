@@ -132,13 +132,33 @@ def enforce_query(user: User, sql: str, tables_touched: list) -> dict:
             "hit_markings": [], "reason": ""}
 
 
+def _result_columns(values: object) -> list[str]:
+    if isinstance(values, (str, bytes, bytearray, dict)):
+        raise ValueError("query columns must be a sequence of column names")
+    try:
+        columns = list(values)
+    except TypeError as exc:
+        raise ValueError("query columns must be a sequence of column names") from exc
+    cleaned = [_clean_name(value, field="result column") for value in columns]
+    if len(set(cleaned)) != len(cleaned):
+        raise ValueError("query columns must not contain duplicates")
+    return cleaned
+
+
 def apply_mask(columns: list, rows: list, mask_columns: list) -> tuple:
     """把结果里 mask_columns 命中的列值屏蔽为 None（property policy 的 null 语义）。
     返回 (rows, masked_present)：masked_present 为实际出现在结果里的被屏蔽列名。"""
-    columns = list(columns)
-    rows = list(rows)
-    mask_columns = list(mask_columns)
+    columns = _result_columns(columns)
+    if isinstance(rows, (str, bytes, bytearray, dict)):
+        raise ValueError("query rows must be a sequence of rows")
+    try:
+        rows = list(rows)
+    except TypeError as exc:
+        raise ValueError("query rows must be a sequence of rows") from exc
+    mask_columns = _result_columns(mask_columns)
     for row in rows:
+        if isinstance(row, (str, bytes, bytearray, dict)):
+            raise ValueError("query rows must contain sized row sequences")
         try:
             size = len(row)
         except TypeError as exc:
