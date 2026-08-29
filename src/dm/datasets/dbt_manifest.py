@@ -2,13 +2,36 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Iterator
 
+_MAX_MANIFEST_BYTES = 64 * 1024 * 1024
+
+
+def _manifest(value: object) -> dict:
+    if not isinstance(value, dict):
+        raise ValueError("manifest must be a JSON object")
+    return value
+
+
+def _clean_text(value: object, *, field: str) -> str:
+    if not isinstance(value, str) or not value or value != value.strip():
+        raise ValueError(f"{field} must be non-empty unpadded text")
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+        raise ValueError(f"{field} contains control characters")
+    return value
+
 
 def load_manifest(path: Path) -> dict | None:
-    """Load a dbt manifest object or return ``None`` for missing/invalid documents."""
+    """Load a bounded dbt manifest object or return ``None`` for invalid documents."""
+    if not isinstance(path, (str, os.PathLike)):
+        raise ValueError("manifest path must be a filesystem path")
+    path = Path(path)
     try:
+        metadata = path.stat()
+        if metadata.st_size > _MAX_MANIFEST_BYTES:
+            return None
         document = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError):
         return None
@@ -17,11 +40,13 @@ def load_manifest(path: Path) -> dict | None:
 
 def iter_nodes(manifest: dict, *, resource_type: str) -> Iterator[tuple[str, dict]]:
     """Yield well-formed nodes of one dbt resource type, ignoring corrupt entries."""
+    manifest = _manifest(manifest)
+    resource_type = _clean_text(resource_type, field="resource_type")
     nodes = manifest.get("nodes", {})
     if not isinstance(nodes, dict):
         return
     for unique_id, node in nodes.items():
-        if not isinstance(unique_id, str) or not isinstance(node, dict):
+        if not isinstance(unique_id, str) or not unique_id or unique_id != unique_id.strip() or not isinstance(node, dict):
             continue
         if node.get("resource_type") != resource_type:
             continue
@@ -33,6 +58,8 @@ def iter_nodes(manifest: dict, *, resource_type: str) -> Iterator[tuple[str, dic
 
 def parent_names(manifest: dict, unique_id: str) -> list[str]:
     """Return stable de-duplicated dependency names for one node."""
+    manifest = _manifest(manifest)
+    unique_id = _clean_text(unique_id, field="unique_id")
     parent_map = manifest.get("parent_map", {})
     if not isinstance(parent_map, dict):
         return []
@@ -42,7 +69,7 @@ def parent_names(manifest: dict, unique_id: str) -> list[str]:
     result: list[str] = []
     seen: set[str] = set()
     for parent in parents:
-        if not isinstance(parent, str) or not parent:
+        if not isinstance(parent, str) or not parent or parent != parent.strip():
             continue
         name = parent.rsplit(".", 1)[-1]
         if name and name not in seen:
@@ -53,7 +80,11 @@ def parent_names(manifest: dict, unique_id: str) -> list[str]:
 
 def model_layer(node: dict) -> str:
     """Return a readable dbt layer name without trusting arbitrary FQN shapes."""
+    if not isinstance(node, dict):
+        raise ValueError("dbt node must be an object")
     fqn = node.get("fqn")
-    if isinstance(fqn, list) and len(fqn) > 2 and isinstance(fqn[1], str) and fqn[1]:
-        return fqn[1]
+    if isinstance(fqn, list) and len(fqn) > 2 and isinstance(fqn[1], str):
+        layer = fqn[1]
+        if layer and layer == layer.strip() and not any(ord(ch) < 32 or ord(ch) == 127 for ch in layer):
+            return layer
     return "dw"
