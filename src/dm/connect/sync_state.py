@@ -12,6 +12,11 @@ from typing import Iterable
 def _path(value, *, field: str) -> Path:
     if not isinstance(value, (str, os.PathLike)):
         raise ValueError(f"{field} must be a filesystem path")
+    if isinstance(value, str):
+        if not value or value != value.strip():
+            raise ValueError(f"{field} must be non-empty unpadded path text")
+        if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+            raise ValueError(f"{field} must not contain control characters")
     try:
         path = Path(value)
     except (TypeError, ValueError) as exc:
