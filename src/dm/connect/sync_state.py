@@ -18,6 +18,11 @@ def _path(value, *, field: str) -> Path:
         raise ValueError(f"{field} must be a valid filesystem path") from exc
     if path.name in {"", ".", ".."}:
         raise ValueError(f"{field} must name a file")
+    try:
+        if path.exists() and path.is_dir():
+            raise ValueError(f"{field} must name a file, not a directory")
+    except OSError as exc:
+        raise ValueError(f"{field} could not be inspected") from exc
     return path
 
 
