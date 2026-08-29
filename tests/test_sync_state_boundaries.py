@@ -37,9 +37,19 @@ def test_requested_names_reject_scalar_collections_and_bad_available_names():
     for requested in ("orders", {"orders": True}):
         with pytest.raises(ValueError):
             validate_requested_names(requested, ["orders"])
-    for available in (None, "orders", [" orders"], [7]):
+    for available in (None, "orders", [" orders"], ["orders\n"], [7]):
         with pytest.raises(ValueError):
             validate_requested_names(["orders"], available)
+
+
+def test_requested_names_reject_control_characters():
+    with pytest.raises(ValueError, match="control"):
+        validate_requested_names(["orders\n"], ["orders"])
+
+
+def test_available_names_reject_duplicates_instead_of_hiding_registry_errors():
+    with pytest.raises(ValueError, match="duplicate available"):
+        validate_requested_names(["orders"], ["orders", "orders"])
 
 
 def test_requested_names_preserve_order_and_deduplicate():
