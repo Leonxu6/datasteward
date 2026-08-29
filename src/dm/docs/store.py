@@ -1,10 +1,6 @@
-"""RAG 向量库（Postgres + pgvector）：document 注册表 + doc_chunk 向量表。
+"""RAG vector-store persistence backed by PostgreSQL + pgvector."""
+from __future__ import annotations
 
-与 19 张业务 OLTP 表**同库不同表**（"一个 Postgres 一身三职"：CDC 影子源 + 向量库 + 元数据）；
-Flink CDC 仅捕获 19 张业务表，doc_* 表不在其列，互不影响。
-search_documents 工具直连这里做相似检索；结构化 run_sql 仍走 StarRocks。
-连接参数取自 dm.config 的 SRC_PG_*（开发机经 SSH 隧道连本地 15432→主机 5432）。
-"""
 import psycopg2
 
 from dm.config import (SRC_PG_DB, SRC_PG_HOST, SRC_PG_PASSWORD, SRC_PG_PORT,
@@ -13,18 +9,31 @@ from dm.docs.embed import DIM
 
 
 def connect(autocommit=True):
-    c = psycopg2.connect(host=SRC_PG_HOST, port=SRC_PG_PORT, user=SRC_PG_USER,
-                         password=SRC_PG_PASSWORD, dbname=SRC_PG_DB, connect_timeout=15)
-    c.autocommit = autocommit
-    return c
+    if not isinstance(autocommit, bool):
+        raise ValueError("autocommit must be boolean")
+    connection = psycopg2.connect(
+        host=SRC_PG_HOST,
+        port=SRC_PG_PORT,
+        user=SRC_PG_USER,
+        password=SRC_PG_PASSWORD,
+        dbname=SRC_PG_DB,
+        connect_timeout=15,
+    )
+    connection.autocommit = autocommit
+    return connection
 
 
 def connect_vec(autocommit=True):
-    """连接并注册 pgvector 适配，可直接传/取 Python list 作为向量。"""
+    """Connect and register pgvector while avoiding leaks if registration fails."""
     from pgvector.psycopg2 import register_vector
-    c = connect(autocommit=autocommit)
-    register_vector(c)
-    return c
+
+    connection = connect(autocommit=autocommit)
+    try:
+        register_vector(connection)
+    except Exception:
+        connection.close()
+        raise
+    return connection
 
 
 def _ddl():
@@ -58,23 +67,36 @@ def _ddl():
 
 
 def init_schema():
-    """建库（幂等）。注意：若改了嵌入维度 DIM，需先 DROP doc_chunk 再建。"""
-    c = connect()
-    cur = c.cursor()
-    for stmt in _ddl():
-        cur.execute(stmt)
-    c.close()
+    """Create the vector schema idempotently and always close cursor/connection."""
+    connection = connect()
+    cursor = None
+    try:
+        cursor = connection.cursor()
+        for statement in _ddl():
+            cursor.execute(statement)
+    finally:
+        if cursor is not None:
+            cursor.close()
+        connection.close()
 
 
 def counts():
-    """(文档数, 切片数)。供管理平台/CLI 观测。"""
-    c = connect()
-    cur = c.cursor()
+    """Return ``(document_count, chunk_count)`` with deterministic cleanup."""
+    connection = connect()
+    cursor = None
     try:
-        cur.execute("SELECT count(*) FROM document")
-        nd = cur.fetchone()[0]
-        cur.execute("SELECT count(*) FROM doc_chunk")
-        nc = cur.fetchone()[0]
-        return nd, nc
+        cursor = connection.cursor()
+        cursor.execute("SELECT count(*) FROM document")
+        document_row = cursor.fetchone()
+        cursor.execute("SELECT count(*) FROM doc_chunk")
+        chunk_row = cursor.fetchone()
+        if not document_row or not chunk_row:
+            raise RuntimeError("vector store count query returned no row")
+        document_count, chunk_count = document_row[0], chunk_row[0]
+        if any(isinstance(value, bool) or not isinstance(value, int) or value < 0 for value in (document_count, chunk_count)):
+            raise RuntimeError("vector store count query returned invalid counts")
+        return document_count, chunk_count
     finally:
-        c.close()
+        if cursor is not None:
+            cursor.close()
+        connection.close()
