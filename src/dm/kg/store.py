@@ -110,5 +110,5 @@ def ping():
     try:
         run_read("RETURN 1 AS ok")
         return True, ""
-    except Exception as e:  # noqa: BLE001
-        return False, str(e)
+    except Exception as exc:  # noqa: BLE001
+        return False, f"Neo4j health check failed ({exc.__class__.__name__})"
