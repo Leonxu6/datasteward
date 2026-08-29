@@ -26,7 +26,18 @@ class Connection:
     def __init__(self, cursor):
         self._cursor = cursor
         self.closed = False
-        self.autocommit = None
+        self._autocommit = None
+        self.fail_autocommit = False
+
+    @property
+    def autocommit(self):
+        return self._autocommit
+
+    @autocommit.setter
+    def autocommit(self, value):
+        if self.fail_autocommit:
+            raise RuntimeError("cannot configure autocommit")
+        self._autocommit = value
 
     def cursor(self):
         return self._cursor
@@ -40,6 +51,15 @@ def test_connect_rejects_non_boolean_autocommit(monkeypatch):
     for value in (1, "true", None):
         with pytest.raises(ValueError):
             store.connect(value)
+
+
+def test_connect_closes_connection_when_autocommit_configuration_fails(monkeypatch):
+    connection = Connection(Cursor())
+    connection.fail_autocommit = True
+    monkeypatch.setattr(store.psycopg2, "connect", lambda **kwargs: connection)
+    with pytest.raises(RuntimeError, match="autocommit"):
+        store.connect()
+    assert connection.closed
 
 
 def test_connect_vec_closes_connection_when_registration_fails(monkeypatch):
