@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sys
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -33,6 +34,7 @@ class CaseOutcome:
     answer: str
     session_id: str
     error_code: str | None = None
+    duration_ms: int = 0
 
 
 def _truth(sql: str):
@@ -94,7 +96,13 @@ def _grade(case: Mapping[str, object], answer: str) -> tuple[bool, str]:
     raise EvalCaseError(f"unsupported grader after validation: {grader}")
 
 
-def _execute_case(case: Mapping[str, object], *, agent_runner=run_agent, grader=_grade) -> CaseOutcome:
+def _execute_case(case: Mapping[str, object], *, agent_runner=run_agent, grader=_grade, clock=time.monotonic) -> CaseOutcome:
+    started = clock()
+
+    def finish(passed: bool, expected: str, answer: str, session_id: str, error_code: str | None = None):
+        elapsed = max(0.0, clock() - started)
+        return CaseOutcome(passed, expected, answer, session_id, error_code, int(elapsed * 1000))
+
     try:
         raw_result = agent_runner(
             str(case["question"]),
@@ -103,18 +111,18 @@ def _execute_case(case: Mapping[str, object], *, agent_runner=run_agent, grader=
             purpose=str(case.get("purpose", "财务对账")),
         )
     except Exception:
-        return CaseOutcome(False, "agent unavailable", "", "", "AGENT_ERROR")
+        return finish(False, "agent unavailable", "", "", "AGENT_ERROR")
 
     try:
         answer, session_id = _agent_result(raw_result)
     except EvalCaseError:
-        return CaseOutcome(False, "invalid agent result", "", "", "AGENT_RESULT_ERROR")
+        return finish(False, "invalid agent result", "", "", "AGENT_RESULT_ERROR")
 
     try:
         passed, expected = grader(case, answer)
     except Exception:
-        return CaseOutcome(False, "grader unavailable", answer, session_id, "GRADER_ERROR")
-    return CaseOutcome(bool(passed), str(expected), answer, session_id)
+        return finish(False, "grader unavailable", answer, session_id, "GRADER_ERROR")
+    return finish(bool(passed), str(expected), answer, session_id)
 
 
 def _utc_now() -> datetime:
@@ -145,11 +153,12 @@ def main() -> None:
                 "passed": outcome.passed,
                 "session_id": outcome.session_id,
                 "error_code": outcome.error_code,
+                "duration_ms": outcome.duration_ms,
                 "ts": _utc_now().isoformat(timespec="seconds"),
             },
         )
         mark = "✅PASS" if outcome.passed else "❌FAIL"
-        print(f'  [{mark}] {case["id"]!s:>3} {case["category"]!s:12}/{case["grader"]!s:9} 期望≈{outcome.expected[:34]}')
+        print(f'  [{mark}] {case["id"]!s:>3} {case["category"]!s:12}/{case["grader"]!s:9} {outcome.duration_ms:6}ms 期望≈{outcome.expected[:34]}')
 
     rate = passed / len(cases) * 100
     print(f"\n=== 通过 {passed}/{len(cases)}  ({rate:.0f}%)  run_id={run_id} ===")
