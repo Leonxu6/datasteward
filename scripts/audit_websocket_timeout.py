@@ -9,8 +9,10 @@ def audit_source(source:str)->list[str]:
     except SyntaxError: return []
     out=[]
     for n in ast.walk(tree):
+        if not isinstance(n, ast.Call):
+            continue
         f=n.func
-        if isinstance(n,ast.Call) and isinstance(f,ast.Attribute) and isinstance(f.value,ast.Name) and f.value.id=="websockets" and f.attr=="connect" and not any(k.arg=="open_timeout" for k in n.keywords): out.append(f"websockets.connect() without open_timeout on line {n.lineno}")
+        if isinstance(f,ast.Attribute) and isinstance(f.value,ast.Name) and f.value.id=="websockets" and f.attr=="connect" and not any(k.arg=="open_timeout" for k in n.keywords): out.append(f"websockets.connect() without open_timeout on line {n.lineno}")
     return out
 def audit(root:Path)->list[str]:
     root=require_root(root); out=[]
