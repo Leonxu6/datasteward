@@ -9,8 +9,10 @@ def audit_source(source:str)->list[str]:
     except SyntaxError: return []
     out=[]
     for n in ast.walk(tree):
+        if not isinstance(n, ast.Call):
+            continue
         f=n.func
-        if isinstance(n,ast.Call) and isinstance(f,ast.Attribute) and isinstance(f.value,ast.Name) and f.value.id=="multiprocessing" and f.attr=="Process" and not any(k.arg=="daemon" for k in n.keywords): out.append(f"multiprocessing.Process() without explicit daemon policy on line {n.lineno}")
+        if isinstance(f,ast.Attribute) and isinstance(f.value,ast.Name) and f.value.id=="multiprocessing" and f.attr=="Process" and not any(k.arg=="daemon" for k in n.keywords): out.append(f"multiprocessing.Process() without explicit daemon policy on line {n.lineno}")
     return out
 def audit(root:Path)->list[str]:
     root=require_root(root); out=[]
