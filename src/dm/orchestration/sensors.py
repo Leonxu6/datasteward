@@ -1,10 +1,16 @@
 """Health alert sensor with stable cursors and retry-safe notifications."""
 from dagster import DefaultSensorStatus, SensorEvaluationContext, SkipReason, sensor
 
-from dm.orchestration.health_alerts import failure_cursor, normalize_failures, render_failure_alert
+from dm.orchestration.health_alerts import (
+    HealthAlertInputError,
+    failure_cursor,
+    normalize_failures,
+    render_failure_alert,
+)
 
 _RECOVERY_MESSAGE = "✅ 数据健康告警解除：全部检查恢复正常"
 _PUSH_FAILURE = "钉钉推送失败，保留原 cursor 以便下次重试"
+_INVALID_SUMMARY = "健康检查结果格式异常，保留原 cursor 以便下次重试"
 
 
 @sensor(
@@ -17,13 +23,16 @@ def health_alert_sensor(context: SensorEvaluationContext):
     from dm.channels.dingtalk import push_webhook
     from dm.health.checks import run_all
 
-    failures = normalize_failures(run_all())
+    try:
+        failures = normalize_failures(run_all())
+    except HealthAlertInputError:
+        return SkipReason(_INVALID_SUMMARY)
 
     if not failures:
         if context.cursor and context.cursor != "[]":
             try:
                 push_webhook(_RECOVERY_MESSAGE)
-            except Exception:  # notification backend details are not sensor output
+            except Exception:
                 return SkipReason(_PUSH_FAILURE)
         context.update_cursor("[]")
         return SkipReason("健康检查全部通过")

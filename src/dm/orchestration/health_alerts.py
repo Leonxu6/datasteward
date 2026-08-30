@@ -11,6 +11,11 @@ _MAX_MESSAGE = 500
 _MAX_RENDERED = 8
 _BIDI = re.compile("[\u202a-\u202e\u2066-\u2069]")
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+_ALLOWED_STATUS = frozenset({"ok", "warn", "fail"})
+
+
+class HealthAlertInputError(ValueError):
+    """Raised when the health-check summary cannot be trusted."""
 
 
 def _clean(value: object, *, fallback: str, limit: int) -> str:
@@ -23,13 +28,18 @@ def _clean(value: object, *, fallback: str, limit: int) -> str:
 
 def normalize_failures(summary: object) -> tuple[dict[str, str], ...]:
     if not isinstance(summary, Mapping):
-        return ()
-    results = summary.get("results", ())
+        raise HealthAlertInputError("health summary must be a mapping")
+    results = summary.get("results")
     if not isinstance(results, Sequence) or isinstance(results, (str, bytes, bytearray)):
-        return ()
+        raise HealthAlertInputError("health summary results must be a sequence")
     failures: list[dict[str, str]] = []
-    for row in results:
-        if not isinstance(row, Mapping) or row.get("status") != "fail":
+    for index, row in enumerate(results):
+        if not isinstance(row, Mapping):
+            raise HealthAlertInputError(f"health result {index} must be a mapping")
+        status = row.get("status")
+        if status not in _ALLOWED_STATUS:
+            raise HealthAlertInputError(f"health result {index} has an invalid status")
+        if status != "fail":
             continue
         failures.append({
             "id": _clean(row.get("id"), fallback="?", limit=_MAX_ID),
