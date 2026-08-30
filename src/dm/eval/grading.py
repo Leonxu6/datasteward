@@ -17,6 +17,7 @@ REFUSAL_HINTS = (
 _MAX_ANSWER = 100_000
 _MAX_FACTS = 100
 _MAX_FACT_TEXT = 2_000
+_IDENTIFIER_VALUE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
 def _answer_text(answer: object) -> str:
@@ -64,8 +65,15 @@ def grade_numeric(rows: object, answer: object) -> tuple[bool, str]:
     return found, expected
 
 
+def _answer_contains_set_value(answer: str, value: str) -> bool:
+    if _IDENTIFIER_VALUE.fullmatch(value):
+        pattern = r"(?<![A-Za-z0-9_.-])" + re.escape(value) + r"(?![A-Za-z0-9_.-])"
+        return re.search(pattern, answer) is not None
+    return value in answer
+
+
 def grade_set(rows: object, answer: object) -> tuple[bool, str]:
-    """Require every distinct one-column truth value to occur literally in the answer."""
+    """Require every distinct one-column truth value to occur as a complete value."""
     if not isinstance(rows, Sequence) or isinstance(rows, (str, bytes, bytearray)):
         raise EvalCaseError("set truth query must return a sequence")
     items: list[str] = []
@@ -73,12 +81,16 @@ def grade_set(rows: object, answer: object) -> tuple[bool, str]:
     for row in rows:
         if not isinstance(row, Sequence) or isinstance(row, (str, bytes, bytearray)) or len(row) != 1:
             raise EvalCaseError("set truth query rows must contain exactly one column")
+        if row[0] is None:
+            raise EvalCaseError("set truth query values must not be null")
         text = str(row[0])
+        if not text:
+            raise EvalCaseError("set truth query values must not be empty")
         if text not in seen:
             seen.add(text)
             items.append(text)
     haystack = _answer_text(answer)
-    missing = [item for item in items if item not in haystack]
+    missing = [item for item in items if not _answer_contains_set_value(haystack, item)]
     return not missing, "{" + ", ".join(items) + "}"
 
 
