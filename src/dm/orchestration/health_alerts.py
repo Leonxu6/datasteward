@@ -34,16 +34,21 @@ def normalize_failures(summary: object) -> tuple[dict[str, str], ...]:
     if not isinstance(results, Sequence) or isinstance(results, (str, bytes, bytearray)):
         raise HealthAlertInputError("health summary results must be a sequence")
     failures: list[dict[str, str]] = []
+    seen_ids: set[str] = set()
     for index, row in enumerate(results):
         if not isinstance(row, Mapping):
             raise HealthAlertInputError(f"health result {index} must be a mapping")
         status = row.get("status")
         if status not in _ALLOWED_STATUS:
             raise HealthAlertInputError(f"health result {index} has an invalid status")
+        check_id = _clean(row.get("id"), fallback="?", limit=_MAX_ID)
+        if check_id in seen_ids:
+            raise HealthAlertInputError(f"duplicate health result id: {check_id}")
+        seen_ids.add(check_id)
         if status != "fail":
             continue
         failures.append({
-            "id": _clean(row.get("id"), fallback="?", limit=_MAX_ID),
+            "id": check_id,
             "message": _clean(row.get("message"), fallback="检查失败", limit=_MAX_MESSAGE),
         })
         if len(failures) >= _MAX_FAILURES:
