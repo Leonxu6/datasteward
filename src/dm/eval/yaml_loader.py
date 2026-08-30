@@ -30,13 +30,21 @@ _UniqueKeyLoader.add_constructor(
 )
 
 
+def _load_unique_yaml(text: str):
+    loader = _UniqueKeyLoader(text)
+    try:
+        return loader.get_single_data()
+    finally:
+        loader.dispose()
+
+
 def load_eval_cases(text: object):
     if not isinstance(text, str):
         raise EvalCaseError("eval YAML must be text")
     if len(text) > 2_000_000:
         raise EvalCaseError("eval YAML is too large")
     try:
-        raw = yaml.load(text, Loader=_UniqueKeyLoader)
+        raw = _load_unique_yaml(text)
     except yaml.YAMLError as exc:
         raise EvalCaseError("eval YAML is invalid") from exc
     return validate_cases(raw)
