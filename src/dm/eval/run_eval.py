@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from importlib.resources import files
 
@@ -23,6 +24,15 @@ from dm.eval.yaml_loader import load_eval_cases  # noqa: E402
 from dm.warehouse.store import append_log, connect_ro  # noqa: E402
 
 _MAX_LOG_ANSWER = 1_200
+
+
+@dataclass(frozen=True)
+class CaseOutcome:
+    passed: bool
+    expected: str
+    answer: str
+    session_id: str
+    error_code: str | None = None
 
 
 def _truth(sql: str):
@@ -84,6 +94,29 @@ def _grade(case: Mapping[str, object], answer: str) -> tuple[bool, str]:
     raise EvalCaseError(f"unsupported grader after validation: {grader}")
 
 
+def _execute_case(case: Mapping[str, object], *, agent_runner=run_agent, grader=_grade) -> CaseOutcome:
+    try:
+        raw_result = agent_runner(
+            str(case["question"]),
+            channel="eval",
+            role=str(case.get("role", "管理员")),
+            purpose=str(case.get("purpose", "财务对账")),
+        )
+    except Exception:
+        return CaseOutcome(False, "agent unavailable", "", "", "AGENT_ERROR")
+
+    try:
+        answer, session_id = _agent_result(raw_result)
+    except EvalCaseError:
+        return CaseOutcome(False, "invalid agent result", "", "", "AGENT_RESULT_ERROR")
+
+    try:
+        passed, expected = grader(case, answer)
+    except Exception:
+        return CaseOutcome(False, "grader unavailable", answer, session_id, "GRADER_ERROR")
+    return CaseOutcome(bool(passed), str(expected), answer, session_id)
+
+
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -97,15 +130,8 @@ def main() -> None:
 
     passed = 0
     for case in cases:
-        result = run_agent(
-            str(case["question"]),
-            channel="eval",
-            role=str(case.get("role", "管理员")),
-            purpose=str(case.get("purpose", "财务对账")),
-        )
-        answer, session_id = _agent_result(result)
-        ok, expected = _grade(case, answer)
-        passed += int(ok)
+        outcome = _execute_case(case)
+        passed += int(outcome.passed)
         append_log(
             "eval_run",
             {
@@ -113,16 +139,17 @@ def main() -> None:
                 "case_id": case["id"],
                 "category": case["category"],
                 "question": case["question"],
-                "expected": expected,
-                "got": answer[:_MAX_LOG_ANSWER],
+                "expected": outcome.expected,
+                "got": outcome.answer[:_MAX_LOG_ANSWER],
                 "grader": case["grader"],
-                "passed": bool(ok),
-                "session_id": session_id,
+                "passed": outcome.passed,
+                "session_id": outcome.session_id,
+                "error_code": outcome.error_code,
                 "ts": _utc_now().isoformat(timespec="seconds"),
             },
         )
-        mark = "✅PASS" if ok else "❌FAIL"
-        print(f'  [{mark}] {case["id"]!s:>3} {case["category"]!s:12}/{case["grader"]!s:9} 期望≈{expected[:34]}')
+        mark = "✅PASS" if outcome.passed else "❌FAIL"
+        print(f'  [{mark}] {case["id"]!s:>3} {case["category"]!s:12}/{case["grader"]!s:9} 期望≈{outcome.expected[:34]}')
 
     rate = passed / len(cases) * 100
     print(f"\n=== 通过 {passed}/{len(cases)}  ({rate:.0f}%)  run_id={run_id} ===")
