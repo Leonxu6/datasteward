@@ -31,6 +31,13 @@ def _text(value: object, *, field: str, max_length: int = _MAX_TEXT) -> str:
     return value
 
 
+def _single_line_text(value: object, *, field: str, max_length: int) -> str:
+    text = _text(value, field=field, max_length=max_length)
+    if "\n" in text or "\r" in text or "\t" in text:
+        raise EvalCaseError(f"{field} must be single-line text")
+    return text
+
+
 def _truth_sql(value: object, *, field: str) -> str:
     sql = _text(value, field=field)
     first = sql.lstrip().split(None, 1)[0].upper() if sql.lstrip() else ""
@@ -64,7 +71,7 @@ def _truth_facts(value: object) -> tuple[dict[str, str], ...]:
         if not isinstance(item, Mapping):
             raise EvalCaseError(f"truth_facts[{index}] must be a mapping")
         facts.append({
-            "label": _text(item.get("label"), field=f"truth_facts[{index}].label", max_length=500),
+            "label": _single_line_text(item.get("label"), field=f"truth_facts[{index}].label", max_length=500),
             "sql": _truth_sql(item.get("sql"), field=f"truth_facts[{index}].sql"),
         })
     return tuple(facts)
@@ -75,10 +82,10 @@ def validate_case(case: object) -> dict[str, object]:
     if not isinstance(case, Mapping):
         raise EvalCaseError("eval case must be a mapping")
 
-    case_id = _text(case.get("id"), field="id", max_length=64)
-    category = _text(case.get("category"), field=f"{case_id}.category", max_length=64)
+    case_id = _single_line_text(case.get("id"), field="id", max_length=64)
+    category = _single_line_text(case.get("category"), field=f"{case_id}.category", max_length=64)
     question = _text(case.get("question"), field=f"{case_id}.question", max_length=8_000)
-    grader = _text(case.get("grader"), field=f"{case_id}.grader", max_length=32)
+    grader = _single_line_text(case.get("grader"), field=f"{case_id}.grader", max_length=32)
     if grader not in _ALLOWED_GRADERS:
         raise EvalCaseError(f"{case_id}.grader is unsupported: {grader}")
 
@@ -95,9 +102,9 @@ def validate_case(case: object) -> dict[str, object]:
     if "expected" in case:
         normalized["expected"] = _text(case.get("expected"), field=f"{case_id}.expected")
     if "role" in case:
-        normalized["role"] = _text(case.get("role"), field=f"{case_id}.role", max_length=128)
+        normalized["role"] = _single_line_text(case.get("role"), field=f"{case_id}.role", max_length=128)
     if "purpose" in case:
-        normalized["purpose"] = _text(case.get("purpose"), field=f"{case_id}.purpose", max_length=256)
+        normalized["purpose"] = _single_line_text(case.get("purpose"), field=f"{case_id}.purpose", max_length=256)
 
     facts = _truth_facts(case.get("truth_facts"))
     if facts:
