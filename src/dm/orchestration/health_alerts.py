@@ -44,25 +44,13 @@ def normalize_failures(summary: object) -> tuple[dict[str, str], ...]:
         status = row.get("status")
         if status not in _ALLOWED_STATUS:
             raise HealthAlertInputError(f"health result {index} has an invalid status")
-
-        raw_id = row.get("id")
-        # Non-failing rows may legitimately omit an identifier. Do not invent
-        # the fallback "?" for them, because two anonymous healthy rows would
-        # then look like duplicate checks. Explicit ids, however, still share
-        # the same uniqueness contract across healthy and failing results.
-        check_id = (
-            _clean(raw_id, fallback="?", limit=_MAX_ID)
-            if status == "fail" or raw_id is not None
-            else None
-        )
-        if check_id is not None:
-            if check_id in seen_ids:
-                raise HealthAlertInputError(f"duplicate health result id: {check_id}")
-            seen_ids.add(check_id)
-
         if status != "fail":
             continue
-        assert check_id is not None
+
+        check_id = _clean(row.get("id"), fallback="?", limit=_MAX_ID)
+        if check_id in seen_ids:
+            raise HealthAlertInputError(f"duplicate health result id: {check_id}")
+        seen_ids.add(check_id)
         failures.append({
             "id": check_id,
             "message": _clean(row.get("message"), fallback="检查失败", limit=_MAX_MESSAGE),
