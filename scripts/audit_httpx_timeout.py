@@ -9,8 +9,10 @@ def audit_source(source:str)->list[str]:
     except SyntaxError: return []
     out=[]
     for n in ast.walk(tree):
+        if not isinstance(n, ast.Call):
+            continue
         f=n.func
-        if isinstance(n,ast.Call) and isinstance(f,ast.Attribute) and isinstance(f.value,ast.Name) and f.value.id=="httpx" and f.attr in _TARGETS and not any(k.arg=="timeout" for k in n.keywords): out.append(f"httpx.{f.attr}() without explicit timeout on line {n.lineno}")
+        if isinstance(f,ast.Attribute) and isinstance(f.value,ast.Name) and f.value.id=="httpx" and f.attr in _TARGETS and not any(k.arg=="timeout" for k in n.keywords): out.append(f"httpx.{f.attr}() without explicit timeout on line {n.lineno}")
     return out
 def audit(root:Path)->list[str]:
     root=require_root(root); out=[]
