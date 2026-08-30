@@ -37,20 +37,28 @@ def normalize_failures(summary: object) -> tuple[dict[str, str], ...]:
     if len(results) > _MAX_RESULTS:
         raise HealthAlertInputError(f"health summary has more than {_MAX_RESULTS} results")
     failures: list[dict[str, str]] = []
-    seen_ids: set[str] = set()
+    healthy_ids: set[str] = set()
+    failure_ids: set[str] = set()
     for index, row in enumerate(results):
         if not isinstance(row, Mapping):
             raise HealthAlertInputError(f"health result {index} must be a mapping")
         status = row.get("status")
         if status not in _ALLOWED_STATUS:
             raise HealthAlertInputError(f"health result {index} has an invalid status")
+
+        raw_id = row.get("id")
         if status != "fail":
+            if raw_id is not None:
+                check_id = _clean(raw_id, fallback="?", limit=_MAX_ID)
+                if check_id in failure_ids:
+                    raise HealthAlertInputError(f"duplicate health result id: {check_id}")
+                healthy_ids.add(check_id)
             continue
 
-        check_id = _clean(row.get("id"), fallback="?", limit=_MAX_ID)
-        if check_id in seen_ids:
+        check_id = _clean(raw_id, fallback="?", limit=_MAX_ID)
+        if check_id in healthy_ids or check_id in failure_ids:
             raise HealthAlertInputError(f"duplicate health result id: {check_id}")
-        seen_ids.add(check_id)
+        failure_ids.add(check_id)
         failures.append({
             "id": check_id,
             "message": _clean(row.get("message"), fallback="检查失败", limit=_MAX_MESSAGE),
