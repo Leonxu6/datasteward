@@ -82,15 +82,37 @@ _AUDITS = (
     "audit_thread_daemon.py",
 )
 
-# These rules exposed pre-existing, repository-wide migration work when first
-# enabled. They still execute on every CI run and remain visible in the log,
-# but they do not turn a known backlog into a permanently red main branch.
-# Move each rule into _AUDITS as its existing findings are remediated.
+# New or repository-wide rules begin as visible advisories. This keeps the
+# signal available on every CI run without turning legacy findings into a red
+# main branch. Promote a rule to _AUDITS after its backlog is understood and
+# remediated.
 _ADVISORY_AUDITS = (
     "audit_naive_datetime_now.py",
     "audit_environ_mutation.py",
     "audit_json_nan.py",
     "audit_sql_interpolation.py",
+    "audit_contextlib_suppress.py",
+    "audit_tempfile_mktemp.py",
+    "audit_unbounded_queue.py",
+    "audit_unbounded_deque.py",
+    "audit_unbounded_lru_cache.py",
+    "audit_os_putenv.py",
+    "audit_tzset.py",
+    "audit_numpy_global_state.py",
+    "audit_resource_limits.py",
+    "audit_signal_timers.py",
+    "audit_sqlite_timeout.py",
+    "audit_httpx_timeout.py",
+    "audit_aiohttp_timeout.py",
+    "audit_websocket_timeout.py",
+    "audit_requests_session.py",
+    "audit_asyncio_create_task.py",
+    "audit_multiprocessing_daemon.py",
+    "audit_shelve_usage.py",
+    "audit_zip_extractall.py",
+    "audit_fetchall.py",
+    "audit_pandas_read_sql.py",
+    "audit_destructive_sql.py",
 )
 
 
@@ -155,9 +177,7 @@ def run_audits(root: Path, *, scripts: tuple[str, ...] = _AUDITS) -> list[str]:
     return failures
 
 
-def run_advisory_audits(
-    root: Path, *, scripts: tuple[str, ...] = _ADVISORY_AUDITS
-) -> list[str]:
+def run_advisory_audits(root: Path, *, scripts: tuple[str, ...] = _ADVISORY_AUDITS) -> list[str]:
     if not isinstance(root, Path) or not root.is_dir():
         raise ValueError("root must be an existing directory")
     scripts = _validate_scripts(scripts)
