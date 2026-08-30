@@ -14,45 +14,23 @@ def test_new_syntax_supply_chain_and_security_audits_are_registered():
 
 def test_reliability_and_async_audits_are_registered():
     expected = {
-        "audit_bare_except.py",
-        "audit_mutable_default.py",
-        "audit_wildcard_import.py",
-        "audit_debug_calls.py",
-        "audit_os_system.py",
-        "audit_datetime_utcnow.py",
-        "audit_absolute_user_paths.py",
-        "audit_duplicate_definitions.py",
-        "audit_unsafe_chmod.py",
-        "audit_http_timeout.py",
-        "audit_urlopen_timeout.py",
-        "audit_subprocess_timeout.py",
-        "audit_async_blocking_sleep.py",
-        "audit_async_subprocess.py",
+        "audit_bare_except.py", "audit_mutable_default.py", "audit_wildcard_import.py",
+        "audit_debug_calls.py", "audit_os_system.py", "audit_datetime_utcnow.py",
+        "audit_absolute_user_paths.py", "audit_duplicate_definitions.py", "audit_unsafe_chmod.py",
+        "audit_http_timeout.py", "audit_urlopen_timeout.py", "audit_subprocess_timeout.py",
+        "audit_async_blocking_sleep.py", "audit_async_subprocess.py",
     }
     assert expected.issubset(set(_AUDITS))
 
 
 def test_portability_and_process_blocking_audits_are_registered():
     expected = {
-        "audit_path_text_encoding.py",
-        "audit_open_text_encoding.py",
-        "audit_naive_fromtimestamp.py",
-        "audit_builtin_hash.py",
-        "audit_tar_extractall.py",
-        "audit_unpack_archive.py",
-        "audit_os_chdir.py",
-        "audit_os_umask.py",
-        "audit_locale_mutation.py",
-        "audit_warning_suppression.py",
-        "audit_socket_default_timeout.py",
-        "audit_signal_handlers.py",
-        "audit_sys_exit.py",
-        "audit_recursion_limit.py",
-        "audit_gc_disable.py",
-        "audit_random_seed.py",
-        "audit_asyncio_run.py",
-        "audit_logging_basic_config.py",
-        "audit_subprocess_run_check.py",
+        "audit_path_text_encoding.py", "audit_open_text_encoding.py", "audit_naive_fromtimestamp.py",
+        "audit_builtin_hash.py", "audit_tar_extractall.py", "audit_unpack_archive.py",
+        "audit_os_chdir.py", "audit_os_umask.py", "audit_locale_mutation.py",
+        "audit_warning_suppression.py", "audit_socket_default_timeout.py", "audit_signal_handlers.py",
+        "audit_sys_exit.py", "audit_recursion_limit.py", "audit_gc_disable.py", "audit_random_seed.py",
+        "audit_asyncio_run.py", "audit_logging_basic_config.py", "audit_subprocess_run_check.py",
         "audit_thread_daemon.py",
     }
     assert expected.issubset(set(_AUDITS))
@@ -60,12 +38,25 @@ def test_portability_and_process_blocking_audits_are_registered():
 
 def test_legacy_wide_audits_remain_visible_as_advisories():
     expected = {
-        "audit_naive_datetime_now.py",
-        "audit_environ_mutation.py",
-        "audit_json_nan.py",
-        "audit_sql_interpolation.py",
+        "audit_naive_datetime_now.py", "audit_environ_mutation.py",
+        "audit_json_nan.py", "audit_sql_interpolation.py",
     }
-    assert expected == set(_ADVISORY_AUDITS)
+    assert expected.issubset(set(_ADVISORY_AUDITS))
+    assert expected.isdisjoint(set(_AUDITS))
+
+
+def test_new_resilience_audits_are_staged_as_advisories():
+    expected = {
+        "audit_contextlib_suppress.py", "audit_tempfile_mktemp.py", "audit_unbounded_queue.py",
+        "audit_unbounded_deque.py", "audit_unbounded_lru_cache.py", "audit_os_putenv.py",
+        "audit_tzset.py", "audit_numpy_global_state.py", "audit_resource_limits.py",
+        "audit_signal_timers.py", "audit_sqlite_timeout.py", "audit_httpx_timeout.py",
+        "audit_aiohttp_timeout.py", "audit_websocket_timeout.py", "audit_requests_session.py",
+        "audit_asyncio_create_task.py", "audit_multiprocessing_daemon.py", "audit_shelve_usage.py",
+        "audit_zip_extractall.py", "audit_fetchall.py", "audit_pandas_read_sql.py",
+        "audit_destructive_sql.py",
+    }
+    assert expected.issubset(set(_ADVISORY_AUDITS))
     assert expected.isdisjoint(set(_AUDITS))
 
 
