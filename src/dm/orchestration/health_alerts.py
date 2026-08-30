@@ -6,6 +6,7 @@ import json
 import re
 from collections.abc import Mapping, Sequence
 
+_MAX_RESULTS = 1_000
 _MAX_FAILURES = 100
 _MAX_ID = 64
 _MAX_MESSAGE = 500
@@ -33,6 +34,8 @@ def normalize_failures(summary: object) -> tuple[dict[str, str], ...]:
     results = summary.get("results")
     if not isinstance(results, Sequence) or isinstance(results, (str, bytes, bytearray)):
         raise HealthAlertInputError("health summary results must be a sequence")
+    if len(results) > _MAX_RESULTS:
+        raise HealthAlertInputError(f"health summary has more than {_MAX_RESULTS} results")
     failures: list[dict[str, str]] = []
     seen_ids: set[str] = set()
     for index, row in enumerate(results):
