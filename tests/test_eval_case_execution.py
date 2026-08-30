@@ -1,4 +1,4 @@
-from dm.eval.run_eval import CaseOutcome, _execute_case
+from dm.eval.run_eval import _execute_case
 
 
 CASE = {"id": "C1", "category": "direct", "question": "q", "grader": "refusal"}
@@ -9,7 +9,12 @@ def test_case_execution_contains_agent_failures_without_leaking_details():
         raise RuntimeError("token=secret")
 
     outcome = _execute_case(CASE, agent_runner=broken_agent)
-    assert outcome == CaseOutcome(False, "agent unavailable", "", "", "AGENT_ERROR")
+    assert outcome.passed is False
+    assert outcome.expected == "agent unavailable"
+    assert outcome.answer == ""
+    assert outcome.session_id == ""
+    assert outcome.error_code == "AGENT_ERROR"
+    assert outcome.duration_ms >= 0
     assert "secret" not in repr(outcome)
 
 
