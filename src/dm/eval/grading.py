@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import math
 import re
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
+from decimal import Decimal
 from numbers import Real
 
 from dm.eval.schema import EvalCaseError
@@ -38,7 +39,14 @@ def _scalar_truth(rows: object) -> object:
 
 
 def _render_numeric(value: object) -> str:
-    if isinstance(value, bool) or not isinstance(value, Real):
+    if isinstance(value, bool):
+        raise EvalCaseError("numeric truth value must be a real number")
+    if isinstance(value, Decimal):
+        if not value.is_finite():
+            raise EvalCaseError("numeric truth value must be finite")
+        integral = value.to_integral_value()
+        return str(integral) if value == integral else format(value.normalize(), "f")
+    if not isinstance(value, Real):
         raise EvalCaseError("numeric truth value must be a real number")
     number = float(value)
     if not math.isfinite(number):
@@ -94,7 +102,7 @@ def grade_contains(needles: object, answer: object) -> tuple[bool, str]:
             raise EvalCaseError("expected_contains values must be non-empty strings")
         normalized_needles.append(_collapse_whitespace(needle))
     norm = _collapse_whitespace(_answer_text(answer))
-    missing = [needle for raw, needle in zip(needles, normalized_needles) if needle not in norm]
+    missing = [needle for needle in normalized_needles if needle not in norm]
     missing_raw = [str(raw) for raw, needle in zip(needles, normalized_needles) if needle not in norm]
     exp = "需含: " + "、".join(str(n) for n in needles)
     if missing:
@@ -125,7 +133,7 @@ def compute_facts(items: object, truth_query) -> str:
             if len(rendered) > _MAX_FACT_TEXT:
                 rendered = rendered[:_MAX_FACT_TEXT] + "…"
             out.append(f"{label}={rendered}")
-        except Exception:  # backend detail must not enter judge prompts or logs
+        except Exception:
             out.append(f"{label}=(unavailable)")
     return "；".join(out)
 
