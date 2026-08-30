@@ -1,6 +1,7 @@
 """Pure helpers for deterministic, bounded health-alert rendering."""
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections.abc import Mapping, Sequence
@@ -52,8 +53,15 @@ def normalize_failures(summary: object) -> tuple[dict[str, str], ...]:
 
 
 def failure_cursor(failures: Sequence[Mapping[str, str]]) -> str:
-    ids = sorted({str(item.get("id", "?")) for item in failures})
-    return json.dumps(ids, ensure_ascii=False, separators=(",", ":"))
+    """Hash messages so changed failure details trigger a new alert without leaking them."""
+    entries = []
+    for item in failures:
+        check_id = str(item.get("id", "?"))
+        message = str(item.get("message", ""))
+        digest = hashlib.sha256(message.encode("utf-8")).hexdigest()[:16]
+        entries.append((check_id, digest))
+    entries = sorted(set(entries))
+    return json.dumps(entries, ensure_ascii=False, separators=(",", ":"))
 
 
 def render_failure_alert(failures: Sequence[Mapping[str, str]]) -> str:

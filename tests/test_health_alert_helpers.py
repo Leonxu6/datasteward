@@ -1,4 +1,11 @@
-from dm.orchestration.health_alerts import failure_cursor, normalize_failures, render_failure_alert
+import pytest
+
+from dm.orchestration.health_alerts import (
+    HealthAlertInputError,
+    failure_cursor,
+    normalize_failures,
+    render_failure_alert,
+)
 
 
 def test_normalize_failures_filters_sorts_and_sanitizes():
@@ -18,8 +25,9 @@ def test_normalize_failures_filters_sorts_and_sanitizes():
 
 
 def test_failure_cursor_is_stable_and_deduplicated():
-    failures = ({"id": "b", "message": "x"}, {"id": "a", "message": "y"}, {"id": "a", "message": "z"})
-    assert failure_cursor(failures) == '["a","b"]'
+    failures = ({"id": "b", "message": "x"}, {"id": "a", "message": "y"}, {"id": "a", "message": "y"})
+    assert failure_cursor(failures) == failure_cursor(tuple(reversed(failures)))
+    assert failure_cursor(failures).count('"a"') == 1
 
 
 def test_render_failure_alert_caps_expanded_rows():
@@ -29,6 +37,8 @@ def test_render_failure_alert_caps_expanded_rows():
     assert "[9]" not in rendered
 
 
-def test_malformed_summary_is_fail_safe():
-    assert normalize_failures(None) == ()
-    assert normalize_failures({"results": "not-a-list"}) == ()
+def test_malformed_summary_is_not_treated_as_healthy():
+    with pytest.raises(HealthAlertInputError):
+        normalize_failures(None)
+    with pytest.raises(HealthAlertInputError):
+        normalize_failures({"results": "not-a-list"})
