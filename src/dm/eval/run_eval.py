@@ -6,8 +6,6 @@ from collections.abc import Mapping
 from datetime import datetime, timezone
 from importlib.resources import files
 
-import yaml
-
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
@@ -20,7 +18,8 @@ from dm.eval.grading import (  # noqa: E402
     grade_set,
     parse_judge_verdict,
 )
-from dm.eval.schema import EvalCaseError, validate_cases  # noqa: E402
+from dm.eval.schema import EvalCaseError  # noqa: E402
+from dm.eval.yaml_loader import load_eval_cases  # noqa: E402
 from dm.warehouse.store import append_log, connect_ro  # noqa: E402
 
 _MAX_LOG_ANSWER = 1_200
@@ -90,8 +89,8 @@ def _utc_now() -> datetime:
 
 
 def main() -> None:
-    raw_cases = yaml.safe_load((files("dm.eval") / "eval_set.yaml").read_text(encoding="utf-8"))
-    cases = validate_cases(raw_cases)
+    text = (files("dm.eval") / "eval_set.yaml").read_text(encoding="utf-8")
+    cases = load_eval_cases(text)
     now = _utc_now()
     run_id = "R" + now.strftime("%Y%m%dT%H%M%S%fZ")
     print(f"=== Eval 跑批 {run_id}，共 {len(cases)} 例（每例会真实调用智能体）===\n")
