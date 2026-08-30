@@ -18,6 +18,8 @@ _MAX_ANSWER = 100_000
 _MAX_FACTS = 100
 _MAX_FACT_TEXT = 2_000
 _IDENTIFIER_VALUE = re.compile(r"^[A-Za-z0-9_.-]+$")
+_BIDI_CONTROL = re.compile("[\u202a-\u202e\u2066-\u2069]")
+_UNSAFE_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 
 def _answer_text(answer: object) -> str:
@@ -25,6 +27,8 @@ def _answer_text(answer: object) -> str:
         raise EvalCaseError("grader answer must be a string")
     if len(answer) > _MAX_ANSWER:
         raise EvalCaseError("grader answer is too long")
+    if _BIDI_CONTROL.search(answer) or _UNSAFE_CONTROL.search(answer):
+        raise EvalCaseError("grader answer contains unsafe control characters")
     return answer
 
 
@@ -58,7 +62,6 @@ def _render_numeric(value: object) -> str:
 
 
 def grade_numeric(rows: object, answer: object) -> tuple[bool, str]:
-    """Grade a scalar numeric truth result against a textual answer."""
     expected = _render_numeric(_scalar_truth(rows))
     normalized = _answer_text(answer).replace(",", "")
     found = re.search(r"(?<![\d.])" + re.escape(expected) + r"(?![\d.])", normalized) is not None
@@ -73,7 +76,6 @@ def _answer_contains_set_value(answer: str, value: str) -> bool:
 
 
 def grade_set(rows: object, answer: object) -> tuple[bool, str]:
-    """Require every distinct one-column truth value to occur as a complete value."""
     if not isinstance(rows, Sequence) or isinstance(rows, (str, bytes, bytearray)):
         raise EvalCaseError("set truth query must return a sequence")
     items: list[str] = []
@@ -123,7 +125,6 @@ def grade_contains(needles: object, answer: object) -> tuple[bool, str]:
 
 
 def compute_facts(items: object, truth_query) -> str:
-    """Compute bounded reference facts without exposing backend exception details."""
     if items is None:
         return ""
     if not isinstance(items, Sequence) or isinstance(items, (str, bytes, bytearray)):
