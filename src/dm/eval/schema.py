@@ -31,6 +31,16 @@ def _text(value: object, *, field: str, max_length: int = _MAX_TEXT) -> str:
     return value
 
 
+def _truth_sql(value: object, *, field: str) -> str:
+    sql = _text(value, field=field)
+    first = sql.lstrip().split(None, 1)[0].upper() if sql.lstrip() else ""
+    if first not in {"SELECT", "WITH"}:
+        raise EvalCaseError(f"{field} must be a read-only SELECT or WITH query")
+    if ";" in sql:
+        raise EvalCaseError(f"{field} must contain exactly one statement")
+    return sql
+
+
 def _string_list(value: object, *, field: str) -> tuple[str, ...]:
     if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
         raise EvalCaseError(f"{field} must be a sequence of strings")
@@ -55,7 +65,7 @@ def _truth_facts(value: object) -> tuple[dict[str, str], ...]:
             raise EvalCaseError(f"truth_facts[{index}] must be a mapping")
         facts.append({
             "label": _text(item.get("label"), field=f"truth_facts[{index}].label", max_length=500),
-            "sql": _text(item.get("sql"), field=f"truth_facts[{index}].sql"),
+            "sql": _truth_sql(item.get("sql"), field=f"truth_facts[{index}].sql"),
         })
     return tuple(facts)
 
@@ -76,7 +86,7 @@ def validate_case(case: object) -> dict[str, object]:
     normalized.update(id=case_id, category=category, question=question, grader=grader)
 
     if grader in {"numeric", "set"}:
-        normalized["truth_sql"] = _text(case.get("truth_sql"), field=f"{case_id}.truth_sql")
+        normalized["truth_sql"] = _truth_sql(case.get("truth_sql"), field=f"{case_id}.truth_sql")
     elif grader == "contains":
         normalized["expected_contains"] = _string_list(
             case.get("expected_contains"), field=f"{case_id}.expected_contains"
