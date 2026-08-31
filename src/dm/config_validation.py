@@ -11,6 +11,7 @@ from urllib.parse import urlsplit
 _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off"}
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_FLOAT_TEXT = re.compile(r"^-?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$")
 _MAX_ENV_NAME = 128
 _MAX_NUMERIC_TEXT = 128
 _MAX_DNS_NAME = 253
@@ -149,8 +150,8 @@ def env_float(name: str, default: float, *, minimum: float, maximum: float) -> f
     else:
         if len(raw) > _MAX_NUMERIC_TEXT:
             raise ValueError(f"{name} 数字文本过长")
-        if not raw or raw != raw.strip():
-            raise ValueError(f"{name} 不能包含首尾空白")
+        if not raw or raw != raw.strip() or not raw.isascii() or not _FLOAT_TEXT.fullmatch(raw):
+            raise ValueError(f"{name} 必须是数字")
         try:
             result = float(raw)
         except (OverflowError, ValueError) as exc:
