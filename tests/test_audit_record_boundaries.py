@@ -22,6 +22,14 @@ def test_safe_json_survives_broken_repr_and_recursive_values():
     assert payload == {"serialization_error": True, "repr": "<Broken>"}
 
 
+def test_safe_json_sanitizes_custom_text_controls():
+    class Custom:
+        def __str__(self):
+            return "safe\u202esecret\nnext"
+
+    assert json.loads(safe_json(Custom())) == "safe secret next"
+
+
 def test_join_labels_treats_a_string_as_one_label():
     assert join_labels("PII") == "PII"
     assert join_labels([" PII ", "", "FINANCE"]) == "PII,FINANCE"
