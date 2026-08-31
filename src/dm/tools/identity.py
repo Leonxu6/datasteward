@@ -2,6 +2,14 @@
 from __future__ import annotations
 
 _MAX_FIELD_NAME = 80
+_BIDI_CONTROLS = {
+    "\u061c", "\u200e", "\u200f", "\u202a", "\u202b", "\u202c", "\u202d", "\u202e",
+    "\u2066", "\u2067", "\u2068", "\u2069",
+}
+
+
+def _has_unsafe_control(value: str) -> bool:
+    return any(ord(ch) < 32 or ord(ch) == 127 or ch in _BIDI_CONTROLS for ch in value)
 
 
 def _field_name(value: object) -> str:
@@ -9,7 +17,7 @@ def _field_name(value: object) -> str:
         raise ValueError("field_name must be non-empty unpadded text")
     if len(value) > _MAX_FIELD_NAME:
         raise ValueError(f"field_name must be at most {_MAX_FIELD_NAME} characters")
-    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+    if _has_unsafe_control(value):
         raise ValueError("field_name must not contain control characters")
     return value
 
@@ -43,7 +51,7 @@ def normalize_identity_text(
         raise ValueError(f"{field_name} 不能为空")
     if len(value) > max_length:
         raise ValueError(f"{field_name} 不能超过 {max_length} 个字符")
-    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+    if _has_unsafe_control(value):
         raise ValueError(f"{field_name} 不能包含控制字符")
     return value
 
