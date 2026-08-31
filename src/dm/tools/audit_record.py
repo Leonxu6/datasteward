@@ -7,6 +7,10 @@ from collections.abc import Iterable
 
 _MAX_LABELS = 100
 _MAX_JSON_CHARS = 100_000
+_BIDI_CONTROLS = {
+    "\u061c", "\u200e", "\u200f", "\u202a", "\u202b", "\u202c", "\u202d", "\u202e",
+    "\u2066", "\u2067", "\u2068", "\u2069",
+}
 
 
 def _safe_repr(value: object, *, limit: int = 1000) -> str:
@@ -49,6 +53,18 @@ def safe_json(value) -> str:
     return rendered
 
 
+def _safe_label_text(value: object) -> str:
+    try:
+        rendered = str(value)
+    except Exception:  # noqa: BLE001
+        rendered = value.__class__.__name__
+    cleaned = "".join(
+        ch if ord(ch) >= 32 and ord(ch) != 127 and ch not in _BIDI_CONTROLS else " "
+        for ch in rendered
+    )
+    return " ".join(cleaned.split()).strip()
+
+
 def join_labels(values: Iterable | None) -> str:
     """Join optional labels without materializing an unbounded external iterable."""
     if values is None:
@@ -66,12 +82,9 @@ def join_labels(values: Iterable | None) -> str:
     for value in iterator:
         if len(result) >= _MAX_LABELS:
             raise ValueError(f"labels must contain at most {_MAX_LABELS} values")
-        try:
-            text = str(value).strip()
-        except Exception:  # noqa: BLE001
-            text = value.__class__.__name__
+        text = _safe_label_text(value)
         if text:
-            result.append(text[:200])
+            result.append(text[:200].rstrip())
     return ",".join(result)
 
 
