@@ -1,6 +1,7 @@
 """Typed environment parsing used by process-wide DataSteward configuration."""
 from __future__ import annotations
 
+import ipaddress
 import math
 import os
 import re
@@ -11,6 +12,8 @@ _FALSE = {"0", "false", "no", "off"}
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _MAX_ENV_NAME = 128
 _MAX_NUMERIC_TEXT = 128
+_MAX_DNS_NAME = 253
+_MAX_DNS_LABEL = 63
 _BIDI_CONTROLS = {
     "\u061c", "\u200e", "\u200f", "\u202a", "\u202b", "\u202c", "\u202d", "\u202e",
     "\u2066", "\u2067", "\u2068", "\u2069",
@@ -49,6 +52,26 @@ def _finite_bound(value: object, *, field: str) -> float:
     if not math.isfinite(result):
         raise ValueError(f"{field} 必须是有限数字")
     return result
+
+
+def _valid_hostname(hostname: str) -> bool:
+    try:
+        ipaddress.ip_address(hostname)
+        return True
+    except ValueError:
+        pass
+    if hostname.lower() == "localhost":
+        return True
+    if not hostname.isascii() or len(hostname) > _MAX_DNS_NAME:
+        return False
+    if hostname.startswith(".") or hostname.endswith(".") or ".." in hostname:
+        return False
+    for label in hostname.split("."):
+        if not label or len(label) > _MAX_DNS_LABEL or label.startswith("-") or label.endswith("-"):
+            return False
+        if not all(ch.isalnum() or ch in {"-", "_"} for ch in label):
+            return False
+    return True
 
 
 def env_text(name: str, default: str, *, allow_empty: bool = False, max_length: int = 1000) -> str:
@@ -155,6 +178,8 @@ def env_http_url(name: str, default: str) -> str:
         raise ValueError(f"{name} URL 格式无效") from exc
     if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
         raise ValueError(f"{name} 必须是带主机名的 http(s) URL")
+    if not _valid_hostname(parsed.hostname):
+        raise ValueError(f"{name} 主机名格式无效")
     if parsed.username is not None or parsed.password is not None:
         raise ValueError(f"{name} 不能在 URL 中内嵌凭据")
     if parsed.query or parsed.fragment:
