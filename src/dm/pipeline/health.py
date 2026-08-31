@@ -17,11 +17,20 @@ from dm.schema import business_table_names
 from dm.warehouse.store import connect_ro
 
 
+def _flink_job_list(payload: object) -> list[dict]:
+    if not isinstance(payload, dict):
+        raise ValueError("Flink overview must be an object")
+    jobs = payload.get("jobs", [])
+    if not isinstance(jobs, list) or any(not isinstance(job, dict) for job in jobs):
+        raise ValueError("Flink jobs must be a list of objects")
+    return jobs
+
+
 def flink_jobs():
     """Flink 作业概览：[{jid, name, state, duration(ms)}...] 或 {'error':...}。"""
     try:
         with urllib.request.urlopen(f"{FLINK_REST}/jobs/overview", timeout=8) as r:
-            return json.load(r).get("jobs", [])
+            return _flink_job_list(json.load(r))
     except Exception:  # noqa: BLE001
         return {"error": "Flink job query failed"}
 
