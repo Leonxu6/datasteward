@@ -65,3 +65,7 @@ def test_elapsed_ms_handles_nonfinite_and_backwards_clocks():
     assert elapsed_ms(float("nan"), 2) == 0
     assert elapsed_ms(1, float("inf")) == 0
     assert elapsed_ms("bad", 2) == 0
+
+
+def test_elapsed_ms_caps_extreme_finite_durations():
+    assert elapsed_ms(0, 10**9) == 2_147_483_647
