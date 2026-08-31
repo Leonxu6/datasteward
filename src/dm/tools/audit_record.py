@@ -22,10 +22,18 @@ def _safe_repr(value: object, *, limit: int = 1000) -> str:
     return rendered[:limit]
 
 
+def _sanitize_text(value: str) -> str:
+    cleaned = "".join(
+        ch if ord(ch) >= 32 and ord(ch) != 127 and ch not in _BIDI_CONTROLS else " "
+        for ch in value
+    )
+    return " ".join(cleaned.split()).strip()
+
+
 def _safe_json_default(value: object) -> str:
     """Render unknown JSON values without trusting user-defined ``__str__`` methods."""
     try:
-        return str(value)
+        return _sanitize_text(str(value))
     except Exception:  # noqa: BLE001
         raise TypeError("value could not be converted to text")
 
@@ -59,11 +67,7 @@ def _safe_label_text(value: object) -> str:
         rendered = str(value)
     except Exception:  # noqa: BLE001
         rendered = value.__class__.__name__
-    cleaned = "".join(
-        ch if ord(ch) >= 32 and ord(ch) != 127 and ch not in _BIDI_CONTROLS else " "
-        for ch in rendered
-    )
-    return " ".join(cleaned.split()).strip()
+    return _sanitize_text(rendered)
 
 
 def join_labels(values: Iterable | None) -> str:
