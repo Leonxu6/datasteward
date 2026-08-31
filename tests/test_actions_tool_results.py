@@ -12,7 +12,7 @@ def test_malformed_action_results_fail_closed_and_are_audited():
             "dm.tools.actions_tool.audit_event"
         ) as audit:
             response = execute_action(principal, "adjust_safety_stock", material_id="M1", new_value=5)
-        assert response.startswith("ERROR: Action 执行失败:")
+        assert response == "ERROR: Action 执行失败"
         assert audit.call_count == 1
         assert audit.call_args.kwargs["decision"] == "error"
 
