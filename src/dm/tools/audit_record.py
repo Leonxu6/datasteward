@@ -90,6 +90,8 @@ def join_labels(values: Iterable | None) -> str:
 
 def elapsed_ms(start_time: float, end_time: float) -> int:
     """Return a finite nonnegative integer duration even for malformed clock values."""
+    if isinstance(start_time, bool) or isinstance(end_time, bool):
+        return 0
     try:
         start = float(start_time)
         end = float(end_time)
