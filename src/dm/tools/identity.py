@@ -1,10 +1,14 @@
 """Normalization helpers for user-controlled principal metadata."""
 from __future__ import annotations
 
+_MAX_FIELD_NAME = 80
+
 
 def _field_name(value: object) -> str:
     if not isinstance(value, str) or not value or value != value.strip():
         raise ValueError("field_name must be non-empty unpadded text")
+    if len(value) > _MAX_FIELD_NAME:
+        raise ValueError(f"field_name must be at most {_MAX_FIELD_NAME} characters")
     if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
         raise ValueError("field_name must not contain control characters")
     return value
