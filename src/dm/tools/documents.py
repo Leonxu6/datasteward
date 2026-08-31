@@ -48,6 +48,30 @@ def _error_category(exc: BaseException) -> str:
     return name if name and len(name) <= 100 else "DocumentSearchError"
 
 
+def _audit_error(principal: Principal, query: object, top_k: object, t0: float, exc: BaseException) -> None:
+    try:
+        audit_event(
+            principal, "search_documents", {"query": query, "top_k": top_k}, "", [], 0, t0, False,
+            _error_category(exc),
+        )
+    except Exception:  # noqa: BLE001
+        return
+
+
+def _audit_hits(principal: Principal, query: str, top_k: int, t0: float, hits: list[dict]) -> list[dict]:
+    try:
+        audit_event(
+            principal, "search_documents", {"query": query, "top_k": top_k}, "",
+            ["doc_chunk"], len(hits), t0, True,
+        )
+        return hits
+    except Exception:  # noqa: BLE001
+        annotated = [dict(hit) for hit in hits]
+        if annotated:
+            annotated[0]["audit_warning"] = "search completed but audit persistence failed"
+        return annotated
+
+
 def search_documents(principal: Principal, query: str, top_k: int = 5) -> str:
     """检索非结构化文档库（采购合同 / 作业指导书SOP / 进货检验质检报告 / 设备维护手册 / 物料技术规格书）。"""
     t0 = time.time()
@@ -55,13 +79,10 @@ def search_documents(principal: Principal, query: str, top_k: int = 5) -> str:
         query = _query_text(query)
         top_k = _top_k(top_k)
         hits = _hits(run_isolated("dm.docs.search_cli", [query, str(top_k)], _TIMEOUT), top_k=top_k)
-        audit_event(principal, "search_documents", {"query": query, "top_k": top_k}, "",
-                    ["doc_chunk"], len(hits), t0, True)
-        return json.dumps(hits, ensure_ascii=False, indent=2)
     except Exception as exc:  # noqa: BLE001
-        audit_event(principal, "search_documents", {"query": query, "top_k": top_k}, "", [], 0, t0, False,
-                    _error_category(exc))
+        _audit_error(principal, query, top_k, t0, exc)
         return "ERROR: 文档检索失败"
+    return json.dumps(_audit_hits(principal, query, top_k, t0, hits), ensure_ascii=False, indent=2)
 
 
 async def asearch_documents(principal: Principal, query: str, top_k: int = 5) -> str:
@@ -71,10 +92,7 @@ async def asearch_documents(principal: Principal, query: str, top_k: int = 5) ->
         query = _query_text(query)
         top_k = _top_k(top_k)
         hits = _hits(await arun_isolated("dm.docs.search_cli", [query, str(top_k)], _TIMEOUT), top_k=top_k)
-        audit_event(principal, "search_documents", {"query": query, "top_k": top_k}, "",
-                    ["doc_chunk"], len(hits), t0, True)
-        return json.dumps(hits, ensure_ascii=False, indent=2)
     except Exception as exc:  # noqa: BLE001
-        audit_event(principal, "search_documents", {"query": query, "top_k": top_k}, "", [], 0, t0, False,
-                    _error_category(exc))
+        _audit_error(principal, query, top_k, t0, exc)
         return "ERROR: 文档检索失败"
+    return json.dumps(_audit_hits(principal, query, top_k, t0, hits), ensure_ascii=False, indent=2)
