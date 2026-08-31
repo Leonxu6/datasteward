@@ -6,6 +6,7 @@ import math
 from collections.abc import Iterable
 
 _MAX_LABELS = 100
+_MAX_JOINED_LABEL_CHARS = 10_000
 _MAX_JSON_CHARS = 100_000
 _BIDI_CONTROLS = {
     "\u061c", "\u200e", "\u200f", "\u202a", "\u202b", "\u202c", "\u202d", "\u202e",
@@ -80,13 +81,18 @@ def join_labels(values: Iterable | None) -> str:
             raise ValueError("labels must be iterable") from exc
     result: list[str] = []
     seen: set[str] = set()
+    total_chars = 0
     for value in iterator:
         if len(result) >= _MAX_LABELS:
             raise ValueError(f"labels must contain at most {_MAX_LABELS} values")
         text = _safe_label_text(value)[:200].rstrip()
         if text and text not in seen:
+            additional = len(text) + (1 if result else 0)
+            if total_chars + additional > _MAX_JOINED_LABEL_CHARS:
+                raise ValueError(f"joined labels must be at most {_MAX_JOINED_LABEL_CHARS} characters")
             result.append(text)
             seen.add(text)
+            total_chars += additional
     return ",".join(result)
 
 
