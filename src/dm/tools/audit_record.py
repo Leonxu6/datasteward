@@ -6,6 +6,7 @@ import math
 from collections.abc import Iterable
 
 _MAX_LABELS = 100
+_MAX_JSON_CHARS = 100_000
 
 
 def _safe_repr(value: object, *, limit: int = 1000) -> str:
@@ -24,10 +25,17 @@ def _safe_json_default(value: object) -> str:
         raise TypeError("value could not be converted to text")
 
 
+def _json_fallback(value: object, *, reason: str | None = None) -> str:
+    payload = {"serialization_error": True, "repr": _safe_repr(value)}
+    if reason:
+        payload["reason"] = reason
+    return json.dumps(payload, ensure_ascii=False, allow_nan=False, sort_keys=True)
+
+
 def safe_json(value) -> str:
-    """Serialize tool arguments as standards-compliant JSON without breaking auditing."""
+    """Serialize tool arguments as bounded standards-compliant JSON without breaking auditing."""
     try:
-        return json.dumps(
+        rendered = json.dumps(
             value,
             ensure_ascii=False,
             default=_safe_json_default,
@@ -35,11 +43,10 @@ def safe_json(value) -> str:
             allow_nan=False,
         )
     except (TypeError, ValueError, RecursionError, OverflowError):
-        return json.dumps(
-            {"serialization_error": True, "repr": _safe_repr(value)},
-            ensure_ascii=False,
-            allow_nan=False,
-        )
+        return _json_fallback(value)
+    if len(rendered) > _MAX_JSON_CHARS:
+        return _json_fallback(value, reason="serialized value exceeds audit limit")
+    return rendered
 
 
 def join_labels(values: Iterable | None) -> str:
