@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 from unittest.mock import patch
 
 import dm.pipeline.health as health
@@ -15,7 +16,7 @@ class _Cursor:
     def execute(self, query, params=None):
         self.executed.append((query, params))
         if self.fail_execute:
-            raise RuntimeError("database unavailable")
+            raise RuntimeError("database unavailable password=secret")
         return self
 
     def fetchone(self):
@@ -80,7 +81,8 @@ def test_cdc_reconcile_closes_resources_when_query_fails():
         patch.object(health, "business_table_names", return_value=["inventory"]),
     ):
         result = health.cdc_reconcile()
-    assert "error" in result
+    assert result == {"error": "source/sink reconciliation failed"}
+    assert "secret" not in result["error"]
     assert pg_cursor.closed is True
     assert pg.closed is True
     assert sr.closed is True
@@ -93,3 +95,17 @@ def test_replication_slots_closes_cursor_and_connection():
         assert health.replication_slots() == [{"slot": "slot_a", "active": True}]
     assert cursor.closed is True
     assert pg.closed is True
+
+
+def test_replication_slot_failures_do_not_expose_driver_details():
+    cursor = _Cursor(fail_execute=True)
+    pg = _Connection(cursor)
+    with patch.object(health, "_pg", return_value=pg):
+        assert health.replication_slots() == {"error": "replication slot query failed"}
+
+
+def test_flink_failures_do_not_expose_backend_details():
+    with patch.object(health.urllib.request, "urlopen", side_effect=RuntimeError("token=secret")):
+        result = health.flink_jobs()
+    assert result == {"error": "Flink job query failed"}
+    assert "secret" not in result["error"]
