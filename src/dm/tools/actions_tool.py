@@ -25,6 +25,11 @@ def _validated_result(value: object) -> dict:
     return value
 
 
+def _error_category(exc: BaseException) -> str:
+    name = type(exc).__name__
+    return name if name and len(name) <= 100 else "ActionExecutionError"
+
+
 def execute_action(principal: Principal, action: str, material_id: str = "", new_value: int = 0,
                    supplier_id: str = "", qty: int = 0, so_id: str = "",
                    approve: bool = False) -> str:
@@ -42,7 +47,8 @@ def execute_action(principal: Principal, action: str, material_id: str = "", new
                     error="" if res["ok"] else res.get("error", ""),
                     category="actionExecute", decision=("allow" if res["ok"] else "deny"))
         return json.dumps(res, ensure_ascii=False, default=str, indent=2)
-    except Exception as e:  # noqa: BLE001
-        audit_event(principal, "execute_action", {"action": action}, "", [], 0, t0, False, str(e),
+    except Exception as exc:  # noqa: BLE001
+        category = _error_category(exc)
+        audit_event(principal, "execute_action", {"action": action}, "", [], 0, t0, False, category,
                     category="actionExecute", decision="error")
-        return f"ERROR: Action 执行失败: {e}"
+        return "ERROR: Action 执行失败"
