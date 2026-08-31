@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 from unittest.mock import patch
 
 import dm.pipeline.health as health
@@ -109,3 +108,21 @@ def test_flink_failures_do_not_expose_backend_details():
         result = health.flink_jobs()
     assert result == {"error": "Flink job query failed"}
     assert "secret" not in result["error"]
+
+
+def test_flink_overview_requires_object_and_job_object_list():
+    for payload in (None, [], "jobs", {"jobs": {}}, {"jobs": ["not-an-object"]}):
+        with patch.object(health.json, "load", return_value=payload), patch.object(
+            health.urllib.request, "urlopen"
+        ) as urlopen:
+            urlopen.return_value.__enter__.return_value = object()
+            assert health.flink_jobs() == {"error": "Flink job query failed"}
+
+
+def test_flink_overview_accepts_missing_or_valid_jobs():
+    for payload, expected in (({}, []), ({"jobs": [{"jid": "j1", "state": "RUNNING"}]}, [{"jid": "j1", "state": "RUNNING"}])):
+        with patch.object(health.json, "load", return_value=payload), patch.object(
+            health.urllib.request, "urlopen"
+        ) as urlopen:
+            urlopen.return_value.__enter__.return_value = object()
+            assert health.flink_jobs() == expected
