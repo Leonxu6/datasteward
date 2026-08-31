@@ -7,6 +7,7 @@
 """
 from contextlib import closing
 import json
+import re
 import urllib.request
 
 import psycopg2
@@ -15,6 +16,9 @@ from dm.config import (FLINK_REST, SRC_PG_DB, SRC_PG_HOST, SRC_PG_PASSWORD,
                        SRC_PG_PORT, SRC_PG_USER)
 from dm.schema import business_table_names
 from dm.warehouse.store import connect_ro
+
+_TABLE_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
+_MAX_RECONCILE_TABLES = 100
 
 
 def _flink_job_list(payload: object) -> list[dict]:
@@ -33,6 +37,23 @@ def _row_count(row: object) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise ValueError("count query must return a non-negative integer")
     return value
+
+
+def _business_tables(value: object) -> list[str]:
+    if not isinstance(value, (list, tuple)):
+        raise ValueError("business table registry must be a list or tuple")
+    if len(value) > _MAX_RECONCILE_TABLES:
+        raise ValueError("business table registry is too large")
+    tables: list[str] = []
+    seen: set[str] = set()
+    for table in value:
+        if not isinstance(table, str) or not _TABLE_NAME.fullmatch(table):
+            raise ValueError("business table names must be safe SQL identifiers")
+        if table in seen:
+            raise ValueError("business table registry contains duplicate names")
+        seen.add(table)
+        tables.append(table)
+    return tables
 
 
 def _replication_slot_row(row: object) -> dict[str, object]:
@@ -63,14 +84,15 @@ def _pg():
 def cdc_reconcile():
     """逐表对比 Postgres(源) vs StarRocks(汇) 行数。返回 [{table, source_pg, sink_sr, match}...]。"""
     try:
+        tables = _business_tables(business_table_names())
         out = []
         with closing(_pg()) as pg, closing(pg.cursor()) as pgc, closing(connect_ro()) as sr:
-            for t in business_table_names():
-                pgc.execute(f'SELECT COUNT(*) FROM "{t}"')
+            for table in tables:
+                pgc.execute(f'SELECT COUNT(*) FROM "{table}"')
                 source_count = _row_count(pgc.fetchone())
-                sink_count = _row_count(sr.execute(f"SELECT COUNT(*) FROM `{t}`").fetchone())
+                sink_count = _row_count(sr.execute(f"SELECT COUNT(*) FROM `{table}`").fetchone())
                 out.append({
-                    "table": t,
+                    "table": table,
                     "source_pg": source_count,
                     "sink_sr": sink_count,
                     "match": source_count == sink_count,
