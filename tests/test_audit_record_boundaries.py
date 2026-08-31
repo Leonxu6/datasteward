@@ -30,6 +30,14 @@ def test_safe_json_sanitizes_custom_text_controls():
     assert json.loads(safe_json(Custom())) == "safe secret next"
 
 
+def test_safe_json_bounds_custom_text_conversion():
+    class Custom:
+        def __str__(self):
+            return "x" * 5000
+
+    assert len(json.loads(safe_json(Custom()))) == 2000
+
+
 def test_join_labels_treats_a_string_as_one_label():
     assert join_labels("PII") == "PII"
     assert join_labels([" PII ", "", "FINANCE"]) == "PII,FINANCE"
