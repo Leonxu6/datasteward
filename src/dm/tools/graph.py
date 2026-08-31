@@ -32,6 +32,30 @@ def _error_category(exc: BaseException) -> str:
     return name if name and len(name) <= 100 else "GraphQueryError"
 
 
+def _audit_error(principal: Principal, mode: str, entity_id: str, t0: float, exc: BaseException) -> None:
+    try:
+        audit_event(
+            principal, "graph_query", {"mode": mode, "entity_id": entity_id}, "", [], 0, t0, False,
+            _error_category(exc),
+        )
+    except Exception:  # noqa: BLE001
+        return
+
+
+def _audit_success(principal: Principal, mode: str, entity_id: str, target_type: str, t0: float, res: dict) -> dict:
+    try:
+        audit_event(
+            principal, "graph_query", {"mode": mode, "entity_id": entity_id, "target_type": target_type},
+            "", ["neo4j"], res.get("count", 0), t0, True,
+        )
+        return res
+    except Exception:  # noqa: BLE001
+        copy = dict(res)
+        copy["audit_ok"] = False
+        copy["audit_warning"] = "query completed but audit persistence failed"
+        return copy
+
+
 def graph_query(principal: Principal, mode: str, entity_id: str = "", target_type: str = "",
                 max_hops: int = 3, cypher: str = "", limit: int = 30) -> str:
     """知识图谱查询（find_related / impact_path / cypher 三种 mode）。"""
@@ -40,14 +64,10 @@ def graph_query(principal: Principal, mode: str, entity_id: str = "", target_typ
         res = _validated_result(
             run_isolated("dm.kg.graph_cli", _argv(mode, entity_id, target_type, max_hops, cypher, limit), _TIMEOUT)
         )
-        audit_event(principal, "graph_query",
-                    {"mode": mode, "entity_id": entity_id, "target_type": target_type},
-                    "", ["neo4j"], res.get("count", 0), t0, True)
-        return json.dumps(res, ensure_ascii=False, indent=2)
     except Exception as exc:  # noqa: BLE001
-        audit_event(principal, "graph_query", {"mode": mode, "entity_id": entity_id}, "", [], 0, t0, False,
-                    _error_category(exc))
+        _audit_error(principal, mode, entity_id, t0, exc)
         return "ERROR: 图查询失败"
+    return json.dumps(_audit_success(principal, mode, entity_id, target_type, t0, res), ensure_ascii=False, indent=2)
 
 
 async def agraph_query(principal: Principal, mode: str, entity_id: str = "", target_type: str = "",
@@ -58,11 +78,7 @@ async def agraph_query(principal: Principal, mode: str, entity_id: str = "", tar
         res = _validated_result(
             await arun_isolated("dm.kg.graph_cli", _argv(mode, entity_id, target_type, max_hops, cypher, limit), _TIMEOUT)
         )
-        audit_event(principal, "graph_query",
-                    {"mode": mode, "entity_id": entity_id, "target_type": target_type},
-                    "", ["neo4j"], res.get("count", 0), t0, True)
-        return json.dumps(res, ensure_ascii=False, indent=2)
     except Exception as exc:  # noqa: BLE001
-        audit_event(principal, "graph_query", {"mode": mode, "entity_id": entity_id}, "", [], 0, t0, False,
-                    _error_category(exc))
+        _audit_error(principal, mode, entity_id, t0, exc)
         return "ERROR: 图查询失败"
+    return json.dumps(_audit_success(principal, mode, entity_id, target_type, t0, res), ensure_ascii=False, indent=2)
