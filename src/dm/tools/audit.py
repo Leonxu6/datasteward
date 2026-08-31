@@ -4,7 +4,7 @@
 防御式 helper，避免 Decimal/datetime/递归参数或系统时钟回拨让审计本身失败。
 """
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 from dm.tools.audit_record import elapsed_ms, join_labels, safe_json
 from dm.tools.principal import Principal
@@ -26,7 +26,7 @@ def audit_event(
     markings=None,
 ):
     """写一条审计，字段契约保持与管理平台/回放页兼容。"""
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     append_log(
         "audit_log",
         {
