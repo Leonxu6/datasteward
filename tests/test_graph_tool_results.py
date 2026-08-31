@@ -11,7 +11,7 @@ def test_sync_graph_query_rejects_malformed_worker_results():
     for result in invalid:
         with patch("dm.tools.graph.run_isolated", return_value=result), patch("dm.tools.graph.audit_event") as audit:
             response = graph_query(principal, "find_related", entity_id="M1")
-        assert response.startswith("ERROR: 图查询失败:")
+        assert response == "ERROR: 图查询失败"
         assert audit.call_args.args[7] is False
 
 
@@ -21,5 +21,5 @@ def test_async_graph_query_rejects_malformed_worker_results():
         "dm.tools.graph.audit_event"
     ) as audit:
         response = asyncio.run(agraph_query(principal, "find_related", entity_id="M1"))
-    assert response.startswith("ERROR: 图查询失败:")
+    assert response == "ERROR: 图查询失败"
     assert audit.call_args.args[7] is False
