@@ -9,6 +9,7 @@ _MAX_LABELS = 100
 _MAX_JOINED_LABEL_CHARS = 10_000
 _MAX_JSON_CHARS = 100_000
 _MAX_DEFAULT_TEXT = 2_000
+_MAX_ELAPSED_MS = 2_147_483_647
 _BIDI_CONTROLS = {
     "\u061c", "\u200e", "\u200f", "\u202a", "\u202b", "\u202c", "\u202d", "\u202e",
     "\u2066", "\u2067", "\u2068", "\u2069",
@@ -102,7 +103,7 @@ def join_labels(values: Iterable | None) -> str:
 
 
 def elapsed_ms(start_time: float, end_time: float) -> int:
-    """Return a finite nonnegative integer duration even for malformed clock values."""
+    """Return a bounded nonnegative integer duration even for malformed clock values."""
     if isinstance(start_time, bool) or isinstance(end_time, bool):
         return 0
     try:
@@ -113,6 +114,6 @@ def elapsed_ms(start_time: float, end_time: float) -> int:
         delta = (end - start) * 1000
         if not math.isfinite(delta) or delta <= 0:
             return 0
-        return int(delta)
+        return min(int(delta), _MAX_ELAPSED_MS)
     except (TypeError, ValueError, OverflowError):
         return 0
