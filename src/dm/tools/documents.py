@@ -43,6 +43,11 @@ def _hits(value: object, *, top_k: int) -> list[dict]:
     return value
 
 
+def _error_category(exc: BaseException) -> str:
+    name = type(exc).__name__
+    return name if name and len(name) <= 100 else "DocumentSearchError"
+
+
 def search_documents(principal: Principal, query: str, top_k: int = 5) -> str:
     """检索非结构化文档库（采购合同 / 作业指导书SOP / 进货检验质检报告 / 设备维护手册 / 物料技术规格书）。"""
     t0 = time.time()
@@ -53,9 +58,10 @@ def search_documents(principal: Principal, query: str, top_k: int = 5) -> str:
         audit_event(principal, "search_documents", {"query": query, "top_k": top_k}, "",
                     ["doc_chunk"], len(hits), t0, True)
         return json.dumps(hits, ensure_ascii=False, indent=2)
-    except Exception as e:  # noqa: BLE001
-        audit_event(principal, "search_documents", {"query": query, "top_k": top_k}, "", [], 0, t0, False, str(e))
-        return f"ERROR: 文档检索失败: {e}"
+    except Exception as exc:  # noqa: BLE001
+        audit_event(principal, "search_documents", {"query": query, "top_k": top_k}, "", [], 0, t0, False,
+                    _error_category(exc))
+        return "ERROR: 文档检索失败"
 
 
 async def asearch_documents(principal: Principal, query: str, top_k: int = 5) -> str:
@@ -68,6 +74,7 @@ async def asearch_documents(principal: Principal, query: str, top_k: int = 5) ->
         audit_event(principal, "search_documents", {"query": query, "top_k": top_k}, "",
                     ["doc_chunk"], len(hits), t0, True)
         return json.dumps(hits, ensure_ascii=False, indent=2)
-    except Exception as e:  # noqa: BLE001
-        audit_event(principal, "search_documents", {"query": query, "top_k": top_k}, "", [], 0, t0, False, str(e))
-        return f"ERROR: 文档检索失败: {e}"
+    except Exception as exc:  # noqa: BLE001
+        audit_event(principal, "search_documents", {"query": query, "top_k": top_k}, "", [], 0, t0, False,
+                    _error_category(exc))
+        return "ERROR: 文档检索失败"
