@@ -10,6 +10,21 @@ from dm.tools.audit import audit_event
 from dm.tools.principal import Principal
 
 
+def _validated_result(value: object) -> dict:
+    if not isinstance(value, dict):
+        raise ValueError("action executor returned a malformed result")
+    ok = value.get("ok")
+    if not isinstance(ok, bool):
+        raise ValueError("action executor result must include boolean ok")
+    target = value.get("target", "")
+    if not isinstance(target, str):
+        raise ValueError("action executor target must be text")
+    error = value.get("error", "")
+    if not isinstance(error, str):
+        raise ValueError("action executor error must be text")
+    return value
+
+
 def execute_action(principal: Principal, action: str, material_id: str = "", new_value: int = 0,
                    supplier_id: str = "", qty: int = 0, so_id: str = "",
                    approve: bool = False) -> str:
@@ -21,11 +36,11 @@ def execute_action(principal: Principal, action: str, material_id: str = "", new
     params = {"material_id": material_id, "new_value": new_value, "supplier_id": supplier_id,
               "qty": qty, "so_id": so_id}
     try:
-        res = _exec(action, params, user=principal.to_user(), approve=approve)
+        res = _validated_result(_exec(action, params, user=principal.to_user(), approve=approve))
         audit_event(principal, "execute_action", {"action": action, **params, "approve": approve}, "",
-                    [res.get("target", "")], 1 if res.get("ok") else 0, t0, res.get("ok", False),
-                    error="" if res.get("ok") else res.get("error", ""),
-                    category="actionExecute", decision=("allow" if res.get("ok") else "deny"))
+                    [res.get("target", "")], 1 if res["ok"] else 0, t0, res["ok"],
+                    error="" if res["ok"] else res.get("error", ""),
+                    category="actionExecute", decision=("allow" if res["ok"] else "deny"))
         return json.dumps(res, ensure_ascii=False, default=str, indent=2)
     except Exception as e:  # noqa: BLE001
         audit_event(principal, "execute_action", {"action": action}, "", [], 0, t0, False, str(e),
