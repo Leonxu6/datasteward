@@ -14,6 +14,8 @@ def execute_action(principal: Principal, action: str, material_id: str = "", new
                    supplier_id: str = "", qty: int = 0, so_id: str = "",
                    approve: bool = False) -> str:
     """执行一次治理化写回 Action（adjust_safety_stock / create_purchase_requisition / create_delivery）。"""
+    if not isinstance(approve, bool):
+        return "ERROR: approve 必须是布尔值"
     t0 = time.time()
     from dm.ontology.actions import execute_action as _exec
     params = {"material_id": material_id, "new_value": new_value, "supplier_id": supplier_id,
