@@ -19,7 +19,7 @@ class _Cursor:
         return self
 
     def fetchone(self):
-        return self.rows[0]
+        return self.rows[0] if self.rows else None
 
     def fetchall(self):
         return self.rows
@@ -87,6 +87,22 @@ def test_cdc_reconcile_closes_resources_when_query_fails():
     assert sr.closed is True
 
 
+def test_cdc_reconcile_rejects_malformed_counts():
+    invalid_rows = (None, (), (True,), (-1,), ("2",), (1, 2))
+    for row in invalid_rows:
+        pg_cursor = _Cursor([row] if row is not None else [])
+        pg = _Connection(pg_cursor)
+        sr = _Warehouse(_Cursor([(2,)]))
+        with (
+            patch.object(health, "_pg", return_value=pg),
+            patch.object(health, "connect_ro", return_value=sr),
+            patch.object(health, "business_table_names", return_value=["inventory"]),
+        ):
+            assert health.cdc_reconcile() == {"error": "source/sink reconciliation failed"}
+        assert pg.closed is True
+        assert sr.closed is True
+
+
 def test_replication_slots_closes_cursor_and_connection():
     cursor = _Cursor([("slot_a", True)])
     pg = _Connection(cursor)
@@ -120,7 +136,11 @@ def test_flink_overview_requires_object_and_job_object_list():
 
 
 def test_flink_overview_accepts_missing_or_valid_jobs():
-    for payload, expected in (({}, []), ({"jobs": [{"jid": "j1", "state": "RUNNING"}]}, [{"jid": "j1", "state": "RUNNING"}])):
+    cases = (
+        ({}, []),
+        ({"jobs": [{"jid": "j1", "state": "RUNNING"}]}, [{"jid": "j1", "state": "RUNNING"}]),
+    )
+    for payload, expected in cases:
         with patch.object(health.json, "load", return_value=payload), patch.object(
             health.urllib.request, "urlopen"
         ) as urlopen:
