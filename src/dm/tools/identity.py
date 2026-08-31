@@ -65,6 +65,6 @@ def normalize_channel(value, *, default: str = "mcp") -> str:
         max_length=40,
         allow_empty=False,
     )
-    if not all(ch.isalnum() or ch in "_-" for ch in result):
-        raise ValueError("channel 只能包含字母、数字、下划线和连字符")
+    if not result.isascii() or not all(ch.isalnum() or ch in "_-" for ch in result):
+        raise ValueError("channel 只能包含 ASCII 字母、数字、下划线和连字符")
     return result
