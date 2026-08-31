@@ -5,6 +5,7 @@ import ipaddress
 import math
 import os
 import re
+import string
 from urllib.parse import urlsplit
 
 _TRUE = {"1", "true", "yes", "on"}
@@ -14,6 +15,7 @@ _MAX_ENV_NAME = 128
 _MAX_NUMERIC_TEXT = 128
 _MAX_DNS_NAME = 253
 _MAX_DNS_LABEL = 63
+_HEX_DIGITS = frozenset(string.hexdigits)
 _BIDI_CONTROLS = {
     "\u061c", "\u200e", "\u200f", "\u202a", "\u202b", "\u202c", "\u202d", "\u202e",
     "\u2066", "\u2067", "\u2068", "\u2069",
@@ -54,6 +56,13 @@ def _finite_bound(value: object, *, field: str) -> float:
     return result
 
 
+def _numeric_address_token(label: str) -> bool:
+    if label.isascii() and label.isdigit():
+        return True
+    lower = label.lower()
+    return lower.startswith("0x") and len(lower) > 2 and all(ch in _HEX_DIGITS for ch in lower[2:])
+
+
 def _valid_hostname(hostname: str) -> bool:
     try:
         ipaddress.ip_address(hostname)
@@ -66,7 +75,10 @@ def _valid_hostname(hostname: str) -> bool:
         return False
     if hostname.startswith(".") or hostname.endswith(".") or ".." in hostname:
         return False
-    for label in hostname.split("."):
+    labels = hostname.split(".")
+    if labels and all(_numeric_address_token(label) for label in labels):
+        return False
+    for label in labels:
         if not label or len(label) > _MAX_DNS_LABEL or label.startswith("-") or label.endswith("-"):
             return False
         if not all(ch.isalnum() or ch in {"-", "_"} for ch in label):
