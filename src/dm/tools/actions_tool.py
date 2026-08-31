@@ -30,6 +30,16 @@ def _error_category(exc: BaseException) -> str:
     return name if name and len(name) <= 100 else "ActionExecutionError"
 
 
+def _audit_failure(principal: Principal, action: str, t0: float, exc: BaseException) -> None:
+    try:
+        audit_event(
+            principal, "execute_action", {"action": action}, "", [], 0, t0, False,
+            _error_category(exc), category="actionExecute", decision="error",
+        )
+    except Exception:  # noqa: BLE001
+        return
+
+
 def execute_action(principal: Principal, action: str, material_id: str = "", new_value: int = 0,
                    supplier_id: str = "", qty: int = 0, so_id: str = "",
                    approve: bool = False) -> str:
@@ -42,13 +52,18 @@ def execute_action(principal: Principal, action: str, material_id: str = "", new
               "qty": qty, "so_id": so_id}
     try:
         res = _validated_result(_exec(action, params, user=principal.to_user(), approve=approve))
+    except Exception as exc:  # noqa: BLE001
+        _audit_failure(principal, action, t0, exc)
+        return "ERROR: Action 执行失败"
+
+    try:
         audit_event(principal, "execute_action", {"action": action, **params, "approve": approve}, "",
                     [res.get("target", "")], 1 if res["ok"] else 0, t0, res["ok"],
                     error="" if res["ok"] else res.get("error", ""),
                     category="actionExecute", decision=("allow" if res["ok"] else "deny"))
-        return json.dumps(res, ensure_ascii=False, default=str, indent=2)
-    except Exception as exc:  # noqa: BLE001
-        category = _error_category(exc)
-        audit_event(principal, "execute_action", {"action": action}, "", [], 0, t0, False, category,
-                    category="actionExecute", decision="error")
-        return "ERROR: Action 执行失败"
+    except Exception:  # noqa: BLE001
+        res = dict(res)
+        res["audit_ok"] = False
+        res["audit_warning"] = "action completed but audit persistence failed"
+
+    return json.dumps(res, ensure_ascii=False, default=str, indent=2)
