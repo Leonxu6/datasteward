@@ -33,13 +33,23 @@ def _top_k(value: object) -> int:
     return value
 
 
+def _hits(value: object, *, top_k: int) -> list[dict]:
+    if not isinstance(value, list):
+        raise ValueError("document worker returned a malformed result")
+    if len(value) > top_k:
+        raise ValueError("document worker returned more results than requested")
+    if any(not isinstance(hit, dict) for hit in value):
+        raise ValueError("document search hits must be objects")
+    return value
+
+
 def search_documents(principal: Principal, query: str, top_k: int = 5) -> str:
     """检索非结构化文档库（采购合同 / 作业指导书SOP / 进货检验质检报告 / 设备维护手册 / 物料技术规格书）。"""
     t0 = time.time()
     try:
         query = _query_text(query)
         top_k = _top_k(top_k)
-        hits = run_isolated("dm.docs.search_cli", [query, str(top_k)], _TIMEOUT)
+        hits = _hits(run_isolated("dm.docs.search_cli", [query, str(top_k)], _TIMEOUT), top_k=top_k)
         audit_event(principal, "search_documents", {"query": query, "top_k": top_k}, "",
                     ["doc_chunk"], len(hits), t0, True)
         return json.dumps(hits, ensure_ascii=False, indent=2)
@@ -54,7 +64,7 @@ async def asearch_documents(principal: Principal, query: str, top_k: int = 5) ->
     try:
         query = _query_text(query)
         top_k = _top_k(top_k)
-        hits = await arun_isolated("dm.docs.search_cli", [query, str(top_k)], _TIMEOUT)
+        hits = _hits(await arun_isolated("dm.docs.search_cli", [query, str(top_k)], _TIMEOUT), top_k=top_k)
         audit_event(principal, "search_documents", {"query": query, "top_k": top_k}, "",
                     ["doc_chunk"], len(hits), t0, True)
         return json.dumps(hits, ensure_ascii=False, indent=2)
