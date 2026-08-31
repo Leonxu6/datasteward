@@ -79,12 +79,14 @@ def join_labels(values: Iterable | None) -> str:
         except TypeError as exc:
             raise ValueError("labels must be iterable") from exc
     result: list[str] = []
+    seen: set[str] = set()
     for value in iterator:
         if len(result) >= _MAX_LABELS:
             raise ValueError(f"labels must contain at most {_MAX_LABELS} values")
-        text = _safe_label_text(value)
-        if text:
-            result.append(text[:200].rstrip())
+        text = _safe_label_text(value)[:200].rstrip()
+        if text and text not in seen:
+            result.append(text)
+            seen.add(text)
     return ",".join(result)
 
 
