@@ -8,6 +8,7 @@ from collections.abc import Iterable
 _MAX_LABELS = 100
 _MAX_JOINED_LABEL_CHARS = 10_000
 _MAX_JSON_CHARS = 100_000
+_MAX_DEFAULT_TEXT = 2_000
 _BIDI_CONTROLS = {
     "\u061c", "\u200e", "\u200f", "\u202a", "\u202b", "\u202c", "\u202d", "\u202e",
     "\u2066", "\u2067", "\u2068", "\u2069",
@@ -33,7 +34,7 @@ def _sanitize_text(value: str) -> str:
 def _safe_json_default(value: object) -> str:
     """Render unknown JSON values without trusting user-defined ``__str__`` methods."""
     try:
-        return _sanitize_text(str(value))
+        return _sanitize_text(str(value))[:_MAX_DEFAULT_TEXT].rstrip()
     except Exception:  # noqa: BLE001
         raise TypeError("value could not be converted to text")
 
