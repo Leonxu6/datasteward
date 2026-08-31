@@ -7,6 +7,10 @@ import re
 from dm.schema import business_table_names
 
 MAX_SQL_CHARS = 100_000
+_BIDI_CONTROLS = {
+    "\u061c", "\u200e", "\u200f", "\u202a", "\u202b", "\u202c", "\u202d", "\u202e",
+    "\u2066", "\u2067", "\u2068", "\u2069",
+}
 
 # 写/DDL/危险关键字（read_only 连接已兜底，这里再拦一层并给出清晰报错）
 FORBIDDEN = re.compile(
@@ -21,7 +25,10 @@ def _require_sql_text(sql: object) -> str:
 
 
 def _has_unsafe_control(sql: str) -> bool:
-    return any((ord(ch) < 32 and ch not in "\n\r\t") or ord(ch) == 127 for ch in sql)
+    return any(
+        (ord(ch) < 32 and ch not in "\n\r\t") or ord(ch) == 127 or ch in _BIDI_CONTROLS
+        for ch in sql
+    )
 
 
 def tables_in(sql: str) -> list:
