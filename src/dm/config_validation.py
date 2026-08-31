@@ -11,6 +11,10 @@ _FALSE = {"0", "false", "no", "off"}
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _MAX_ENV_NAME = 128
 _MAX_NUMERIC_TEXT = 128
+_BIDI_CONTROLS = {
+    "\u061c", "\u200e", "\u200f", "\u202a", "\u202b", "\u202c", "\u202d", "\u202e",
+    "\u2066", "\u2067", "\u2068", "\u2069",
+}
 
 
 def _env_name(value: object) -> str:
@@ -62,7 +66,7 @@ def env_text(name: str, default: str, *, allow_empty: bool = False, max_length: 
         raise ValueError(f"{name} 不能为空")
     if len(value) > max_length:
         raise ValueError(f"{name} 不能超过 {max_length} 个字符")
-    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+    if any(ord(ch) < 32 or ord(ch) == 127 or ch in _BIDI_CONTROLS for ch in value):
         raise ValueError(f"{name} 不能包含控制字符")
     return value
 
