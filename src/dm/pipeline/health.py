@@ -22,8 +22,8 @@ def flink_jobs():
     try:
         with urllib.request.urlopen(f"{FLINK_REST}/jobs/overview", timeout=8) as r:
             return json.load(r).get("jobs", [])
-    except Exception as e:  # noqa: BLE001
-        return {"error": str(e)}
+    except Exception:  # noqa: BLE001
+        return {"error": "Flink job query failed"}
 
 
 def _pg():
@@ -42,8 +42,8 @@ def cdc_reconcile():
                 d = sr.execute(f"SELECT COUNT(*) FROM `{t}`").fetchone()[0]
                 out.append({"table": t, "source_pg": s, "sink_sr": d, "match": s == d})
         return out
-    except Exception as e:  # noqa: BLE001
-        return {"error": str(e)}
+    except Exception:  # noqa: BLE001
+        return {"error": "source/sink reconciliation failed"}
 
 
 def replication_slots():
@@ -52,5 +52,5 @@ def replication_slots():
         with closing(_pg()) as pg, closing(pg.cursor()) as c:
             c.execute("SELECT slot_name, active FROM pg_replication_slots ORDER BY slot_name")
             return [{"slot": r[0], "active": r[1]} for r in c.fetchall()]
-    except Exception as e:  # noqa: BLE001
-        return {"error": str(e)}
+    except Exception:  # noqa: BLE001
+        return {"error": "replication slot query failed"}
