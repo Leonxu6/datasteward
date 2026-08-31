@@ -18,12 +18,23 @@ def _argv(mode, entity_id, target_type, max_hops, cypher, limit):
     return [mode, json.dumps(args, ensure_ascii=False)]
 
 
+def _validated_result(value: object) -> dict:
+    if not isinstance(value, dict):
+        raise ValueError("graph worker returned a malformed result")
+    count = value.get("count", 0)
+    if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+        raise ValueError("graph worker count must be a non-negative integer")
+    return value
+
+
 def graph_query(principal: Principal, mode: str, entity_id: str = "", target_type: str = "",
                 max_hops: int = 3, cypher: str = "", limit: int = 30) -> str:
     """知识图谱查询（find_related / impact_path / cypher 三种 mode）。"""
     t0 = time.time()
     try:
-        res = run_isolated("dm.kg.graph_cli", _argv(mode, entity_id, target_type, max_hops, cypher, limit), _TIMEOUT)
+        res = _validated_result(
+            run_isolated("dm.kg.graph_cli", _argv(mode, entity_id, target_type, max_hops, cypher, limit), _TIMEOUT)
+        )
         audit_event(principal, "graph_query",
                     {"mode": mode, "entity_id": entity_id, "target_type": target_type},
                     "", ["neo4j"], res.get("count", 0), t0, True)
@@ -38,7 +49,9 @@ async def agraph_query(principal: Principal, mode: str, entity_id: str = "", tar
     """graph_query 的异步版（FastMCP 壳专用）。"""
     t0 = time.time()
     try:
-        res = await arun_isolated("dm.kg.graph_cli", _argv(mode, entity_id, target_type, max_hops, cypher, limit), _TIMEOUT)
+        res = _validated_result(
+            await arun_isolated("dm.kg.graph_cli", _argv(mode, entity_id, target_type, max_hops, cypher, limit), _TIMEOUT)
+        )
         audit_event(principal, "graph_query",
                     {"mode": mode, "entity_id": entity_id, "target_type": target_type},
                     "", ["neo4j"], res.get("count", 0), t0, True)
