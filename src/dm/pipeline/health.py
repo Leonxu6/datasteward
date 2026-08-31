@@ -26,6 +26,15 @@ def _flink_job_list(payload: object) -> list[dict]:
     return jobs
 
 
+def _row_count(row: object) -> int:
+    if not isinstance(row, (tuple, list)) or len(row) != 1:
+        raise ValueError("count query must return one column")
+    value = row[0]
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError("count query must return a non-negative integer")
+    return value
+
+
 def flink_jobs():
     """Flink 作业概览：[{jid, name, state, duration(ms)}...] 或 {'error':...}。"""
     try:
@@ -47,9 +56,14 @@ def cdc_reconcile():
         with closing(_pg()) as pg, closing(pg.cursor()) as pgc, closing(connect_ro()) as sr:
             for t in business_table_names():
                 pgc.execute(f'SELECT COUNT(*) FROM "{t}"')
-                s = pgc.fetchone()[0]
-                d = sr.execute(f"SELECT COUNT(*) FROM `{t}`").fetchone()[0]
-                out.append({"table": t, "source_pg": s, "sink_sr": d, "match": s == d})
+                source_count = _row_count(pgc.fetchone())
+                sink_count = _row_count(sr.execute(f"SELECT COUNT(*) FROM `{t}`").fetchone())
+                out.append({
+                    "table": t,
+                    "source_pg": source_count,
+                    "sink_sr": sink_count,
+                    "match": source_count == sink_count,
+                })
         return out
     except Exception:  # noqa: BLE001
         return {"error": "source/sink reconciliation failed"}
