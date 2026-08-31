@@ -35,6 +35,17 @@ def _row_count(row: object) -> int:
     return value
 
 
+def _replication_slot_row(row: object) -> dict[str, object]:
+    if not isinstance(row, (tuple, list)) or len(row) != 2:
+        raise ValueError("replication slot query returned a malformed row")
+    slot, active = row
+    if not isinstance(slot, str) or not slot or slot != slot.strip():
+        raise ValueError("replication slot name must be clean non-empty text")
+    if not isinstance(active, bool):
+        raise ValueError("replication slot active state must be boolean")
+    return {"slot": slot, "active": active}
+
+
 def flink_jobs():
     """Flink 作业概览：[{jid, name, state, duration(ms)}...] 或 {'error':...}。"""
     try:
@@ -74,6 +85,6 @@ def replication_slots():
     try:
         with closing(_pg()) as pg, closing(pg.cursor()) as c:
             c.execute("SELECT slot_name, active FROM pg_replication_slots ORDER BY slot_name")
-            return [{"slot": r[0], "active": r[1]} for r in c.fetchall()]
+            return [_replication_slot_row(row) for row in c.fetchall()]
     except Exception:  # noqa: BLE001
         return {"error": "replication slot query failed"}
