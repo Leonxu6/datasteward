@@ -27,6 +27,10 @@ def test_join_labels_treats_a_string_as_one_label():
     assert join_labels([" PII ", "", "FINANCE"]) == "PII,FINANCE"
 
 
+def test_join_labels_deduplicates_normalized_values():
+    assert join_labels([" PII ", "PII", "FINANCE", "FINANCE"]) == "PII,FINANCE"
+
+
 def test_join_labels_rejects_mapping_bytes_and_noniterables():
     for value in ({"PII": True}, b"PII", 7):
         with pytest.raises(ValueError):
