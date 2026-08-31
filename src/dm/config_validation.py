@@ -9,12 +9,15 @@ from urllib.parse import urlsplit
 _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off"}
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_MAX_ENV_NAME = 128
 _MAX_NUMERIC_TEXT = 128
 
 
 def _env_name(value: object) -> str:
     if not isinstance(value, str) or not value or value != value.strip():
         raise ValueError("环境变量名必须是非空且无首尾空白的字符串")
+    if len(value) > _MAX_ENV_NAME:
+        raise ValueError(f"环境变量名不能超过 {_MAX_ENV_NAME} 个字符")
     if not _ENV_NAME.fullmatch(value):
         raise ValueError("环境变量名只能包含字母、数字和下划线，且不能以数字开头")
     return value
