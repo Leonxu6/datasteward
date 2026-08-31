@@ -21,7 +21,7 @@ def test_sync_search_rejects_invalid_inputs_before_worker_launch():
     for query, top_k in cases:
         with patch("dm.tools.documents.run_isolated") as worker, patch("dm.tools.documents.audit_event"):
             response = search_documents(principal, query, top_k)  # type: ignore[arg-type]
-        assert response.startswith("ERROR: 文档检索失败:")
+        assert response == "ERROR: 文档检索失败"
         worker.assert_not_called()
 
 
@@ -30,5 +30,5 @@ def test_async_search_rejects_invalid_top_k_before_worker_launch():
     worker = AsyncMock()
     with patch("dm.tools.documents.arun_isolated", new=worker), patch("dm.tools.documents.audit_event"):
         response = asyncio.run(asearch_documents(principal, "query", True))  # type: ignore[arg-type]
-    assert response.startswith("ERROR: 文档检索失败:")
+    assert response == "ERROR: 文档检索失败"
     worker.assert_not_awaited()
