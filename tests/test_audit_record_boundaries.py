@@ -47,6 +47,10 @@ def test_join_labels_deduplicates_normalized_values():
     assert join_labels([" PII ", "PII", "FINANCE", "FINANCE"]) == "PII,FINANCE"
 
 
+def test_join_labels_normalizes_compatibility_equivalent_values():
+    assert join_labels(["ＰＩＩ", "PII"]) == "PII"
+
+
 def test_join_labels_bounds_aggregate_output():
     labels = [f"{index:03d}-" + "x" * 196 for index in range(60)]
     with pytest.raises(ValueError, match="joined labels"):
