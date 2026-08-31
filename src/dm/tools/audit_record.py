@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import math
+import unicodedata
 from collections.abc import Iterable
 
 _MAX_LABELS = 100
@@ -69,7 +70,7 @@ def _safe_label_text(value: object) -> str:
         rendered = str(value)
     except Exception:  # noqa: BLE001
         rendered = value.__class__.__name__
-    return _sanitize_text(rendered)
+    return unicodedata.normalize("NFKC", _sanitize_text(rendered))
 
 
 def join_labels(values: Iterable | None) -> str:
