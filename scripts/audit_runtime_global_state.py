@@ -26,6 +26,8 @@ _RULE_MESSAGES = {
     "signal.set_wakeup_fd": "signal wakeup routing is process-wide",
     "signal.siginterrupt": "signal syscall restart behavior is process-wide",
     "signal.pthread_sigmask": "signal masks affect thread/process delivery semantics",
+    "threading.settrace": "default tracing affects subsequently created threads",
+    "threading.setprofile": "default profiling affects subsequently created threads",
 }
 
 
