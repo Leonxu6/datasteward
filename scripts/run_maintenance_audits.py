@@ -139,6 +139,7 @@ _ADVISORY_AUDITS = (
     "audit_logging_capture_warnings.py",
     "audit_numpy_printoptions.py",
     "audit_decimal_default_context.py",
+    "audit_runtime_global_state.py",
 )
 
 
