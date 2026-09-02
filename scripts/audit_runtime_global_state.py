@@ -36,6 +36,8 @@ _RULE_MESSAGES = {
     "np.setbufsize": "NumPy ufunc buffer size is ambient numerical state",
     "sys.setswitchinterval": "thread scheduling interval is interpreter-wide state",
     "sys.setdlopenflags": "dynamic-loader flags alter subsequent extension imports",
+    "gc.freeze": "garbage-collector freeze state affects the entire interpreter",
+    "gc.unfreeze": "garbage-collector freeze state affects the entire interpreter",
 }
 
 
