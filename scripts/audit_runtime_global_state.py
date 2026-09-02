@@ -23,6 +23,9 @@ _RULE_MESSAGES = {
     "os.nice": "process priority changes affect the entire service process",
     "os.setpriority": "process priority changes affect scheduler behavior",
     "os.register_at_fork": "fork hooks persist for the process lifetime",
+    "signal.set_wakeup_fd": "signal wakeup routing is process-wide",
+    "signal.siginterrupt": "signal syscall restart behavior is process-wide",
+    "signal.pthread_sigmask": "signal masks affect thread/process delivery semantics",
 }
 
 
