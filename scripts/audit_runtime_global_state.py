@@ -17,6 +17,9 @@ _RULE_MESSAGES = {
     "faulthandler.disable": "faulthandler configuration is process-wide",
     "faulthandler.register": "faulthandler signal registration is process-wide",
     "faulthandler.unregister": "faulthandler signal registration is process-wide",
+    "tracemalloc.start": "tracemalloc lifecycle is process-wide",
+    "tracemalloc.stop": "tracemalloc lifecycle is process-wide",
+    "tracemalloc.clear_traces": "tracemalloc traces are process-wide",
 }
 
 
