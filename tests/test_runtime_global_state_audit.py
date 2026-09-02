@@ -55,6 +55,20 @@ def test_process_fork_hook_registration_is_reported():
     assert "os.register_at_fork" in findings[0]
 
 
+def test_signal_routing_mutations_are_reported():
+    source = """
+import signal
+signal.set_wakeup_fd(3)
+signal.siginterrupt(signal.SIGINT, False)
+signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGTERM})
+"""
+    findings = audit.findings_for_source(source, path="signals.py")
+    assert len(findings) == 3
+    assert any("signal.set_wakeup_fd" in item for item in findings)
+    assert any("signal.siginterrupt" in item for item in findings)
+    assert any("signal.pthread_sigmask" in item for item in findings)
+
+
 def test_local_object_calls_are_ignored():
     assert audit.findings_for_source("buffer.append(1)\n") == []
 
