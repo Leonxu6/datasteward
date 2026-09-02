@@ -12,10 +12,11 @@ def audit(root: Path) -> list[str]:
     root=require_root(root); out=[]
     for rel in production_python_files(root):
         try: src=(root/rel).read_text(encoding="utf-8")
-        except (OSError,UnicodeError): continue
-        out.extend(f"{rel}: {item}" for item in audit_source(src))
+        except (OSError, UnicodeError): continue
+        out.extend(f"{rel}: {x}" for x in audit_source(src))
     return out
 
 def main(argv=None):
-    p=argparse.ArgumentParser(description=__doc__); p.add_argument("root",nargs="?",default="."); return print_failures(audit(Path(p.parse_args(argv).root)))
+    p=argparse.ArgumentParser(description=__doc__); p.add_argument("root",nargs="?",default=".")
+    return print_failures(audit(Path(p.parse_args(argv).root)))
 if __name__=="__main__": raise SystemExit(main())

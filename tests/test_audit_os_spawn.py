@@ -1,6 +1,6 @@
 from scripts.audit_os_spawn import audit_source
 
-def test_os_spawn_ignores_subprocess_policy_calls():
+def test_os_spawn_ignores_managed_subprocess_calls():
     assert audit_source("subprocess.run(argv, check=True)\n") == []
 
 def test_os_spawn_reports_legacy_spawn():
