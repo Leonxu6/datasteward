@@ -28,6 +28,8 @@ _RULE_MESSAGES = {
     "signal.pthread_sigmask": "signal masks affect thread/process delivery semantics",
     "threading.settrace": "default tracing affects subsequently created threads",
     "threading.setprofile": "default profiling affects subsequently created threads",
+    "logging.disable": "logging.disable changes process-wide logging visibility",
+    "warnings.resetwarnings": "resetwarnings replaces process-wide warning filters",
 }
 
 
