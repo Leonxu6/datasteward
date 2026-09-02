@@ -34,6 +34,8 @@ _RULE_MESSAGES = {
     "numpy.setbufsize": "NumPy ufunc buffer size is ambient numerical state",
     "np.seterrcall": "NumPy error callbacks are ambient numerical state",
     "np.setbufsize": "NumPy ufunc buffer size is ambient numerical state",
+    "sys.setswitchinterval": "thread scheduling interval is interpreter-wide state",
+    "sys.setdlopenflags": "dynamic-loader flags alter subsequent extension imports",
 }
 
 
