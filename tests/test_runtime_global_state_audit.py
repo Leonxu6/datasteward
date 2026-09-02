@@ -46,6 +46,15 @@ os.setpriority(os.PRIO_PROCESS, 0, 10)
     assert any("os.setpriority" in item for item in findings)
 
 
+def test_process_fork_hook_registration_is_reported():
+    findings = audit.findings_for_source(
+        "import os\nos.register_at_fork(after_in_child=lambda: None)\n",
+        path="worker.py",
+    )
+    assert len(findings) == 1
+    assert "os.register_at_fork" in findings[0]
+
+
 def test_local_object_calls_are_ignored():
     assert audit.findings_for_source("buffer.append(1)\n") == []
 
