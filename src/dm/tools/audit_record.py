@@ -79,8 +79,8 @@ def join_labels(values: Iterable | None) -> str:
         return ""
     if isinstance(values, str):
         iterator = iter([values])
-    elif isinstance(values, (bytes, bytearray, dict)):
-        raise ValueError("labels must be text values, not bytes or mappings")
+    elif isinstance(values, (bytes, bytearray, dict, set, frozenset)):
+        raise ValueError("labels must be an ordered iterable of text values")
     else:
         try:
             iterator = iter(values)
