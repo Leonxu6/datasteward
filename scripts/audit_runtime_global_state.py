@@ -30,6 +30,10 @@ _RULE_MESSAGES = {
     "threading.setprofile": "default profiling affects subsequently created threads",
     "logging.disable": "logging.disable changes process-wide logging visibility",
     "warnings.resetwarnings": "resetwarnings replaces process-wide warning filters",
+    "numpy.seterrcall": "NumPy error callbacks are ambient numerical state",
+    "numpy.setbufsize": "NumPy ufunc buffer size is ambient numerical state",
+    "np.seterrcall": "NumPy error callbacks are ambient numerical state",
+    "np.setbufsize": "NumPy ufunc buffer size is ambient numerical state",
 }
 
 
