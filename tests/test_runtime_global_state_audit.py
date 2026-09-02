@@ -20,6 +20,20 @@ faulthandler.disable()
     assert any("faulthandler.disable" in item for item in findings)
 
 
+def test_tracemalloc_lifecycle_mutations_are_reported():
+    source = """
+import tracemalloc
+tracemalloc.start(25)
+tracemalloc.clear_traces()
+tracemalloc.stop()
+"""
+    findings = audit.findings_for_source(source, path="memory.py")
+    assert len(findings) == 3
+    assert any("tracemalloc.start" in item for item in findings)
+    assert any("tracemalloc.clear_traces" in item for item in findings)
+    assert any("tracemalloc.stop" in item for item in findings)
+
+
 def test_local_object_calls_are_ignored():
     assert audit.findings_for_source("buffer.append(1)\n") == []
 
