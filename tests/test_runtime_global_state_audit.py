@@ -94,6 +94,19 @@ warnings.resetwarnings()
     assert any("warnings.resetwarnings" in item for item in findings)
 
 
+def test_numpy_runtime_callback_state_is_reported_for_common_aliases():
+    source = """
+import numpy
+import numpy as np
+numpy.seterrcall(handler)
+np.setbufsize(16384)
+"""
+    findings = audit.findings_for_source(source, path="numeric.py")
+    assert len(findings) == 2
+    assert any("numpy.seterrcall" in item for item in findings)
+    assert any("np.setbufsize" in item for item in findings)
+
+
 def test_local_object_calls_are_ignored():
     assert audit.findings_for_source("buffer.append(1)\n") == []
 
