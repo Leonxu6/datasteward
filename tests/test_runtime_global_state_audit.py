@@ -69,6 +69,18 @@ signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGTERM})
     assert any("signal.pthread_sigmask" in item for item in findings)
 
 
+def test_default_thread_instrumentation_hooks_are_reported():
+    source = """
+import threading
+threading.settrace(trace_fn)
+threading.setprofile(profile_fn)
+"""
+    findings = audit.findings_for_source(source, path="threads.py")
+    assert len(findings) == 2
+    assert any("threading.settrace" in item for item in findings)
+    assert any("threading.setprofile" in item for item in findings)
+
+
 def test_local_object_calls_are_ignored():
     assert audit.findings_for_source("buffer.append(1)\n") == []
 
