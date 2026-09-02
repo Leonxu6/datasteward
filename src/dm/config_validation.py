@@ -14,6 +14,7 @@ _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _FLOAT_TEXT = re.compile(r"^-?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$")
 _MAX_ENV_NAME = 128
 _MAX_NUMERIC_TEXT = 128
+_MAX_TEXT_LENGTH = 100_000
 _MAX_DNS_NAME = 253
 _MAX_DNS_LABEL = 63
 _HEX_DIGITS = frozenset(string.hexdigits)
@@ -92,6 +93,8 @@ def env_text(name: str, default: str, *, allow_empty: bool = False, max_length: 
     if not isinstance(allow_empty, bool):
         raise ValueError("allow_empty 必须是布尔值")
     max_length = _positive_int(max_length, field="max_length")
+    if max_length > _MAX_TEXT_LENGTH:
+        raise ValueError(f"max_length 不能超过 {_MAX_TEXT_LENGTH}")
     raw = os.environ.get(name)
     value = default if raw is None else raw
     if not isinstance(value, str):
