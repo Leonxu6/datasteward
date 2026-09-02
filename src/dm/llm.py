@@ -51,17 +51,17 @@ def _optional_positive_int(value, *, field_name: str):
 
 def _required_text(value, *, field_name: str) -> str:
     if not isinstance(value, str) or not value:
-        raise ValueError(f"{field_name} 必须是非空字符串: {value!r}")
+        raise ValueError(f"{field_name} 必须是非空字符串")
     if value != value.strip():
-        raise ValueError(f"{field_name} 不能包含首尾空白: {value!r}")
+        raise ValueError(f"{field_name} 不能包含首尾空白")
     if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
-        raise ValueError(f"{field_name} 不能包含控制字符: {value!r}")
+        raise ValueError(f"{field_name} 不能包含控制字符")
     return value
 
 
 def _header_value(value, *, field_name: str) -> str:
     if not isinstance(value, str):
-        raise ValueError(f"{field_name} 必须是字符串: {value!r}")
+        raise ValueError(f"{field_name} 必须是字符串")
     if value != value.strip():
         raise ValueError(f"{field_name} 不能包含首尾空白")
     if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
@@ -78,9 +78,9 @@ def _gateway_base_url(value) -> str:
         hostname = parsed.hostname
         port = parsed.port
     except ValueError as exc:
-        raise ValueError(f"LLM_BASE_URL 必须是有效的 HTTP(S) URL: {value!r}") from exc
+        raise ValueError("LLM_BASE_URL 必须是有效的 HTTP(S) URL") from exc
     if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc or not hostname:
-        raise ValueError(f"LLM_BASE_URL 必须是有效的 HTTP(S) URL: {value!r}")
+        raise ValueError("LLM_BASE_URL 必须是有效的 HTTP(S) URL")
     if parsed.username is not None or parsed.password is not None:
         raise ValueError("LLM_BASE_URL 不能内嵌凭据")
     if parsed.query or parsed.fragment:
@@ -104,9 +104,9 @@ def _validate_messages(messages):
         if "content" not in message:
             raise ValueError(f"messages[{index}] 缺少 content")
     try:
-        serialized = json.dumps(messages, ensure_ascii=False)
+        serialized = json.dumps(messages, ensure_ascii=False, allow_nan=False)
     except (TypeError, ValueError) as exc:
-        raise ValueError("messages 必须可 JSON 序列化") from exc
+        raise ValueError("messages 必须可序列化为标准 JSON") from exc
     if len(serialized) > _MAX_SERIALIZED_MESSAGES:
         raise ValueError("messages 序列化后过大")
     return messages
@@ -131,7 +131,7 @@ def _stream_content(obj):
         raise RuntimeError("LLM 流式响应结构异常")
     if obj.get("error"):
         raise RuntimeError("LLM 流式响应报错")
-    choices = obj.get("choices") or []
+    choices = obj.get("choices", [])
     if not isinstance(choices, list):
         raise RuntimeError("LLM 流式 choices 结构异常")
     if not choices:
@@ -139,7 +139,7 @@ def _stream_content(obj):
     choice = choices[0]
     if not isinstance(choice, dict):
         raise RuntimeError("LLM 流式 choice 结构异常")
-    delta = choice.get("delta") or {}
+    delta = choice.get("delta", {})
     if not isinstance(delta, dict):
         raise RuntimeError("LLM 流式 delta 结构异常")
     content = delta.get("content")
@@ -151,10 +151,14 @@ def _stream_content(obj):
 
 
 def _close_response(response) -> None:
-    """Close requests-compatible responses when the adapter exposes cleanup."""
-    close = getattr(response, "close", None)
-    if callable(close):
-        close()
+    """Best-effort cleanup for requests-compatible response adapters."""
+    try:
+        close = getattr(response, "close", None)
+        if callable(close):
+            close()
+    except Exception:  # noqa: BLE001
+        # Cleanup failures must not replace the actual HTTP/model outcome.
+        return
 
 
 def chat(messages: list, model: str | None = None, temperature: float = 0.2,
