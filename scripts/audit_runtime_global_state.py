@@ -20,6 +20,8 @@ _RULE_MESSAGES = {
     "tracemalloc.start": "tracemalloc lifecycle is process-wide",
     "tracemalloc.stop": "tracemalloc lifecycle is process-wide",
     "tracemalloc.clear_traces": "tracemalloc traces are process-wide",
+    "os.nice": "process priority changes affect the entire service process",
+    "os.setpriority": "process priority changes affect scheduler behavior",
 }
 
 
