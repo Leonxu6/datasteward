@@ -81,6 +81,19 @@ threading.setprofile(profile_fn)
     assert any("threading.setprofile" in item for item in findings)
 
 
+def test_global_logging_and_warning_resets_are_reported():
+    source = """
+import logging
+import warnings
+logging.disable(logging.CRITICAL)
+warnings.resetwarnings()
+"""
+    findings = audit.findings_for_source(source, path="runtime.py")
+    assert len(findings) == 2
+    assert any("logging.disable" in item for item in findings)
+    assert any("warnings.resetwarnings" in item for item in findings)
+
+
 def test_local_object_calls_are_ignored():
     assert audit.findings_for_source("buffer.append(1)\n") == []
 
