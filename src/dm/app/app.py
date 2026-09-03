@@ -8,6 +8,7 @@ Eval 质量、数仓健康——而非客户业务数据。每个模块独立 gr
 import streamlit as st
 
 from dm.app import theme as T
+from dm.app.errors import safe_error_summary
 from dm.app.pages import (
     actions_page, agent, catalog_page, control_panel, dashboard, docs, governance, graph,
     health_page, lineage_page, metrics_page, ontology_page, quality, reports_page,
@@ -57,6 +58,5 @@ st.markdown(
 
 try:
     render()
-except Exception as e:  # noqa: BLE001  —— 单模块 graceful：不让一个模块的异常拖垮整站
-    st.error(f"该模块渲染出错：{e}")
-    st.exception(e)
+except Exception as exc:  # noqa: BLE001  —— 单模块 graceful：不让一个模块的异常拖垮整站
+    st.error(safe_error_summary("模块渲染", exc))
