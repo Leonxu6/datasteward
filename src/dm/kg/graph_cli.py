@@ -7,28 +7,48 @@
 import json
 import sys
 
+_ALLOWED_MODES = {"find_related", "impact_path", "cypher"}
 
-def main():
+
+def _emit(payload) -> None:
+    sys.stdout.write("DMJSON:" + json.dumps(payload, ensure_ascii=False, default=str, allow_nan=False) + "\n")
+    sys.stdout.flush()
+
+
+def _parse_args(raw: str) -> dict:
+    try:
+        args = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError("graph CLI 参数必须是合法 JSON") from exc
+    if not isinstance(args, dict):
+        raise ValueError("graph CLI 参数必须是 JSON 对象")
+    return args
+
+
+def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     mode = sys.argv[1] if len(sys.argv) > 1 else "find_related"
+    if mode not in _ALLOWED_MODES:
+        _emit({"error": f"未知 mode: {mode}（可用 find_related / impact_path / cypher）"})
+        return 2
     try:
-        args = json.loads(sys.argv[2]) if len(sys.argv) > 2 else {}
-    except Exception:  # noqa: BLE001
-        args = {}
+        args = _parse_args(sys.argv[2]) if len(sys.argv) > 2 else {}
+    except ValueError as exc:
+        _emit({"error": str(exc)})
+        return 2
+
     from dm.kg.query import find_related, impact_path, restricted_cypher
     if mode == "find_related":
         res = find_related(args.get("entity_id", ""), args.get("max_hops", 2), args.get("limit", 30))
     elif mode == "impact_path":
         res = impact_path(args.get("entity_id", ""), args.get("target_type", ""),
                           args.get("max_hops", 4), args.get("limit", 20))
-    elif mode == "cypher":
-        res = restricted_cypher(args.get("cypher", ""), args.get("limit", 50))
     else:
-        res = {"error": f"未知 mode: {mode}（可用 find_related / impact_path / cypher）"}
-    sys.stdout.write("DMJSON:" + json.dumps(res, ensure_ascii=False, default=str) + "\n")
-    sys.stdout.flush()
+        res = restricted_cypher(args.get("cypher", ""), args.get("limit", 50))
+    _emit(res)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
