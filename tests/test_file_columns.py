@@ -45,7 +45,7 @@ def test_file_incremental_cursor_uses_normalized_column_labels(tmp_path: Path, m
     assert rows == [(2, 20)]
 
 
-def test_file_columns_reject_stringification_collisions(tmp_path: Path, monkeypatch):
+def test_file_columns_reject_normalized_collisions(tmp_path: Path, monkeypatch):
     (tmp_path / "orders.csv").write_text("placeholder\n1\n", encoding="utf-8")
     connector = _connector(tmp_path)
     monkeypatch.setattr(
@@ -54,7 +54,20 @@ def test_file_columns_reject_stringification_collisions(tmp_path: Path, monkeypa
         lambda path, nrows=None: pd.DataFrame([[1, 2]], columns=[1, "1"]),
     )
 
-    with pytest.raises(ValueError, match="字符串化后存在重复"):
+    with pytest.raises(ValueError, match="规范化后存在重复"):
+        connector.read_table("orders")
+
+
+def test_file_columns_reject_case_insensitive_collisions(tmp_path: Path, monkeypatch):
+    (tmp_path / "orders.csv").write_text("placeholder\n1\n", encoding="utf-8")
+    connector = _connector(tmp_path)
+    monkeypatch.setattr(
+        connector,
+        "_read_df",
+        lambda path, nrows=None: pd.DataFrame([[1, 2]], columns=["Code", "code"]),
+    )
+
+    with pytest.raises(ValueError, match="规范化后存在重复"):
         connector.read_table("orders")
 
 
