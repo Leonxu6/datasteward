@@ -11,6 +11,8 @@ import json
 from collections import Counter
 from datetime import datetime
 
+from dm.app.errors import safe_error_summary
+
 try:  # 缓存装饰器：Streamlit 在则短 TTL 缓存，不在则 no-op（便于单测纯聚合）
     import streamlit as st
 
@@ -133,8 +135,8 @@ def wh_health() -> dict:
         con.close()
         info["ok"] = True
         info["latency_ms"] = round((_t.perf_counter() - t0) * 1000)
-    except Exception as e:  # noqa: BLE001
-        info["error"] = str(e)
+    except Exception as exc:  # noqa: BLE001
+        info["error"] = safe_error_summary("StarRocks 健康检查", exc)
     return info
 
 
@@ -164,8 +166,8 @@ def wh_table_stats() -> dict:
             out["ok"] = True
         finally:
             con.close()
-    except Exception as e:  # noqa: BLE001
-        out["error"] = str(e)
+    except Exception as exc:  # noqa: BLE001
+        out["error"] = safe_error_summary("StarRocks 表统计", exc)
     return out
 
 
@@ -191,8 +193,8 @@ def flink_status() -> dict:
         running = [j for j in out["jobs"] if j["state"] == "RUNNING"]
         out["cdc"] = running[0] if running else (out["jobs"][0] if out["jobs"] else None)
         out["ok"] = True
-    except Exception as e:  # noqa: BLE001
-        out["error"] = str(e)
+    except Exception as exc:  # noqa: BLE001
+        out["error"] = safe_error_summary("Flink 状态探测", exc)
     return out
 
 
@@ -221,8 +223,8 @@ def pg_slots() -> dict:
         lags = [s["lag"] for s in out["slots"] if s["lag"] is not None]
         out["max_lag"] = max(lags) if lags else None
         out["ok"] = True
-    except Exception as e:  # noqa: BLE001
-        out["error"] = str(e)
+    except Exception as exc:  # noqa: BLE001
+        out["error"] = safe_error_summary("Postgres replication slot 探测", exc)
     return out
 
 
@@ -242,8 +244,8 @@ def sr_pg_parity() -> dict:
                     sr[t["name"]] = None
         finally:
             con.close()
-    except Exception as e:  # noqa: BLE001
-        out["error"] = f"StarRocks: {e}"
+    except Exception as exc:  # noqa: BLE001
+        out["error"] = safe_error_summary("StarRocks 对账", exc)
     pg = {}
     try:
         import psycopg
@@ -261,8 +263,9 @@ def sr_pg_parity() -> dict:
         out["pg_ok"] = True
     except ModuleNotFoundError:
         out["error"] = (out["error"] + " psycopg 未安装").strip()
-    except Exception as e:  # noqa: BLE001
-        out["error"] = (out["error"] + f" PG: {e}").strip()
+    except Exception as exc:  # noqa: BLE001
+        pg_error = safe_error_summary("Postgres 对账", exc)
+        out["error"] = " · ".join(part for part in (out["error"], pg_error) if part)
     for t in TABLES:
         s, p = sr.get(t["name"]), pg.get(t["name"])
         match = s is not None and p is not None and s == p
