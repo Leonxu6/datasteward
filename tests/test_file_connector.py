@@ -49,16 +49,17 @@ def test_introspect_rejects_regular_file_source(tmp_path):
         _connector(source_path).introspect()
 
 
-def test_introspect_surfaces_supported_file_read_errors(tmp_path, monkeypatch):
+def test_introspect_redacts_supported_file_read_errors(tmp_path, monkeypatch):
     broken = tmp_path / "broken.csv"; broken.write_text("id\n1\n", encoding="utf-8")
     connector = _connector(tmp_path)
 
     def fail_read(path, nrows=None):
-        raise RuntimeError("parse failed")
+        raise RuntimeError("parse failed: password=secret")
 
     monkeypatch.setattr(connector, "_read_df", fail_read)
-    with pytest.raises(ValueError, match=r"读取文件元数据失败: broken\.csv: parse failed"):
+    with pytest.raises(ValueError, match=r"读取文件元数据失败: broken\.csv \(RuntimeError\)") as exc_info:
         connector.introspect()
+    assert "password=secret" not in str(exc_info.value)
 
 
 def test_read_table_rejects_path_traversal(tmp_path):
