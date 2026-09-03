@@ -9,6 +9,7 @@ from dm.connect.base import ColumnDef, Connector, DatasetDef, Source, normalize_
 _EXTS = (".csv", ".xlsx", ".xls")
 _EXT_PRIORITY = {ext: idx for idx, ext in enumerate(_EXTS)}
 _TEMP_PREFIXES = ("~$", "._")
+_MAX_COLUMN_NAME = 256
 
 
 def default_file_source() -> Source:
@@ -66,10 +67,25 @@ class FileConnector(Connector):
         return cursor_col
 
     @staticmethod
-    def _normalize_columns(df):
-        names = [str(column) for column in df.columns]
-        if len(names) != len(set(names)):
-            raise ValueError(f"文件列名字符串化后存在重复: {names!r}")
+    def _normalize_column_name(column) -> str:
+        try:
+            name = str(column)
+        except Exception as exc:  # noqa: BLE001
+            raise ValueError(f"文件列名无法转换为文本 ({exc.__class__.__name__})") from exc
+        if not name or not name.strip():
+            raise ValueError("文件列名不能为空")
+        if len(name) > _MAX_COLUMN_NAME:
+            raise ValueError(f"文件列名过长（最大 {_MAX_COLUMN_NAME} 字符）")
+        if any(ord(ch) < 32 or ord(ch) == 127 for ch in name):
+            raise ValueError("文件列名不能包含控制字符")
+        return name
+
+    @classmethod
+    def _normalize_columns(cls, df):
+        names = [cls._normalize_column_name(column) for column in df.columns]
+        folded = [name.casefold() for name in names]
+        if len(folded) != len(set(folded)):
+            raise ValueError("文件列名规范化后存在重复")
         df.columns = names
         return df
 
@@ -89,6 +105,7 @@ class FileConnector(Connector):
     def _logical_files(self, d: Optional[Path] = None) -> list[Path]:
         groups: dict[str, list[Path]] = {}
         for p in self._supported_files(d):
+            self._validate_name(p.stem)
             groups.setdefault(p.stem.casefold(), []).append(p)
         chosen = []
         for group in groups.values():
@@ -146,9 +163,9 @@ class FileConnector(Connector):
             try:
                 df = self._normalize_columns(self._read_df(p, nrows=100))
             except Exception as exc:  # noqa: BLE001
-                raise ValueError(f"读取文件元数据失败: {p.name}: {exc}") from exc
+                raise ValueError(f"读取文件元数据失败: {p.name} ({exc.__class__.__name__})") from exc
             cols = [ColumnDef(name=c, data_type=_dtype_to_base(df[c].dtype)) for c in df.columns]
-            out.append(DatasetDef(name=p.stem, columns=cols))
+            out.append(DatasetDef(name=self._validate_name(p.stem), columns=cols))
         return out
 
     def read_table(self, name: str, limit: Optional[int] = None, cursor_col: Optional[str] = None, since=None) -> tuple:
@@ -162,7 +179,7 @@ class FileConnector(Connector):
                 mask = df[cursor_col] > since
             except (TypeError, ValueError) as exc:
                 raise ValueError(
-                    f"增量游标比较失败: {cursor_col!r} dtype={df[cursor_col].dtype}, since={since!r}"
+                    f"增量游标比较失败: {cursor_col!r} dtype={df[cursor_col].dtype}, since_type={type(since).__name__}"
                 ) from exc
             df = df[mask]
             if limit is not None: df = df.head(limit)
