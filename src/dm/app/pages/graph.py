@@ -8,20 +8,29 @@ import pandas as pd
 import streamlit as st
 
 from .. import components as C
+from ..errors import safe_error_summary
 
 
 def render():
     try:
         from dm.kg.query import find_related, impact_path
         from dm.kg.store import counts, ping
-    except Exception as e:  # noqa: BLE001
-        C.banner(f"KG 模块不可用：{str(e)[:120]}（需 pip install -e .[kg]）")
+    except Exception as exc:  # noqa: BLE001
+        C.banner(safe_error_summary("KG 模块加载", exc) + "（需 pip install -e .[kg]）")
         return
-    ok, err = ping()
+    try:
+        ok, err = ping()
+    except Exception as exc:  # noqa: BLE001
+        C.banner(safe_error_summary("Neo4j 健康检查", exc) + "（确认隧道转发 7687 且已 dm-kg build）")
+        return
     if not ok:
-        C.banner(f"Neo4j 不可达：{str(err)[:120]}（确认隧道转发 7687 且已 dm-kg build）")
+        C.banner("Neo4j 不可达（确认隧道转发 7687 且已 dm-kg build）")
         return
-    c = counts()
+    try:
+        c = counts()
+    except Exception as exc:  # noqa: BLE001
+        C.banner(safe_error_summary("读取图谱统计", exc))
+        return
     C.kpi_row([
         ("节点", f'{c["nodes"]:,}', "", "info"),
         ("边", f'{c["edges"]:,}', "", "info"),
@@ -44,23 +53,26 @@ def render():
         mode = col2.selectbox("模式", ["impact_path → Customer", "impact_path → SalesOrder", "find_related"])
         hops = col3.number_input("最大跳数", 1, 6, 4)
         if st.button("查询", type="primary") and eid.strip():
-            if mode.startswith("find_related"):
-                r = find_related(eid.strip(), max_hops=int(hops), limit=40)
-                C.kpi_row([("相连实体", r["count"], "", "ok" if r["count"] else "muted")], min_w=140)
-                if r["related"]:
-                    df = pd.DataFrame(r["related"])
-                    st.dataframe(df[["type", "id", "name", "cn", "hops", "via"]],
-                                 use_container_width=True, hide_index=True, height=400)
-            else:
-                tt = "Customer" if "Customer" in mode else "SalesOrder"
-                r = impact_path(eid.strip(), tt, max_hops=int(hops), limit=20)
-                if r.get("error"):
-                    C.banner(r["error"])
-                    return
-                C.kpi_row([(f"受影响 {tt}", r["count"], "", "ok" if r["count"] else "muted")], min_w=160)
-                for x in r.get("paths", []):
-                    with C.card(f'{x["name"]}（{x["id"]}）· {x["hops"]} 跳'):
-                        C.html('<div style="font-size:13px;line-height:1.9">'
-                               + '　<span style="color:#999">→</span>　'.join(C.esc(p) for p in x["path"])
-                               + '</div>')
-                        C.html(" ".join(C.chip(rl, "info") for rl in x["rels"]))
+            try:
+                if mode.startswith("find_related"):
+                    r = find_related(eid.strip(), max_hops=int(hops), limit=40)
+                    C.kpi_row([("相连实体", r["count"], "", "ok" if r["count"] else "muted")], min_w=140)
+                    if r["related"]:
+                        df = pd.DataFrame(r["related"])
+                        st.dataframe(df[["type", "id", "name", "cn", "hops", "via"]],
+                                     use_container_width=True, hide_index=True, height=400)
+                else:
+                    tt = "Customer" if "Customer" in mode else "SalesOrder"
+                    r = impact_path(eid.strip(), tt, max_hops=int(hops), limit=20)
+                    if r.get("error"):
+                        C.banner(r["error"])
+                        return
+                    C.kpi_row([(f"受影响 {tt}", r["count"], "", "ok" if r["count"] else "muted")], min_w=160)
+                    for x in r.get("paths", []):
+                        with C.card(f'{x["name"]}（{x["id"]}）· {x["hops"]} 跳'):
+                            C.html('<div style="font-size:13px;line-height:1.9">'
+                                   + '　<span style="color:#999">→</span>　'.join(C.esc(p) for p in x["path"])
+                                   + '</div>')
+                            C.html(" ".join(C.chip(rl, "info") for rl in x["rels"]))
+            except Exception as exc:  # noqa: BLE001
+                C.banner(safe_error_summary("图谱查询", exc))
