@@ -19,6 +19,11 @@ CHECK_CATALOG = [
     {"id": "dbt_tests", "type": "dbt", "severity": "error", "desc": "dbt 质量测试（唯一/非空/引用完整/业务规则）全部通过"},
 ]
 
+_SAFE_VALIDATION_MESSAGES = (
+    "min_rows must be a non-negative integer",
+    "max_age_days must be a non-negative integer",
+)
+
 
 def _sr_scalar(sql):
     con = connect_ro()
@@ -71,6 +76,18 @@ def _result(chk, status, actual, message):
         "actual": actual,
         "message": message,
     }
+
+
+def _safe_validation_detail(exc: ValueError) -> str:
+    text = str(exc)
+    for safe in _SAFE_VALIDATION_MESSAGES:
+        if text == safe:
+            return safe
+    if "invalid row count" in text:
+        return "invalid row count"
+    if text.startswith("invalid freshness timestamp") or text == "freshness timestamp is empty":
+        return "invalid freshness timestamp"
+    return "validation failed"
 
 
 def run_check(chk: dict) -> dict:
@@ -128,6 +145,8 @@ def run_check(chk: dict) -> dict:
         if t == "dbt":
             return _dbt_tests_result(chk)
         return _result(chk, "warn", None, f"未知检查类型 {t}")
+    except ValueError as exc:
+        return _result(chk, "fail", None, f"检查执行失败：{_safe_validation_detail(exc)}")
     except Exception as exc:  # noqa: BLE001
         return _result(chk, "fail", None, f"检查执行失败（{exc.__class__.__name__}）")
 
