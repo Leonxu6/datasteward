@@ -16,6 +16,11 @@ def _quote_ident(value, *, field_name: str) -> str:
     return '"' + value.replace('"', '""') + '"'
 
 
+def _connection_error(exc: BaseException) -> str:
+    """Keep health checks useful without exposing driver/credential details."""
+    return f"PostgreSQL connection failed ({exc.__class__.__name__})"
+
+
 def default_pg_source() -> Source:
     """从 config 构建默认 PG 影子源（凭据只存 env 引用）。"""
     return Source(
@@ -62,8 +67,8 @@ class PostgresConnector(Connector):
                 cur.execute("SELECT 1")
                 cur.fetchone()
             return True, "ok"
-        except Exception as e:  # noqa: BLE001
-            return False, str(e)
+        except Exception as exc:  # noqa: BLE001
+            return False, _connection_error(exc)
 
     def introspect(self, schema: Optional[str] = None) -> list:
         """自省指定/配置 schema 下所有基表 → DatasetDef 列表。"""
