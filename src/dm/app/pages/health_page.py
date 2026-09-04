@@ -9,6 +9,7 @@ import pandas as pd
 import streamlit as st
 
 from .. import components as C
+from ..errors import safe_error_summary
 from dm.health import CHECK_CATALOG, run_all
 
 
@@ -19,8 +20,8 @@ def render():
     t0, t1 = st.tabs(["监控总览", "监控目录"])
     try:
         data = run_all()
-    except Exception as e:  # noqa: BLE001
-        C.banner(f'健康检查不可达：{str(e)[:120]}（确认隧道转发 9030/15432）')
+    except Exception as exc:  # noqa: BLE001
+        C.banner(safe_error_summary("健康检查", exc) + "（确认隧道转发 9030/15432）")
         return
     res, s = data["results"], data["summary"]
 
