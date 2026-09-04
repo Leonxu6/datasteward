@@ -36,6 +36,11 @@ def _quote_ident(value, *, field_name: str) -> str:
     return "[" + value.replace("]", "]]" ) + "]"
 
 
+def _connection_error(exc: BaseException) -> str:
+    """Keep health checks useful without exposing driver/credential details."""
+    return f"SQL Server connection failed ({exc.__class__.__name__})"
+
+
 class SqlServerConnector(Connector):
     source_type = "sqlserver"
 
@@ -92,8 +97,8 @@ class SqlServerConnector(Connector):
         try:
             with self._cursor() as cur: cur.execute("SELECT 1"); cur.fetchone()
             return True, "ok"
-        except Exception as e:  # noqa: BLE001
-            return False, str(e)
+        except Exception as exc:  # noqa: BLE001
+            return False, _connection_error(exc)
 
     def introspect(self, schema: Optional[str] = None) -> list:
         schema = self._schema(schema); out = []
