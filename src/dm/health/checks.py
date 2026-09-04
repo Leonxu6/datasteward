@@ -128,8 +128,8 @@ def run_check(chk: dict) -> dict:
         if t == "dbt":
             return _dbt_tests_result(chk)
         return _result(chk, "warn", None, f"未知检查类型 {t}")
-    except Exception as e:  # noqa: BLE001
-        return _result(chk, "fail", None, f"检查执行失败：{str(e)[:100]}")
+    except Exception as exc:  # noqa: BLE001
+        return _result(chk, "fail", None, f"检查执行失败（{exc.__class__.__name__}）")
 
 
 def _to_dt(v):
