@@ -25,7 +25,7 @@ class _IntrospectionConnection:
 
 class _FailingCursor:
     def __init__(self): self.closed = False
-    def execute(self, sql, params=()): raise RuntimeError("query failed")
+    def execute(self, sql, params=()): raise RuntimeError("query failed password=secret")
     def close(self): self.closed = True
 
 
@@ -155,9 +155,11 @@ def test_read_table_closes_cursor_and_connection_when_query_fails(monkeypatch):
     assert cursor.closed is True and fake.closed is True
 
 
-def test_test_connection_closes_resources_on_failure(monkeypatch):
+def test_test_connection_closes_resources_and_redacts_failure(monkeypatch):
     connector = SqlServerConnector(Source(name="u8", source_type="sqlserver")); cursor = _FailingCursor(); fake = _IntrospectionConnection(cursor=cursor); monkeypatch.setattr(connector, "_connect", lambda: fake); ok, message = connector.test_connection()
-    assert ok is False and "query failed" in message and cursor.closed is True and fake.closed is True
+    assert ok is False and message == "SQL Server connection failed (RuntimeError)"
+    assert "secret" not in message and "query failed" not in message
+    assert cursor.closed is True and fake.closed is True
 
 
 def test_connection_closes_even_if_cursor_close_raises(monkeypatch):
