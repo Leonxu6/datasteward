@@ -10,6 +10,7 @@ import pandas as pd
 import streamlit as st
 
 from .. import components as C
+from ..errors import safe_error_summary
 from dm.ontology import execute_action
 from dm.security import ROLES, User
 from dm.warehouse.store import connect_ro
@@ -39,8 +40,8 @@ def render():
                 "FROM material m LEFT JOIN inventory i ON i.material_id=m.material_id "
                 "GROUP BY m.material_id, m.name, m.safety_stock "
                 "HAVING COALESCE(SUM(i.qty),0) < m.safety_stock ORDER BY m.material_id")
-        except Exception as e:  # noqa: BLE001
-            C.banner(f'数仓不可达：{str(e)[:120]}（确认隧道转发 9030）')
+        except Exception as exc:  # noqa: BLE001
+            C.banner(safe_error_summary("读取缺料任务", exc) + "（确认隧道转发 9030）")
             return
         C.kpi_row([("缺料物料数", len(rows), "库存<安全库存", "warn" if rows else "ok")], min_w=160)
         if not rows:
@@ -52,10 +53,17 @@ def render():
                 sup = c1.text_input("供应商", "S001", key=f"sup_{r['material_id']}")
                 q = c2.number_input("申请数量", min_value=1, value=int(max(gap, 1)), key=f"q_{r['material_id']}")
                 if c3.button("生成采购申请", key=f"pr_{r['material_id']}"):
-                    res = execute_action("create_purchase_requisition",
-                                         {"material_id": r["material_id"], "supplier_id": sup, "qty": int(q)},
-                                         user=u, approve=False)
-                    _show(res)
+                    try:
+                        res = execute_action(
+                            "create_purchase_requisition",
+                            {"material_id": r["material_id"], "supplier_id": sup, "qty": int(q)},
+                            user=u,
+                            approve=False,
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        C.banner(safe_error_summary("生成采购申请", exc))
+                    else:
+                        _show(res)
 
     with t1:
         try:
@@ -64,8 +72,8 @@ def render():
                 "FROM sales_order so LEFT JOIN "
                 "(SELECT material_id, SUM(qty) stock FROM inventory GROUP BY material_id) inv "
                 "ON inv.material_id=so.material_id WHERE so.status='未完成' ORDER BY so.so_id LIMIT 30")
-        except Exception as e:  # noqa: BLE001
-            C.banner(f'数仓不可达：{str(e)[:120]}')
+        except Exception as exc:  # noqa: BLE001
+            C.banner(safe_error_summary("读取发货任务", exc))
             return
         shippable = [r for r in rows if r["stock"] >= r["qty"]]
         C.kpi_row([("未完成订单行", len(rows), "", "info"),
@@ -77,9 +85,17 @@ def render():
                 c1, c2 = st.columns([3, 2])
                 q = c1.number_input("发货数量", min_value=1, value=int(r["qty"]), key=f"dq_{r['so_id']}_{r['material_id']}")
                 if c2.button("发起发货", key=f"dn_{r['so_id']}_{r['material_id']}", disabled=not ok):
-                    res = execute_action("create_delivery", {"so_id": r["so_id"], "qty": int(q)},
-                                         user=u, approve=False)
-                    _show(res)
+                    try:
+                        res = execute_action(
+                            "create_delivery",
+                            {"so_id": r["so_id"], "qty": int(q)},
+                            user=u,
+                            approve=False,
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        C.banner(safe_error_summary("发起发货", exc))
+                    else:
+                        _show(res)
 
 
 def _show(res):
