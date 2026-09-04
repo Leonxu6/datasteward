@@ -9,6 +9,7 @@ import pandas as pd
 import streamlit as st
 
 from .. import charts, components as C
+from ..errors import safe_error_summary
 from dm.warehouse.store import connect_ro
 
 
@@ -35,8 +36,8 @@ def render():
             _dashboard()
         with t1:
             _reports()
-    except Exception as e:  # noqa: BLE001
-        C.banner(f'数仓不可达：{str(e)[:120]}（确认隧道转发 9030 且已 dm-load）')
+    except Exception as exc:  # noqa: BLE001
+        C.banner(safe_error_summary("加载经营报表", exc) + "（确认隧道转发 9030 且已 dm-load）")
 
 
 def _dashboard():
