@@ -9,6 +9,7 @@ import pandas as pd
 import streamlit as st
 
 from .. import components as C
+from ..errors import safe_error_summary
 from dm.ontology import (
     ACTION_TYPES, action_history, approve_action, execute_action, list_action_types,
     pending_actions, rollback_action,
@@ -49,8 +50,8 @@ def render():
                     st.success(res.get("message"))
                 else:
                     st.error(res.get("error", "失败"))
-            except Exception as e:  # noqa: BLE001
-                C.banner(f'发起失败（可能 PG 源不可达，确认隧道转发 15432）：{str(e)[:140]}')
+            except Exception as exc:  # noqa: BLE001
+                C.banner(safe_error_summary("发起 Action", exc) + "（可能 PG 源不可达，确认隧道转发 15432）")
 
     with t1:
         approver = st.selectbox("审批人角色", ROLES, index=ROLES.index("管理层"), key="approver_role")
@@ -58,8 +59,8 @@ def render():
         pend = []
         try:
             pend = pending_actions()
-        except Exception as e:  # noqa: BLE001
-            C.banner(f'读取待审批失败：{str(e)[:120]}')
+        except Exception as exc:  # noqa: BLE001
+            C.banner(safe_error_summary("读取待审批 Action", exc))
         if not pend:
             st.caption("暂无待审批 Action")
         for r in pend:
@@ -70,8 +71,8 @@ def render():
                     try:
                         res = approve_action(r["action_id"], user=au)
                         st.success(res.get("message") or res.get("error"))
-                    except Exception as e:  # noqa: BLE001
-                        C.banner(f'批准失败：{str(e)[:140]}')
+                    except Exception as exc:  # noqa: BLE001
+                        C.banner(safe_error_summary("批准 Action", exc))
                 if c2.button("↩ 忽略", key="ig_" + r["action_id"]):
                     st.info("已忽略（保留待审批记录）")
 
@@ -79,8 +80,8 @@ def render():
         hist = []
         try:
             hist = action_history()
-        except Exception as e:  # noqa: BLE001
-            C.banner(f'读取历史失败：{str(e)[:120]}')
+        except Exception as exc:  # noqa: BLE001
+            C.banner(safe_error_summary("读取 Action 历史", exc))
         if not hist:
             st.caption("暂无 Action 历史")
             return
@@ -98,5 +99,5 @@ def render():
                 try:
                     res = rollback_action(rid, user=User("回滚人", rb_role))
                     st.success(res.get("message") or res.get("error"))
-                except Exception as e:  # noqa: BLE001
-                    C.banner(f'回滚失败：{str(e)[:140]}')
+                except Exception as exc:  # noqa: BLE001
+                    C.banner(safe_error_summary("回滚 Action", exc))
