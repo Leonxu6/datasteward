@@ -8,19 +8,20 @@ import pandas as pd
 import streamlit as st
 
 from .. import components as C
+from ..errors import safe_error_summary
 
 
 def render():
     try:
         from dm.docs import store as docstore
         from dm.docs.search import search as doc_search
-    except Exception as e:  # noqa: BLE001
-        C.banner(f"RAG 模块不可用：{str(e)[:120]}（需 pip install -e .[rag]）")
+    except Exception as exc:  # noqa: BLE001
+        C.banner(safe_error_summary("RAG 模块加载", exc) + "（需 pip install -e .[rag]）")
         return
     try:
         nd, nc = docstore.counts()
-    except Exception as e:  # noqa: BLE001
-        C.banner(f"向量库不可达：{str(e)[:120]}（确认隧道转发 15432 且已 dm-docs build）")
+    except Exception as exc:  # noqa: BLE001
+        C.banner(safe_error_summary("向量库连接", exc) + "（确认隧道转发 15432 且已 dm-docs build）")
         return
 
     t_search, t_reg = st.tabs(["语义检索", "文档注册表"])
@@ -39,8 +40,8 @@ def render():
                         "FROM document ORDER BY doc_id")
             rows = cur.fetchall()
             con.close()
-        except Exception as e:  # noqa: BLE001
-            C.banner(f"读取注册表失败：{str(e)[:120]}")
+        except Exception as exc:  # noqa: BLE001
+            C.banner(safe_error_summary("读取文档注册表", exc))
             return
         with C.card("文档注册表", "合成文档引用真实物料/供应商/订单/到货/设备 ID，可与数仓跨域链接"):
             df = pd.DataFrame(rows, columns=["doc_id", "类型", "标题", "关联实体", "切片", "索引", "索引时间"])
@@ -61,8 +62,8 @@ def render():
         if st.button("检索", type="primary") and q.strip():
             try:
                 hits = doc_search(q.strip(), top_k=5)
-            except Exception as e:  # noqa: BLE001
-                C.banner(f"检索失败：{str(e)[:120]}")
+            except Exception as exc:  # noqa: BLE001
+                C.banner(safe_error_summary("文档检索", exc))
                 return
             C.kpi_row([
                 ("命中片段", len(hits), "", "ok" if hits else "muted"),
