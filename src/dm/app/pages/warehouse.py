@@ -5,6 +5,7 @@ import pandas as pd
 import streamlit as st
 
 from .. import charts, components as C, data as D
+from ..errors import safe_error_summary
 from dm.schema import TABLES, table_by_name
 from dm.warehouse.store import connect_ro
 
@@ -62,5 +63,5 @@ def render():
                     st.dataframe(df, use_container_width=True, hide_index=True, height=340)
                 finally:
                     con.close()
-            except Exception as e:  # noqa: BLE001
-                C.banner(f'读取失败：{str(e)[:120]}')
+            except Exception as exc:  # noqa: BLE001
+                C.banner(safe_error_summary("读取数仓预览", exc))
