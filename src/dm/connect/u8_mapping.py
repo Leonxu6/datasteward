@@ -220,6 +220,7 @@ def status():
             f"  {mapping['u8']:16} cursor={mapping['cursor'] or '(全量刷)':12} "
             f"水位={wm.get(mapping['u8'], '(未同步)')}"
         )
+    sr = None
     try:
         sr = connect_admin(WH_DB)
         rows = sr.execute(
@@ -230,9 +231,11 @@ def status():
         for (table,) in rows:
             count = sr.execute(f"SELECT COUNT(*) FROM `{table}`").fetchone()[0]
             print(f"  {table:28} {count} 行")
-        sr.close()
     except Exception as exc:  # noqa: BLE001
         print(f"（StarRocks 不可达：{_safe_failure(exc)}）")
+    finally:
+        if sr is not None:
+            sr.close()
 
 
 def main():
