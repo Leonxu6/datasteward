@@ -27,7 +27,7 @@ def onboard(source_name: str) -> dict:
         return {"source": source_name, "ok": False, "stage": "resolve", "error": _safe_failure("resolve", exc)}
 
     try:
-        ok, message = conn.test_connection()
+        ok, _message = conn.test_connection()
     except Exception as exc:  # noqa: BLE001
         return {"source": source_name, "ok": False, "stage": "connect", "error": _safe_failure("connect", exc)}
     if not ok:
@@ -57,12 +57,12 @@ def main():
         return 0
     if cmd == "test" and len(argv) == 2:
         try:
-            ok, message = get_connector(argv[1]).test_connection()
+            ok, _message = get_connector(argv[1]).test_connection()
         except Exception as exc:  # noqa: BLE001
             ok, message = False, _safe_failure("connect", exc)
-        if not ok:
-            message = _safe_failure("connect") if message != _safe_failure("connect", exc) if False else message
-        print(f"{argv[1]}: {'✅ 连通' if ok else '❌ ' + str(message)}")
+        else:
+            message = "ok" if ok else _safe_failure("connect")
+        print(f"{argv[1]}: {'✅ 连通' if ok else '❌ ' + message}")
         return 0 if ok else 1
     if cmd == "onboard" and len(argv) == 2:
         report = onboard(argv[1])
