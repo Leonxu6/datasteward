@@ -12,29 +12,36 @@ from dm.connect.readiness import build_readiness_report
 from dm.ontology import ONTOLOGY
 
 
+def _safe_failure(stage: str, exc: BaseException | None = None) -> str:
+    """Return a stable onboarding error without backend exception text."""
+    if exc is None:
+        return f"{stage} failed"
+    return f"{stage} failed ({exc.__class__.__name__})"
+
+
 def onboard(source_name: str) -> dict:
     """自省一个源并对照 Ontology 给出结构化就绪报告。"""
     try:
         conn = get_connector(source_name)
     except Exception as exc:  # noqa: BLE001
-        return {"source": source_name, "ok": False, "stage": "resolve", "error": str(exc)}
+        return {"source": source_name, "ok": False, "stage": "resolve", "error": _safe_failure("resolve", exc)}
 
     try:
         ok, message = conn.test_connection()
     except Exception as exc:  # noqa: BLE001
-        return {"source": source_name, "ok": False, "stage": "connect", "error": str(exc)}
+        return {"source": source_name, "ok": False, "stage": "connect", "error": _safe_failure("connect", exc)}
     if not ok:
-        return {"source": source_name, "ok": False, "stage": "connect", "error": str(message)}
+        return {"source": source_name, "ok": False, "stage": "connect", "error": _safe_failure("connect")}
 
     try:
         datasets = conn.introspect()
     except Exception as exc:  # noqa: BLE001
-        return {"source": source_name, "ok": False, "stage": "introspect", "error": str(exc)}
+        return {"source": source_name, "ok": False, "stage": "introspect", "error": _safe_failure("introspect", exc)}
 
     try:
         return build_readiness_report(source_name, datasets, ONTOLOGY.keys())
     except Exception as exc:  # noqa: BLE001
-        return {"source": source_name, "ok": False, "stage": "report", "error": str(exc)}
+        return {"source": source_name, "ok": False, "stage": "report", "error": _safe_failure("report", exc)}
 
 
 def main():
@@ -52,7 +59,9 @@ def main():
         try:
             ok, message = get_connector(argv[1]).test_connection()
         except Exception as exc:  # noqa: BLE001
-            ok, message = False, str(exc)
+            ok, message = False, _safe_failure("connect", exc)
+        if not ok:
+            message = _safe_failure("connect") if message != _safe_failure("connect", exc) if False else message
         print(f"{argv[1]}: {'✅ 连通' if ok else '❌ ' + str(message)}")
         return 0 if ok else 1
     if cmd == "onboard" and len(argv) == 2:
