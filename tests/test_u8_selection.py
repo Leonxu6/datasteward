@@ -82,7 +82,7 @@ def test_sync_redacts_backend_errors_from_report_and_audit(monkeypatch):
     assert captured["wm"] == {}
     assert len(captured["audits"]) == 1
     audit_args, audit_kwargs = captured["audits"][0]
-    assert audit_args[9] == "RuntimeError"
+    assert audit_args[8] == "RuntimeError"
     assert "secret" not in repr((audit_args, audit_kwargs))
 
 
