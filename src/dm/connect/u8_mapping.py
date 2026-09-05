@@ -54,8 +54,14 @@ _SR_TYPE = {
 }
 
 
+class _SyncValidationError(ValueError):
+    """Safe operator-facing validation raised only from local sync invariants."""
+
+
 def _safe_failure(exc: BaseException) -> str:
-    """Return useful failure classification without exposing backend exception text."""
+    """Keep local validation useful while hiding untrusted backend exception text."""
+    if isinstance(exc, _SyncValidationError):
+        return str(exc)
     return exc.__class__.__name__
 
 
@@ -137,7 +143,7 @@ def sync(tables=None, full=False, verbose=True) -> dict:
                     report[name] = "源库无此表"
                     continue
                 if not dset.columns:
-                    raise ValueError("源表没有可同步列")
+                    raise _SyncValidationError("源表没有可同步列")
                 pk_cols = dset.primary_key or [dset.columns[0].name]
                 sr.execute(_sr_ddl(dset, pk_cols))
 
@@ -150,7 +156,7 @@ def sync(tables=None, full=False, verbose=True) -> dict:
                 else:
                     cols, rows = conn.read_table(name, cursor_col=cursor_col, since=since)
                     if cursor_col not in cols:
-                        raise ValueError(f"增量游标列 {cursor_col!r} 不在读取结果中")
+                        raise _SyncValidationError(f"增量游标列 {cursor_col!r} 不在读取结果中")
                     cursor_index = cols.index(cursor_col)
                     cursor_max = max_non_null(row[cursor_index] for row in rows)
 
