@@ -20,8 +20,8 @@ class _Connector:
         return self.datasets
 
 
-def test_onboard_labels_connection_failures(monkeypatch):
-    connector = _Connector(ok=False, message="connection refused")
+def test_onboard_labels_connection_failures_without_backend_details(monkeypatch):
+    connector = _Connector(ok=False, message="connection refused password=secret")
     monkeypatch.setattr(onboard_module, "get_connector", lambda name: connector)
 
     report = onboard_module.onboard("erp")
@@ -30,12 +30,13 @@ def test_onboard_labels_connection_failures(monkeypatch):
         "source": "erp",
         "ok": False,
         "stage": "connect",
-        "error": "connection refused",
+        "error": "connect failed",
     }
+    assert "secret" not in repr(report)
 
 
-def test_onboard_labels_introspection_failures(monkeypatch):
-    connector = _Connector(error=RuntimeError("metadata denied"))
+def test_onboard_labels_introspection_failures_without_backend_details(monkeypatch):
+    connector = _Connector(error=RuntimeError("metadata denied password=secret"))
     monkeypatch.setattr(onboard_module, "get_connector", lambda name: connector)
 
     report = onboard_module.onboard("erp")
@@ -43,7 +44,8 @@ def test_onboard_labels_introspection_failures(monkeypatch):
     assert report["source"] == "erp"
     assert report["ok"] is False
     assert report["stage"] == "introspect"
-    assert report["error"] == "metadata denied"
+    assert report["error"] == "introspect failed (RuntimeError)"
+    assert "secret" not in repr(report)
 
 
 def test_onboard_reports_dataset_shape(monkeypatch):
