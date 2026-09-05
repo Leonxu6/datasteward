@@ -54,6 +54,11 @@ _SR_TYPE = {
 }
 
 
+def _safe_failure(exc: BaseException) -> str:
+    """Return useful failure classification without exposing backend exception text."""
+    return exc.__class__.__name__
+
+
 def ods_name(u8_table: str) -> str:
     return "raw_u8__" + u8_table.lower()
 
@@ -183,7 +188,8 @@ def sync(tables=None, full=False, verbose=True) -> dict:
                     mode = "全量" if (full or since is None) else f"增量>{since}"
                     print(f"  {name:16} → {ods_name(name):26} +{len(rows)} 行（{mode}）")
             except Exception as exc:  # noqa: BLE001
-                report[name] = f"失败: {exc}"
+                failure = _safe_failure(exc)
+                report[name] = f"失败: {failure}"
                 audit_event(
                     principal,
                     "u8_sync",
@@ -193,12 +199,12 @@ def sync(tables=None, full=False, verbose=True) -> dict:
                     0,
                     t0,
                     False,
-                    str(exc),
+                    failure,
                     category="dataImport",
                     decision="deny",
                 )
                 if verbose:
-                    print(f"  {name:16} ❌ {exc}")
+                    print(f"  {name:16} ❌ 同步失败（{failure}）")
     finally:
         sr.close()
 
@@ -226,7 +232,7 @@ def status():
             print(f"  {table:28} {count} 行")
         sr.close()
     except Exception as exc:  # noqa: BLE001
-        print(f"（StarRocks 不可达：{exc}）")
+        print(f"（StarRocks 不可达：{_safe_failure(exc)}）")
 
 
 def main():
@@ -240,9 +246,13 @@ def main():
     if cmd == "status":
         status()
         return
-    ok, msg = get_connector("u8_erp").test_connection()
+    try:
+        ok, _message = get_connector("u8_erp").test_connection()
+    except Exception as exc:  # noqa: BLE001
+        print(f"❌ U8 源不可达（{_safe_failure(exc)}）")
+        raise SystemExit(1) from None
     if not ok:
-        print(f"❌ U8 源不可达：{msg}")
+        print("❌ U8 源不可达")
         raise SystemExit(1)
     report = sync(tables=tables, full=(cmd == "full"))
     succeeded = sum(1 for value in report.values() if isinstance(value, int))
