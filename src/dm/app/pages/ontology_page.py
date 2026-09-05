@@ -9,6 +9,7 @@ import pandas as pd
 import streamlit as st
 
 from .. import components as C
+from ..errors import safe_error_summary
 from dm.ontology import (
     ONTOLOGY, get_links, get_object, get_object_type, list_action_types,
     list_objects, object_types, to_camel,
@@ -58,8 +59,8 @@ def render():
         pk_api = to_camel(ot.primary_key[0])
         try:
             listing = list_objects(api, limit=50, user=u)
-        except Exception as e:  # noqa: BLE001
-            C.banner(f'数仓不可达：{str(e)[:120]}（确认 SSH 隧道转发 9030 且已 dm-load）')
+        except Exception as exc:  # noqa: BLE001
+            C.banner(safe_error_summary("加载对象实例", exc) + "（确认 SSH 隧道转发 9030 且已 dm-load）")
             return
         if listing.get("error"):
             C.banner("⛔ " + listing["error"])
