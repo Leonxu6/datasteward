@@ -84,3 +84,25 @@ def test_sync_redacts_backend_errors_from_report_and_audit(monkeypatch):
     audit_args, audit_kwargs = captured["audits"][0]
     assert audit_args[9] == "RuntimeError"
     assert "secret" not in repr((audit_args, audit_kwargs))
+
+
+def test_status_closes_warehouse_and_redacts_query_failures(monkeypatch, capsys):
+    captured = {}
+
+    class FakeWarehouse:
+        def execute(self, sql):
+            raise RuntimeError("mysql://user:password=secret@warehouse/internal")
+
+        def close(self):
+            captured["closed"] = True
+
+    monkeypatch.setattr(u8_mapping, "_load_wm", lambda: {})
+    monkeypatch.setattr(u8_mapping, "connect_admin", lambda db: FakeWarehouse())
+
+    u8_mapping.status()
+
+    output = capsys.readouterr().out
+    assert captured["closed"]
+    assert "RuntimeError" in output
+    assert "secret" not in output
+    assert "warehouse/internal" not in output
