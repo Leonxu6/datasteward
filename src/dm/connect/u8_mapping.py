@@ -65,6 +65,34 @@ def _safe_failure(exc: BaseException) -> str:
     return exc.__class__.__name__
 
 
+def _validate_read_batch(dset, cols, rows):
+    """Validate connector output before using metadata in SQL or truncating full-refresh targets."""
+    if not isinstance(cols, (list, tuple)) or not cols:
+        raise _SyncValidationError("读取结果缺少列定义")
+    known = {column.name for column in dset.columns}
+    normalized_cols: list[str] = []
+    seen: set[str] = set()
+    for column in cols:
+        if not isinstance(column, str) or not column or column != column.strip():
+            raise _SyncValidationError("读取结果包含无效列名")
+        if any(ord(ch) < 32 or ord(ch) == 127 or ch == "`" for ch in column):
+            raise _SyncValidationError("读取结果包含不安全列名")
+        if column in seen:
+            raise _SyncValidationError("读取结果包含重复列名")
+        if column not in known:
+            raise _SyncValidationError(f"读取结果包含未自省列 {column!r}")
+        seen.add(column)
+        normalized_cols.append(column)
+    if not isinstance(rows, (list, tuple)):
+        raise _SyncValidationError("读取结果行集合格式无效")
+    normalized_rows: list[tuple] = []
+    for row in rows:
+        if not isinstance(row, (list, tuple)) or len(row) != len(normalized_cols):
+            raise _SyncValidationError("读取结果行宽与列定义不一致")
+        normalized_rows.append(tuple(row))
+    return normalized_cols, normalized_rows
+
+
 def ods_name(u8_table: str) -> str:
     return "raw_u8__" + u8_table.lower()
 
@@ -151,10 +179,12 @@ def sync(tables=None, full=False, verbose=True) -> dict:
                 since = None if full else wm.get(name)
                 if cursor_col is None:
                     cols, rows = conn.read_table(name)
+                    cols, rows = _validate_read_batch(dset, cols, rows)
                     sr.execute(f"TRUNCATE TABLE `{ods_name(name)}`")
                     cursor_max = None
                 else:
                     cols, rows = conn.read_table(name, cursor_col=cursor_col, since=since)
+                    cols, rows = _validate_read_batch(dset, cols, rows)
                     if cursor_col not in cols:
                         raise _SyncValidationError(f"增量游标列 {cursor_col!r} 不在读取结果中")
                     cursor_index = cols.index(cursor_col)
