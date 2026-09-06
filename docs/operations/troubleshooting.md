@@ -10,6 +10,12 @@ Run the connector readiness path and note the reported stage. Invalid host, port
 
 Check connection configuration and reproduce with a read-only query. Cursor cleanup errors should not mask the original driver exception. When a transaction has partially executed, use the explicit rollback path before retrying.
 
+## Audit persistence is degraded
+
+Read-only business results are kept separate from audit-storage availability. A completed SQL or metric query may therefore still return valid data when the audit sink fails; structured query responses include an `audit_warning` when that happens. Catalog reads also remain available so operators can diagnose the system instead of receiving a false data-service failure.
+
+Treat the warning as an observability incident, not as proof that the underlying query failed. Check the audit-store path or database independently, restore persistence, and verify a fresh operation creates an audit record. Do not retry a successful read merely to manufacture an audit entry, and do not suppress the warning at the agent boundary.
+
 ## Health page shows failures
 
 Read the structured `actual` value and message. A data-quality failure is different from malformed monitoring configuration. For parity, compare source and sink counts; for freshness, inspect source timezone/clock; for schema, review missing and extra columns separately.
