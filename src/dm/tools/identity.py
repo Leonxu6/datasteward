@@ -1,6 +1,8 @@
 """Normalization helpers for user-controlled principal metadata."""
 from __future__ import annotations
 
+import unicodedata
+
 _MAX_FIELD_NAME = 80
 _BIDI_CONTROLS = {
     "\u061c", "\u200e", "\u200f", "\u202a", "\u202b", "\u202c", "\u202d", "\u202e",
@@ -9,7 +11,7 @@ _BIDI_CONTROLS = {
 
 
 def _has_unsafe_control(value: str) -> bool:
-    return any(ord(ch) < 32 or ord(ch) == 127 or ch in _BIDI_CONTROLS for ch in value)
+    return any(unicodedata.category(ch) in {"Cc", "Cf", "Cs"} or ch in _BIDI_CONTROLS for ch in value)
 
 
 def _field_name(value: object) -> str:
