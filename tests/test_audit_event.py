@@ -1,5 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
+from types import SimpleNamespace
 
 from dm.tools import audit
 from dm.tools.principal import Principal
@@ -37,9 +38,12 @@ def test_audit_event_sanitizes_and_bounds_scalar_text(monkeypatch):
     captured = {}
     monkeypatch.setattr(audit, "append_log", lambda name, record: captured.update(name=name, record=record))
 
-    principal = Principal(
+    # Principal construction already validates these fields. A lightweight object exercises
+    # the audit writer's defense-in-depth boundary independently of Principal validation.
+    principal = SimpleNamespace(
         user="tester\u200cname",
         role="role\nname",
+        purpose="purpose\u206avalue",
         session_id="s\u206aid",
         channel="cli",
     )
@@ -58,6 +62,7 @@ def test_audit_event_sanitizes_and_bounds_scalar_text(monkeypatch):
     record = captured["record"]
     assert record["user"] == "tester name"
     assert record["role"] == "role name"
+    assert record["purpose"] == "purpose value"
     assert record["session_id"] == "s id"
     assert record["tool_name"] == "query tool"
     assert "\n" not in record["sql"] and len(record["sql"]) <= 10_000
