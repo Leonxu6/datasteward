@@ -31,3 +31,34 @@ def test_audit_event_serializes_complex_args_and_normalizes_fields(monkeypatch):
     assert record["sql"] == ""
     assert record["duration_ms"] == 250
     assert record["ok"] is True
+
+
+def test_audit_event_sanitizes_and_bounds_scalar_text(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(audit, "append_log", lambda name, record: captured.update(name=name, record=record))
+
+    principal = Principal(
+        user="tester\u200cname",
+        role="role\nname",
+        session_id="s\u206aid",
+        channel="cli",
+    )
+    audit.audit_event(
+        principal,
+        "query\u200ctool",
+        {},
+        "SELECT 1\n" + "x" * 20_000,
+        [],
+        0,
+        0,
+        False,
+        error="backend\u200cerror\n" + "e" * 20_000,
+    )
+
+    record = captured["record"]
+    assert record["user"] == "tester name"
+    assert record["role"] == "role name"
+    assert record["session_id"] == "s id"
+    assert record["tool_name"] == "query tool"
+    assert "\n" not in record["sql"] and len(record["sql"]) <= 10_000
+    assert "\n" not in record["error"] and len(record["error"]) <= 10_000
