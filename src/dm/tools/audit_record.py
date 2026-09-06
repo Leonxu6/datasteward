@@ -10,6 +10,7 @@ _MAX_LABELS = 100
 _MAX_JOINED_LABEL_CHARS = 10_000
 _MAX_JSON_CHARS = 100_000
 _MAX_DEFAULT_TEXT = 2_000
+_MAX_TEXT_CHARS = 10_000
 _MAX_ELAPSED_MS = 2_147_483_647
 _BIDI_CONTROLS = {
     "\u061c", "\u200e", "\u200f", "\u202a", "\u202b", "\u202c", "\u202d", "\u202e",
@@ -27,10 +28,23 @@ def _safe_repr(value: object, *, limit: int = 1000) -> str:
 
 def _sanitize_text(value: str) -> str:
     cleaned = "".join(
-        ch if ord(ch) >= 32 and ord(ch) != 127 and ch not in _BIDI_CONTROLS else " "
+        ch if unicodedata.category(ch) not in {"Cc", "Cf", "Cs"} and ch not in _BIDI_CONTROLS else " "
         for ch in value
     )
     return " ".join(cleaned.split()).strip()
+
+
+def safe_text(value: object, *, limit: int = _MAX_TEXT_CHARS) -> str:
+    """Render one bounded audit text field without trusting user-defined string conversion."""
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1 or limit > _MAX_TEXT_CHARS:
+        raise ValueError(f"audit text limit must be between 1 and {_MAX_TEXT_CHARS}")
+    if value is None:
+        return ""
+    try:
+        rendered = str(value)
+    except Exception:  # noqa: BLE001
+        rendered = value.__class__.__name__
+    return _sanitize_text(rendered)[:limit].rstrip()
 
 
 def _safe_json_default(value: object) -> str:
@@ -66,11 +80,7 @@ def safe_json(value) -> str:
 
 
 def _safe_label_text(value: object) -> str:
-    try:
-        rendered = str(value)
-    except Exception:  # noqa: BLE001
-        rendered = value.__class__.__name__
-    return unicodedata.normalize("NFKC", _sanitize_text(rendered))
+    return unicodedata.normalize("NFKC", safe_text(value, limit=200))
 
 
 def join_labels(values: Iterable | None) -> str:
@@ -92,7 +102,7 @@ def join_labels(values: Iterable | None) -> str:
     for value in iterator:
         if len(result) >= _MAX_LABELS:
             raise ValueError(f"labels must contain at most {_MAX_LABELS} values")
-        text = _safe_label_text(value)[:200].rstrip()
+        text = _safe_label_text(value)
         if text and text not in seen:
             additional = len(text) + (1 if result else 0)
             if total_chars + additional > _MAX_JOINED_LABEL_CHARS:
