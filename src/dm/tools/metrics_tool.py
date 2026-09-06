@@ -33,6 +33,15 @@ def _close_quietly(resource) -> None:
         pass
 
 
+def _audit_best_effort(*args, **kwargs) -> bool:
+    """Keep audit outages from changing the business result of a completed metric request."""
+    try:
+        audit_event(*args, **kwargs)
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _rows_to_records(columns: list, rows: list) -> list[dict]:
     if any(not isinstance(col, str) or not col for col in columns):
         raise ValueError("metric query columns must be non-empty strings")
@@ -53,7 +62,7 @@ def _rows_to_records(columns: list, rows: list) -> list[dict]:
 def list_metrics(principal: Principal) -> str:
     t0 = time.time()
     cat = metric_catalog()
-    audit_event(principal, "list_metrics", {}, "", ["metrics_registry"], len(cat), t0, True)
+    _audit_best_effort(principal, "list_metrics", {}, "", ["metrics_registry"], len(cat), t0, True)
     return json.dumps(cat, ensure_ascii=False, indent=2)
 
 
@@ -67,15 +76,15 @@ def query_metric(principal: Principal, metric: str, dimensions: str = "",
         flts = [f for f in filters.split(";") if f.strip()]
         sql, mdef = compile_metric(metric, dims, flts, limit)
     except ValueError as e:
-        audit_event(principal, "query_metric", {"metric": metric, "dimensions": dimensions,
-                    "filters": filters}, "", [], 0, t0, False, str(e))
+        _audit_best_effort(principal, "query_metric", {"metric": metric, "dimensions": dimensions,
+                           "filters": filters}, "", [], 0, t0, False, str(e))
         return f"ERROR: {e}"
     need = set(mdef.get("required_markings", []))
     um = effective_user_markings(principal.to_user())
     if not need <= um:
         miss = sorted(need - um)
-        audit_event(principal, "query_metric", {"metric": metric}, sql, [mdef["base_model"]], 0, t0,
-                    True, category="authorizationCheck", decision="deny", markings=miss)
+        _audit_best_effort(principal, "query_metric", {"metric": metric}, sql, [mdef["base_model"]], 0, t0,
+                           True, category="authorizationCheck", decision="deny", markings=miss)
         return (f"⛔ 权限不足：指标『{mdef.get('cn', metric)}』需要 Marking {miss}"
                 f"（角色 {principal.role}" + (f"/目的『{principal.purpose}』" if principal.purpose else "")
                 + "）。请如实告知用户该指标受权限保护，切勿臆造数值。")
@@ -90,12 +99,13 @@ def query_metric(principal: Principal, metric: str, dimensions: str = "",
         out = {"metric": metric, "cn": mdef.get("cn", ""), "unit": mdef.get("unit", ""),
                "description": mdef.get("description", ""), "sql": sql, "columns": cols,
                "rows": records}
-        audit_event(principal, "query_metric", {"metric": metric, "dimensions": dimensions,
-                    "filters": filters}, sql, [mdef["base_model"]], len(rows), t0, True)
+        if not _audit_best_effort(principal, "query_metric", {"metric": metric, "dimensions": dimensions,
+                                  "filters": filters}, sql, [mdef["base_model"]], len(rows), t0, True):
+            out["audit_warning"] = "metric query completed but audit persistence failed"
         return json.dumps(out, ensure_ascii=False, default=str, indent=2)
     except Exception as e:  # noqa: BLE001
-        audit_event(principal, "query_metric", {"metric": metric}, sql, [mdef["base_model"]], 0, t0,
-                    False, str(e))
+        _audit_best_effort(principal, "query_metric", {"metric": metric}, sql, [mdef["base_model"]], 0, t0,
+                           False, str(e))
         return "ERROR: 指标查询失败，请检查数据服务状态或联系维护者。"
     finally:
         _close_quietly(cur)
