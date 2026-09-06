@@ -6,7 +6,7 @@
 import time
 from datetime import datetime, timezone
 
-from dm.tools.audit_record import elapsed_ms, join_labels, safe_json
+from dm.tools.audit_record import elapsed_ms, join_labels, safe_json, safe_text
 from dm.tools.principal import Principal
 from dm.warehouse.store import append_log
 
@@ -32,21 +32,21 @@ def audit_event(
         {
             "audit_id": "A" + now.strftime("%Y%m%d%H%M%S%f"),
             "ts": now.isoformat(timespec="seconds"),
-            "session_id": principal.session_id,
-            "channel": principal.channel,
-            "category": category,
-            "decision": decision,
-            "user": principal.user,
-            "role": principal.role,
-            "purpose": principal.purpose,
-            "tool_name": str(tool),
+            "session_id": safe_text(principal.session_id, limit=500),
+            "channel": safe_text(principal.channel, limit=200),
+            "category": safe_text(category, limit=200),
+            "decision": safe_text(decision, limit=200),
+            "user": safe_text(principal.user, limit=500),
+            "role": safe_text(principal.role, limit=500),
+            "purpose": safe_text(principal.purpose, limit=1000),
+            "tool_name": safe_text(tool, limit=500),
             "tool_args": safe_json(args),
-            "sql": str(sql or ""),
+            "sql": safe_text(sql, limit=10_000),
             "tables_touched": join_labels(tables),
             "markings": join_labels(markings),
             "row_count": rowcount,
             "duration_ms": elapsed_ms(t0, time.time()),
             "ok": bool(ok),
-            "error": str(error or ""),
+            "error": safe_text(error, limit=10_000),
         },
     )
