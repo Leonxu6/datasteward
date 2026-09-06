@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from dm.tools.audit_record import elapsed_ms, join_labels, safe_json
+from dm.tools.audit_record import elapsed_ms, join_labels, safe_json, safe_text
 
 
 def test_safe_json_rejects_nonstandard_numbers_into_fallback():
@@ -36,6 +36,25 @@ def test_safe_json_bounds_custom_text_conversion():
             return "x" * 5000
 
     assert len(json.loads(safe_json(Custom()))) == 2000
+
+
+def test_safe_text_sanitizes_unicode_controls_and_bounds_output():
+    assert safe_text("a\u200cb\u206ac\nd", limit=20) == "a b c d"
+    assert safe_text("x" * 100, limit=12) == "x" * 12
+
+
+def test_safe_text_survives_broken_string_conversion():
+    class Broken:
+        def __str__(self):
+            raise RuntimeError("no str")
+
+    assert safe_text(Broken()) == "Broken"
+
+
+def test_safe_text_rejects_invalid_limits():
+    for limit in (0, -1, True, 10_001):
+        with pytest.raises(ValueError, match="audit text limit"):
+            safe_text("value", limit=limit)
 
 
 def test_join_labels_treats_a_string_as_one_label():
