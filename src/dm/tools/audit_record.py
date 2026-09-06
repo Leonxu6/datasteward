@@ -80,7 +80,10 @@ def safe_json(value) -> str:
 
 
 def _safe_label_text(value: object) -> str:
-    return unicodedata.normalize("NFKC", safe_text(value, limit=200))
+    # A top-level ``values=None`` means "no labels", but an explicit None inside an
+    # ordered label collection historically renders as the literal ``None``.
+    rendered = "None" if value is None else safe_text(value, limit=200)
+    return unicodedata.normalize("NFKC", rendered)
 
 
 def join_labels(values: Iterable | None) -> str:
