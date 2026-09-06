@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+import json
 
 import pytest
 
@@ -96,3 +97,33 @@ def test_query_metric_redacts_database_details_from_user_response(monkeypatch):
     assert result == "ERROR: 指标查询失败，请检查数据服务状态或联系维护者。"
     assert "super-secret" not in result
     assert any(secret_error in str(call) for call in audit_calls)
+
+
+def test_successful_metric_query_survives_audit_persistence_failure(monkeypatch):
+    _authorized_metric(monkeypatch)
+    cursor = SimpleNamespace(description=[("value",)], fetchall=lambda: [(1,)], close=lambda: None)
+    connection = SimpleNamespace(execute=lambda sql: cursor, close=lambda: None)
+    monkeypatch.setattr(metrics_tool, "connect_ro", lambda: connection)
+    monkeypatch.setattr(
+        metrics_tool,
+        "audit_event",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("audit down")),
+    )
+
+    result = json.loads(metrics_tool.query_metric(_principal(), "sample"))
+
+    assert result["rows"] == [{"value": 1}]
+    assert result["audit_warning"] == "metric query completed but audit persistence failed"
+
+
+def test_metric_validation_error_survives_audit_persistence_failure(monkeypatch):
+    monkeypatch.setattr(
+        metrics_tool,
+        "audit_event",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("audit down")),
+    )
+
+    result = metrics_tool.query_metric(_principal(), "sample", dimensions=None)
+
+    assert result.startswith("ERROR:")
+    assert "must be text" in result
