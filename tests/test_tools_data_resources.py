@@ -150,3 +150,27 @@ def test_database_errors_are_audited_but_not_exposed_to_tool_callers(monkeypatch
     assert response.startswith("ERROR")
     assert "super-secret" not in response
     assert secret_error in str(audits[-1])
+
+
+def test_successful_reads_survive_audit_persistence_failures(monkeypatch):
+    principal = Principal(user="admin", role="管理员")
+    connection = _Connection(result_factory=lambda: _Result(rows=[("M001",)], description=(("material_id",),)))
+    _patch_allowed_query(monkeypatch, connection)
+    monkeypatch.setattr(kernel_data, "audit_event", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("audit down")))
+
+    output = json.loads(kernel_data.run_sql(principal, "SELECT material_id FROM material"))
+
+    assert output["rows"] == [{"material_id": "M001"}]
+    assert output["audit_warning"] == "query completed but audit persistence failed"
+
+
+def test_catalog_reads_survive_audit_persistence_failures(monkeypatch):
+    principal = Principal(user="admin", role="管理员")
+    connection = _Connection()
+    monkeypatch.setattr(kernel_data, "TABLES", [{"name": "material", "cn": "物料", "desc": "demo"}])
+    monkeypatch.setattr(kernel_data, "connect_ro", lambda: connection)
+    monkeypatch.setattr(kernel_data, "audit_event", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("audit down")))
+
+    output = json.loads(kernel_data.list_tables(principal))
+
+    assert output == [{"table": "material", "cn": "物料", "desc": "demo", "rows": 3}]
