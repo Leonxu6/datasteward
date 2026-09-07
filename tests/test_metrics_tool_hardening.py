@@ -95,6 +95,9 @@ def test_query_metric_closes_resources_after_fetch_failure(monkeypatch):
     [
         (["value", "value"], [(1, 2)], "duplicate"),
         (["value", ""], [(1, 2)], "non-empty strings"),
+        ([" value"], [(1,)], "clean non-empty"),
+        (["value\u200dhidden"], [(1,)], "unsafe control"),
+        (["x" * 257], [(1,)], "at most 256"),
         (["a", "b"], [(1,)], "row length"),
         (["a"], [object()], "sized sequences"),
         (["a", "b"], ["ab"], "non-text positional"),
