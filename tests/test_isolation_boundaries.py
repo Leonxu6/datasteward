@@ -27,3 +27,24 @@ def test_arun_isolated_rejects_timeout_before_spawning():
         create.assert_not_awaited()
 
     asyncio.run(exercise())
+
+
+def test_parse_dmjson_accepts_one_standard_json_frame():
+    assert _isolation._parse_dmjson('noise\nDMJSON:{"ok":true,"n":2}\n', "") == {"ok": True, "n": 2}
+
+
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+def test_parse_dmjson_rejects_nonstandard_json_numbers(constant):
+    with pytest.raises(RuntimeError, match="DMJSON"):
+        _isolation._parse_dmjson(f'DMJSON:{{"value":{constant}}}\n', "")
+
+
+def test_parse_dmjson_rejects_multiple_protocol_frames():
+    with pytest.raises(RuntimeError, match="多个 DMJSON"):
+        _isolation._parse_dmjson('DMJSON:{"a":1}\nDMJSON:{"a":2}\n', "")
+
+
+def test_parse_dmjson_rejects_oversized_protocol_frame(monkeypatch):
+    monkeypatch.setattr(_isolation, "_MAX_PROTOCOL_LINE_CHARS", 20)
+    with pytest.raises(RuntimeError, match="大小上限"):
+        _isolation._parse_dmjson('DMJSON:{"payload":"xxxxxxxx"}\n', "")
