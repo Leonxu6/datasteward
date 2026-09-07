@@ -54,6 +54,8 @@ def _rows_to_records(columns: list, rows: list) -> list[dict]:
         raise ValueError("metric query returned duplicate column names")
     records: list[dict] = []
     for row in rows:
+        if isinstance(row, (str, bytes, bytearray, dict)):
+            raise ValueError("metric query rows must be non-text positional sequences")
         try:
             width = len(row)
         except TypeError as exc:
