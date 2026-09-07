@@ -28,8 +28,18 @@ def test_query_metric_rejects_non_text_query_arguments(monkeypatch, field, value
     assert "must be text" in result
 
 
-@pytest.mark.parametrize("field,value", [("dimensions", " material_id"), ("filters", "x='1' "), ("filters", "x='1'\n")])
-def test_query_metric_rejects_padded_or_controlled_query_text(monkeypatch, field, value):
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("dimensions", " material_id"),
+        ("filters", "x='1' "),
+        ("filters", "x='1'\n"),
+        ("dimensions", "material\u200did"),
+        ("filters", "x='1'\ud800"),
+        ("filters", "x" * 4001),
+    ],
+)
+def test_query_metric_rejects_padded_controlled_or_oversized_query_text(monkeypatch, field, value):
     monkeypatch.setattr(metrics_tool, "audit_event", lambda *args, **kwargs: None)
     result = metrics_tool.query_metric(_principal(), "total_stock", **{field: value})
     assert result.startswith("ERROR:")
