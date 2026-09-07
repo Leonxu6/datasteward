@@ -14,6 +14,17 @@ import subprocess
 import sys
 from pathlib import Path
 
+_MAX_TIMEOUT_SECONDS = 600
+
+
+def _timeout_seconds(timeout: object) -> int:
+    """Validate one bounded subprocess timeout before any process is created."""
+    if isinstance(timeout, bool) or not isinstance(timeout, int):
+        raise ValueError("isolation timeout must be an integer")
+    if timeout < 1 or timeout > _MAX_TIMEOUT_SECONDS:
+        raise ValueError(f"isolation timeout must be between 1 and {_MAX_TIMEOUT_SECONDS} seconds")
+    return timeout
+
 
 def _sub_env() -> dict:
     """子进程环境：UTF-8 + 嵌入缓存显式注入 + HF 离线（防联网卡死）。"""
@@ -35,6 +46,7 @@ def _parse_dmjson(out: str, err: str):
 
 def run_isolated(module: str, argv: list, timeout: int):
     """同步跑 `python -m <module> <argv...>`，解析 DMJSON 结果；超时/无结果抛 RuntimeError。"""
+    timeout = _timeout_seconds(timeout)
     try:
         p = subprocess.run(
             [sys.executable, "-m", module, *argv],
@@ -50,6 +62,7 @@ def run_isolated(module: str, argv: list, timeout: int):
 async def arun_isolated(module: str, argv: list, timeout: int):
     """异步版（FastMCP/asyncio 场景专用）。stdin 必须 DEVNULL——见模块 docstring。"""
     import asyncio
+    timeout = _timeout_seconds(timeout)
     proc = await asyncio.create_subprocess_exec(
         sys.executable, "-m", module, *argv,
         stdin=asyncio.subprocess.DEVNULL,
