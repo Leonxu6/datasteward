@@ -133,12 +133,14 @@ def run_sql(principal: Principal, sql: str) -> str:
         if exec_sql != clean:
             out["row_policy_applied"] = True
             notes.append("已按行级权限策略收窄可见行（仅授权范围内数据）")
+        if notes:
+            out["notice"] = "；".join(notes) + "。如用户问及，请说明数据受权限保护，勿臆造。"
+        payload = json.dumps(out, ensure_ascii=False, default=str, allow_nan=False, indent=2)
         if not _audit_best_effort(principal, "run_sql", {"sql": sql}, clean, tables, len(result), t0, True,
                                   category="dataQuery", decision="allow"):
             out["audit_warning"] = "query completed but audit persistence failed"
-        if notes:
-            out["notice"] = "；".join(notes) + "。如用户问及，请说明数据受权限保护，勿臆造。"
-        return json.dumps(out, ensure_ascii=False, default=str, indent=2)
+            payload = json.dumps(out, ensure_ascii=False, default=str, allow_nan=False, indent=2)
+        return payload
     except Exception as e:  # noqa: BLE001
         _audit_best_effort(principal, "run_sql", {"sql": sql}, clean, tables, 0, t0, False, str(e))
         return "ERROR: 查询失败。详细错误已写入审计日志。"
