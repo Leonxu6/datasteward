@@ -6,6 +6,7 @@
 """
 import json
 import time
+import unicodedata
 
 from dm.ontology.metrics import compile_metric, metric_catalog, load_metrics
 from dm.security import effective_user_markings
@@ -13,14 +14,18 @@ from dm.tools.audit import audit_event
 from dm.tools.principal import Principal
 from dm.warehouse.store import connect_ro
 
+_MAX_QUERY_TEXT_CHARS = 4000
+
 
 def _query_text(value: object, *, field: str) -> str:
     if not isinstance(value, str):
         raise ValueError(f"{field} must be text")
     if value != value.strip():
         raise ValueError(f"{field} must not have leading or trailing whitespace")
-    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
-        raise ValueError(f"{field} contains control characters")
+    if len(value) > _MAX_QUERY_TEXT_CHARS:
+        raise ValueError(f"{field} exceeds {_MAX_QUERY_TEXT_CHARS} characters")
+    if any(unicodedata.category(ch) in {"Cc", "Cf", "Cs"} for ch in value):
+        raise ValueError(f"{field} contains unsafe control characters")
     return value
 
 
