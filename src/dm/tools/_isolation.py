@@ -15,6 +15,8 @@ import sys
 from pathlib import Path
 
 _MAX_TIMEOUT_SECONDS = 600
+_MAX_PROTOCOL_LINE_CHARS = 1_000_000
+_DMJSON_PREFIX = "DMJSON:"
 
 
 def _timeout_seconds(timeout: object) -> int:
@@ -37,11 +39,24 @@ def _sub_env() -> dict:
     }
 
 
+def _reject_json_constant(value: str):
+    raise ValueError(f"non-standard JSON constant is not allowed: {value}")
+
+
 def _parse_dmjson(out: str, err: str):
-    line = next((ln for ln in out.splitlines() if ln.startswith("DMJSON:")), None)
-    if line is None:
+    lines = [ln for ln in out.splitlines() if ln.startswith(_DMJSON_PREFIX)]
+    if not lines:
         raise RuntimeError((err or out or "无输出").strip()[-300:])
-    return json.loads(line[len("DMJSON:"):])
+    if len(lines) != 1:
+        raise RuntimeError("子进程返回了多个 DMJSON 结果，协议不明确")
+    line = lines[0]
+    if len(line) > _MAX_PROTOCOL_LINE_CHARS:
+        raise RuntimeError("子进程 DMJSON 结果超过大小上限")
+    payload = line[len(_DMJSON_PREFIX):]
+    try:
+        return json.loads(payload, parse_constant=_reject_json_constant)
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise RuntimeError(f"子进程 DMJSON 结果无效 ({exc.__class__.__name__})") from None
 
 
 def run_isolated(module: str, argv: list, timeout: int):
