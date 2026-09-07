@@ -73,6 +73,31 @@ def test_query_metric_rejects_nonstandard_json_numbers(monkeypatch):
     assert "NaN" not in result
 
 
+def test_list_metrics_rejects_nonstandard_json_numbers(monkeypatch):
+    audit_calls = []
+    monkeypatch.setattr(metrics_tool, "metric_catalog", lambda: {"bad": float("nan")})
+    monkeypatch.setattr(metrics_tool, "audit_event", lambda *args, **kwargs: audit_calls.append((args, kwargs)))
+
+    result = metrics_tool.list_metrics(_principal())
+
+    assert result == "ERROR: 指标目录不可用，请检查指标配置或联系维护者。"
+    assert "NaN" not in result
+    assert audit_calls
+    assert audit_calls[-1][0][7] is False
+
+
+def test_list_metrics_survives_audit_persistence_failure(monkeypatch):
+    catalog = {"stock": {"unit": "pcs"}}
+    monkeypatch.setattr(metrics_tool, "metric_catalog", lambda: catalog)
+    monkeypatch.setattr(
+        metrics_tool,
+        "audit_event",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("audit down")),
+    )
+
+    assert json.loads(metrics_tool.list_metrics(_principal())) == catalog
+
+
 def test_query_metric_closes_resources_after_fetch_failure(monkeypatch):
     _authorized_metric(monkeypatch)
     cursor = SimpleNamespace(description=[("value",)], close=lambda: None)
