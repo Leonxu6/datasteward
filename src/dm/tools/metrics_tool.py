@@ -15,6 +15,7 @@ from dm.tools.principal import Principal
 from dm.warehouse.store import connect_ro
 
 _MAX_QUERY_TEXT_CHARS = 4000
+_MAX_COLUMN_NAME_CHARS = 256
 
 
 def _query_text(value: object, *, field: str) -> str:
@@ -26,6 +27,16 @@ def _query_text(value: object, *, field: str) -> str:
         raise ValueError(f"{field} exceeds {_MAX_QUERY_TEXT_CHARS} characters")
     if any(unicodedata.category(ch) in {"Cc", "Cf", "Cs"} for ch in value):
         raise ValueError(f"{field} contains unsafe control characters")
+    return value
+
+
+def _column_name(value: object) -> str:
+    if not isinstance(value, str) or not value or value != value.strip():
+        raise ValueError("metric query columns must be clean non-empty strings")
+    if len(value) > _MAX_COLUMN_NAME_CHARS:
+        raise ValueError(f"metric query column names must be at most {_MAX_COLUMN_NAME_CHARS} characters")
+    if any(unicodedata.category(ch) in {"Cc", "Cf", "Cs"} for ch in value):
+        raise ValueError("metric query column names contain unsafe control characters")
     return value
 
 
@@ -48,9 +59,8 @@ def _audit_best_effort(*args, **kwargs) -> bool:
 
 
 def _rows_to_records(columns: list, rows: list) -> list[dict]:
-    if any(not isinstance(col, str) or not col for col in columns):
-        raise ValueError("metric query columns must be non-empty strings")
-    if len(set(columns)) != len(columns):
+    clean_columns = [_column_name(col) for col in columns]
+    if len(set(clean_columns)) != len(clean_columns):
         raise ValueError("metric query returned duplicate column names")
     records: list[dict] = []
     for row in rows:
@@ -60,9 +70,9 @@ def _rows_to_records(columns: list, rows: list) -> list[dict]:
             width = len(row)
         except TypeError as exc:
             raise ValueError("metric query rows must be sized sequences") from exc
-        if width != len(columns):
+        if width != len(clean_columns):
             raise ValueError("metric query row length does not match cursor columns")
-        records.append(dict(zip(columns, row)))
+        records.append(dict(zip(clean_columns, row)))
     return records
 
 
