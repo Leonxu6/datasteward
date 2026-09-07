@@ -78,9 +78,14 @@ def _rows_to_records(columns: list, rows: list) -> list[dict]:
 
 def list_metrics(principal: Principal) -> str:
     t0 = time.time()
-    cat = metric_catalog()
+    try:
+        cat = metric_catalog()
+        payload = json.dumps(cat, ensure_ascii=False, indent=2, allow_nan=False)
+    except Exception as e:  # noqa: BLE001
+        _audit_best_effort(principal, "list_metrics", {}, "", ["metrics_registry"], 0, t0, False, str(e))
+        return "ERROR: 指标目录不可用，请检查指标配置或联系维护者。"
     _audit_best_effort(principal, "list_metrics", {}, "", ["metrics_registry"], len(cat), t0, True)
-    return json.dumps(cat, ensure_ascii=False, indent=2)
+    return payload
 
 
 def query_metric(principal: Principal, metric: str, dimensions: str = "",
