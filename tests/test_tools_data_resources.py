@@ -107,6 +107,22 @@ def test_run_sql_closes_cursor_and_connection_after_fetch(monkeypatch):
     assert connection.results and all(result.closed for result in connection.results)
 
 
+def test_run_sql_rejects_nonstandard_json_numbers_before_success_audit(monkeypatch):
+    connection = _Connection(
+        result_factory=lambda: _Result(rows=[(float("nan"),)], description=(("value",),))
+    )
+    _patch_allowed_query(monkeypatch, connection)
+    audits = []
+    monkeypatch.setattr(kernel_data, "audit_event", lambda *args, **kwargs: audits.append((args, kwargs)))
+
+    response = kernel_data.run_sql(Principal(user="admin", role="管理员"), "SELECT value FROM material")
+
+    assert response == "ERROR: 查询失败。详细错误已写入审计日志。"
+    assert "NaN" not in response
+    assert audits
+    assert all(call[0][7] is False for call in audits)
+
+
 def test_run_sql_truncation_flag_requires_an_extra_row(monkeypatch):
     principal = Principal(user="admin", role="管理员")
     sql = "SELECT material_id FROM material"
