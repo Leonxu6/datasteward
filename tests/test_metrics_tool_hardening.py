@@ -85,6 +85,9 @@ def test_query_metric_closes_resources_after_fetch_failure(monkeypatch):
         (["value", ""], [(1, 2)], "non-empty strings"),
         (["a", "b"], [(1,)], "row length"),
         (["a"], [object()], "sized sequences"),
+        (["a", "b"], ["ab"], "non-text positional"),
+        (["a", "b"], [b"ab"], "non-text positional"),
+        (["a", "b"], [{"a": 1, "b": 2}], "non-text positional"),
     ],
 )
 def test_rows_to_records_rejects_malformed_results(columns, rows, message):
