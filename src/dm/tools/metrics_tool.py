@@ -109,7 +109,7 @@ def query_metric(principal: Principal, metric: str, dimensions: str = "",
         if not _audit_best_effort(principal, "query_metric", {"metric": metric, "dimensions": dimensions,
                                   "filters": filters}, sql, [mdef["base_model"]], len(rows), t0, True):
             out["audit_warning"] = "metric query completed but audit persistence failed"
-        return json.dumps(out, ensure_ascii=False, default=str, indent=2)
+        return json.dumps(out, ensure_ascii=False, default=str, allow_nan=False, indent=2)
     except Exception as e:  # noqa: BLE001
         _audit_best_effort(principal, "query_metric", {"metric": metric}, sql, [mdef["base_model"]], 0, t0,
                            False, str(e))
