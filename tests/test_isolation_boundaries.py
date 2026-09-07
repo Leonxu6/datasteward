@@ -48,3 +48,39 @@ def test_parse_dmjson_rejects_oversized_protocol_frame(monkeypatch):
     monkeypatch.setattr(_isolation, "_MAX_PROTOCOL_LINE_CHARS", 20)
     with pytest.raises(RuntimeError, match="大小上限"):
         _isolation._parse_dmjson('DMJSON:{"payload":"xxxxxxxx"}\n', "")
+
+
+def test_stop_and_reap_kills_and_waits_for_child():
+    class FakeProcess:
+        def __init__(self):
+            self.killed = False
+            self.waited = False
+
+        def kill(self):
+            self.killed = True
+
+        async def wait(self):
+            self.waited = True
+            return -9
+
+    proc = FakeProcess()
+    asyncio.run(_isolation._stop_and_reap(proc))
+    assert proc.killed is True
+    assert proc.waited is True
+
+
+def test_stop_and_reap_still_waits_if_process_already_exited():
+    class FakeProcess:
+        def __init__(self):
+            self.waited = False
+
+        def kill(self):
+            raise ProcessLookupError
+
+        async def wait(self):
+            self.waited = True
+            return 0
+
+    proc = FakeProcess()
+    asyncio.run(_isolation._stop_and_reap(proc))
+    assert proc.waited is True
