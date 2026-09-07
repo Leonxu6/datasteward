@@ -74,6 +74,15 @@ def run_isolated(module: str, argv: list, timeout: int):
     return _parse_dmjson(p.stdout or "", p.stderr or "")
 
 
+async def _stop_and_reap(proc) -> None:
+    """Terminate an interrupted child and wait for the OS process record to be reaped."""
+    try:
+        proc.kill()
+    except ProcessLookupError:
+        pass
+    await proc.wait()
+
+
 async def arun_isolated(module: str, argv: list, timeout: int):
     """异步版（FastMCP/asyncio 场景专用）。stdin 必须 DEVNULL——见模块 docstring。"""
     import asyncio
@@ -86,6 +95,9 @@ async def arun_isolated(module: str, argv: list, timeout: int):
     try:
         out_b, err_b = await asyncio.wait_for(proc.communicate(), timeout=timeout)
     except asyncio.TimeoutError:
-        proc.kill()
+        await _stop_and_reap(proc)
         raise RuntimeError(f"子进程超时（{timeout}s）: {module}") from None
+    except asyncio.CancelledError:
+        await _stop_and_reap(proc)
+        raise
     return _parse_dmjson(out_b.decode("utf-8", "replace"), err_b.decode("utf-8", "replace"))
