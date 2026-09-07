@@ -61,6 +61,18 @@ def test_query_metric_closes_cursor_and_connection_after_success(monkeypatch):
     assert connection.closed is True
 
 
+def test_query_metric_rejects_nonstandard_json_numbers(monkeypatch):
+    _authorized_metric(monkeypatch)
+    cursor = SimpleNamespace(description=[("value",)], fetchall=lambda: [(float("nan"),)], close=lambda: None)
+    connection = SimpleNamespace(execute=lambda sql: cursor, close=lambda: None)
+    monkeypatch.setattr(metrics_tool, "connect_ro", lambda: connection)
+
+    result = metrics_tool.query_metric(_principal(), "sample")
+
+    assert result == "ERROR: 指标查询失败，请检查数据服务状态或联系维护者。"
+    assert "NaN" not in result
+
+
 def test_query_metric_closes_resources_after_fetch_failure(monkeypatch):
     _authorized_metric(monkeypatch)
     cursor = SimpleNamespace(description=[("value",)], close=lambda: None)
