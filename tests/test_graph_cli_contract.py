@@ -15,6 +15,12 @@ def test_parse_args_rejects_non_object_json(raw):
         graph_cli._parse_args(raw)
 
 
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+def test_parse_args_rejects_nonstandard_json_constants(constant):
+    with pytest.raises(ValueError, match="必须是合法 JSON"):
+        graph_cli._parse_args('{"limit":' + constant + "}")
+
+
 def test_parse_args_redacts_json_decoder_details():
     secret = "super-secret-token"
     with pytest.raises(ValueError, match="必须是合法 JSON") as exc_info:
