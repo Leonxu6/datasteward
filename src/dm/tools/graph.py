@@ -24,6 +24,7 @@ def _validated_result(value: object) -> dict:
     count = value.get("count", 0)
     if isinstance(count, bool) or not isinstance(count, int) or count < 0:
         raise ValueError("graph worker count must be a non-negative integer")
+    json.dumps(value, ensure_ascii=False, allow_nan=False)
     return value
 
 
@@ -56,6 +57,10 @@ def _audit_success(principal: Principal, mode: str, entity_id: str, target_type:
         return copy
 
 
+def _render_result(value: dict) -> str:
+    return json.dumps(value, ensure_ascii=False, indent=2, allow_nan=False)
+
+
 def graph_query(principal: Principal, mode: str, entity_id: str = "", target_type: str = "",
                 max_hops: int = 3, cypher: str = "", limit: int = 30) -> str:
     """知识图谱查询（find_related / impact_path / cypher 三种 mode）。"""
@@ -67,7 +72,7 @@ def graph_query(principal: Principal, mode: str, entity_id: str = "", target_typ
     except Exception as exc:  # noqa: BLE001
         _audit_error(principal, mode, entity_id, t0, exc)
         return "ERROR: 图查询失败"
-    return json.dumps(_audit_success(principal, mode, entity_id, target_type, t0, res), ensure_ascii=False, indent=2)
+    return _render_result(_audit_success(principal, mode, entity_id, target_type, t0, res))
 
 
 async def agraph_query(principal: Principal, mode: str, entity_id: str = "", target_type: str = "",
@@ -81,4 +86,4 @@ async def agraph_query(principal: Principal, mode: str, entity_id: str = "", tar
     except Exception as exc:  # noqa: BLE001
         _audit_error(principal, mode, entity_id, t0, exc)
         return "ERROR: 图查询失败"
-    return json.dumps(_audit_success(principal, mode, entity_id, target_type, t0, res), ensure_ascii=False, indent=2)
+    return _render_result(_audit_success(principal, mode, entity_id, target_type, t0, res))
