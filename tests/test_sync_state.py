@@ -24,6 +24,13 @@ def test_load_json_mapping_handles_missing_corrupt_and_non_object_files(tmp_path
     assert load_json_mapping(path) == {"table": 5}
 
 
+def test_load_json_mapping_rejects_nonstandard_numbers_and_duplicate_keys(tmp_path):
+    path = tmp_path / "state.json"
+    for raw in ('{"cursor":NaN}', '{"cursor":Infinity}', '{"cursor":1,"cursor":2}'):
+        path.write_text(raw, encoding="utf-8")
+        assert load_json_mapping(path) == {}
+
+
 def test_atomic_write_json_replaces_complete_document(tmp_path):
     path = tmp_path / "nested" / "state.json"
     atomic_write_json(path, {"a": 1})
