@@ -41,11 +41,28 @@ def _table_name(value, *, field: str) -> str:
     return value
 
 
+def _reject_json_constant(value: str) -> None:
+    raise json.JSONDecodeError("nonstandard JSON constant", value, 0)
+
+
+def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise json.JSONDecodeError("duplicate JSON object key", key, 0)
+        result[key] = value
+    return result
+
+
 def load_json_mapping(path: Path) -> dict:
-    """Load a JSON object, returning an empty mapping for missing/corrupt/non-object files."""
+    """Load a strict JSON object, returning an empty mapping for missing/corrupt/non-object files."""
     path = _path(path, field="state path")
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        raw = json.loads(
+            path.read_text(encoding="utf-8"),
+            parse_constant=_reject_json_constant,
+            object_pairs_hook=_unique_json_object,
+        )
     except (OSError, json.JSONDecodeError, UnicodeError):
         return {}
     return raw if isinstance(raw, dict) else {}
