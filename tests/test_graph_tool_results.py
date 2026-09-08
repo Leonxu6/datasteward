@@ -23,3 +23,23 @@ def test_async_graph_query_rejects_malformed_worker_results():
         response = asyncio.run(agraph_query(principal, "find_related", entity_id="M1"))
     assert response == "ERROR: 图查询失败"
     assert audit.call_args.args[7] is False
+
+
+def test_sync_graph_query_rejects_nonstandard_json_numbers_before_success_audit():
+    principal = Principal(user="alice", role="仓管")
+    result = {"count": 1, "rows": [{"score": float("nan")}]}
+    with patch("dm.tools.graph.run_isolated", return_value=result), patch("dm.tools.graph.audit_event") as audit:
+        response = graph_query(principal, "cypher", cypher="RETURN 1")
+    assert response == "ERROR: 图查询失败"
+    assert audit.call_args.args[7] is False
+
+
+def test_async_graph_query_rejects_nonstandard_json_numbers_before_success_audit():
+    principal = Principal(user="alice", role="仓管")
+    result = {"count": 1, "rows": [{"score": float("inf")}]}
+    with patch("dm.tools.graph.arun_isolated", new=AsyncMock(return_value=result)), patch(
+        "dm.tools.graph.audit_event"
+    ) as audit:
+        response = asyncio.run(agraph_query(principal, "cypher", cypher="RETURN 1"))
+    assert response == "ERROR: 图查询失败"
+    assert audit.call_args.args[7] is False
