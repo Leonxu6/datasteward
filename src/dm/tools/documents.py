@@ -40,6 +40,7 @@ def _hits(value: object, *, top_k: int) -> list[dict]:
         raise ValueError("document worker returned more results than requested")
     if any(not isinstance(hit, dict) for hit in value):
         raise ValueError("document search hits must be objects")
+    json.dumps(value, ensure_ascii=False, allow_nan=False)
     return value
 
 
@@ -72,6 +73,10 @@ def _audit_hits(principal: Principal, query: str, top_k: int, t0: float, hits: l
         return annotated
 
 
+def _render_hits(value: list[dict]) -> str:
+    return json.dumps(value, ensure_ascii=False, indent=2, allow_nan=False)
+
+
 def search_documents(principal: Principal, query: str, top_k: int = 5) -> str:
     """检索非结构化文档库（采购合同 / 作业指导书SOP / 进货检验质检报告 / 设备维护手册 / 物料技术规格书）。"""
     t0 = time.time()
@@ -82,7 +87,7 @@ def search_documents(principal: Principal, query: str, top_k: int = 5) -> str:
     except Exception as exc:  # noqa: BLE001
         _audit_error(principal, query, top_k, t0, exc)
         return "ERROR: 文档检索失败"
-    return json.dumps(_audit_hits(principal, query, top_k, t0, hits), ensure_ascii=False, indent=2)
+    return _render_hits(_audit_hits(principal, query, top_k, t0, hits))
 
 
 async def asearch_documents(principal: Principal, query: str, top_k: int = 5) -> str:
@@ -95,4 +100,4 @@ async def asearch_documents(principal: Principal, query: str, top_k: int = 5) ->
     except Exception as exc:  # noqa: BLE001
         _audit_error(principal, query, top_k, t0, exc)
         return "ERROR: 文档检索失败"
-    return json.dumps(_audit_hits(principal, query, top_k, t0, hits), ensure_ascii=False, indent=2)
+    return _render_hits(_audit_hits(principal, query, top_k, t0, hits))
