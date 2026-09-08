@@ -15,10 +15,14 @@ def _emit(payload) -> None:
     sys.stdout.flush()
 
 
+def _reject_nonstandard_constant(value: str) -> None:
+    raise ValueError(f"nonstandard JSON constant: {value}")
+
+
 def _parse_args(raw: str) -> dict:
     try:
-        args = json.loads(raw)
-    except json.JSONDecodeError as exc:
+        args = json.loads(raw, parse_constant=_reject_nonstandard_constant)
+    except (json.JSONDecodeError, ValueError) as exc:
         raise ValueError("graph CLI 参数必须是合法 JSON") from exc
     if not isinstance(args, dict):
         raise ValueError("graph CLI 参数必须是 JSON 对象")
