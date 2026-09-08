@@ -24,3 +24,23 @@ def test_async_search_rejects_non_list_worker_result():
         response = asyncio.run(asearch_documents(principal, "query", 5))
     assert response == "ERROR: 文档检索失败"
     assert audit.call_args.args[7] is False
+
+
+def test_sync_search_rejects_nonstandard_json_numbers_before_success_audit():
+    principal = Principal(user="alice", role="仓管")
+    hits = [{"doc_id": "D1", "score": float("nan")}]
+    with patch("dm.tools.documents.run_isolated", return_value=hits), patch("dm.tools.documents.audit_event") as audit:
+        response = search_documents(principal, "query", 5)
+    assert response == "ERROR: 文档检索失败"
+    assert audit.call_args.args[7] is False
+
+
+def test_async_search_rejects_nonstandard_json_numbers_before_success_audit():
+    principal = Principal(user="alice", role="仓管")
+    hits = [{"doc_id": "D1", "score": float("inf")}]
+    with patch("dm.tools.documents.arun_isolated", new=AsyncMock(return_value=hits)), patch(
+        "dm.tools.documents.audit_event"
+    ) as audit:
+        response = asyncio.run(asearch_documents(principal, "query", 5))
+    assert response == "ERROR: 文档检索失败"
+    assert audit.call_args.args[7] is False
