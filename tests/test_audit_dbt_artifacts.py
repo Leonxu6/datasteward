@@ -26,3 +26,17 @@ def test_artifact_audit_reports_missing_invalid_and_wrong_shapes(tmp_path):
     results = tmp_path / "run_results.json"
     results.write_text(json.dumps({"results": {}}), encoding="utf-8")
     assert module.validate_artifact(results) == ["run_results.json 'results' must be an array"]
+
+
+def test_artifact_audit_rejects_nonstandard_constants_and_duplicate_keys(tmp_path):
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text('{"nodes": {}, "sources": {}, "elapsed": NaN}', encoding="utf-8")
+    issues = module.validate_artifact(manifest)
+    assert len(issues) == 1
+    assert issues[0].startswith("invalid JSON in manifest.json:")
+
+    results = tmp_path / "run_results.json"
+    results.write_text('{"results": [], "results": [{"status": "fail"}]}', encoding="utf-8")
+    issues = module.validate_artifact(results)
+    assert len(issues) == 1
+    assert issues[0].startswith("invalid JSON in run_results.json:")
