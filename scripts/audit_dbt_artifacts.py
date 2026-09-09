@@ -6,14 +6,31 @@ import json
 from pathlib import Path
 
 
+def _reject_nonstandard_constant(value: str) -> None:
+    raise ValueError(f"nonstandard JSON constant: {value}")
+
+
+def _unique_object(pairs: list[tuple[str, object]]) -> dict:
+    output: dict = {}
+    for key, value in pairs:
+        if key in output:
+            raise ValueError(f"duplicate JSON object key: {key}")
+        output[key] = value
+    return output
+
+
 def validate_artifact(path: Path) -> list[str]:
     if not path.exists():
         return [f"missing artifact: {path.name}"]
     if not path.is_file():
         return [f"artifact is not a file: {path.name}"]
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        data = json.loads(
+            path.read_text(encoding="utf-8"),
+            parse_constant=_reject_nonstandard_constant,
+            object_pairs_hook=_unique_object,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
         return [f"invalid JSON in {path.name}: {exc}"]
     if not isinstance(data, dict):
         return [f"{path.name} must contain a JSON object"]
