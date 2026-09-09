@@ -1,5 +1,8 @@
 """数据健康监控（对标 Palantir Data Health / Foundry Rules）。"""
+import json
+import os
 from datetime import datetime
+from pathlib import Path
 
 from dm.config import SRC_PG_DB, SRC_PG_HOST, SRC_PG_PASSWORD, SRC_PG_PORT, SRC_PG_USER
 from dm.schema import business_table_names, table_by_name
@@ -23,6 +26,20 @@ _SAFE_VALIDATION_MESSAGES = (
     "min_rows must be a non-negative integer",
     "max_age_days must be a non-negative integer",
 )
+_MAX_DBT_RESULTS_BYTES = 32 * 1024 * 1024
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"nonstandard JSON constant: {value}")
+
+
+def _unique_json_object(pairs: list[tuple[str, object]]) -> dict:
+    output: dict = {}
+    for key, value in pairs:
+        if key in output:
+            raise ValueError(f"duplicate JSON object key: {key}")
+        output[key] = value
+    return output
 
 
 def _sr_scalar(sql):
@@ -163,18 +180,49 @@ def _to_dt(v):
         raise ValueError(f"invalid freshness timestamp: {text[:80]}") from exc
 
 
+def _load_dbt_results(path: Path) -> list[dict]:
+    try:
+        metadata = path.stat()
+        if not path.is_file() or metadata.st_size > _MAX_DBT_RESULTS_BYTES:
+            raise ValueError("invalid dbt run-results artifact")
+        data = json.loads(
+            path.read_text(encoding="utf-8"),
+            parse_constant=_reject_json_constant,
+            object_pairs_hook=_unique_json_object,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise ValueError("invalid dbt run-results artifact") from exc
+    if not isinstance(data, dict) or not isinstance(data.get("results"), list):
+        raise ValueError("invalid dbt run-results artifact")
+    results = data["results"]
+    if not all(isinstance(item, dict) for item in results):
+        raise ValueError("invalid dbt run-results artifact")
+    return results
+
+
 def _dbt_tests_result(chk):
     """读 dbt run_results.json 汇总测试结果（L5 质量门禁并入健康页）。"""
-    import json
-    import os
-    from pathlib import Path
     dbt_dir = Path(os.environ.get("DM_DBT_DIR") or Path(__file__).resolve().parents[3] / "transform" / "dbt")
     rr = dbt_dir / "target" / "run_results.json"
     if not rr.exists():
         return _result(chk, "warn", None, "dbt 尚未运行（无 run_results.json）——先跑 dbt build")
-    data = json.loads(rr.read_text(encoding="utf-8"))
-    tests = [r for r in data.get("results", []) if r.get("unique_id", "").startswith("test.")]
-    bad = [r.get("unique_id", "?").split(".")[2] if len(r.get("unique_id", "").split(".")) > 2 else r.get("unique_id") for r in tests if r.get("status") in ("fail", "error")]
+    try:
+        results = _load_dbt_results(rr)
+    except ValueError:
+        return _result(chk, "fail", None, "run_results.json 无效或不满足标准 JSON 契约")
+    tests: list[dict] = []
+    for item in results:
+        unique_id = item.get("unique_id")
+        status = item.get("status")
+        if not isinstance(unique_id, str) or not isinstance(status, str):
+            return _result(chk, "fail", None, "run_results.json 包含结构异常的结果项")
+        if unique_id.startswith("test."):
+            tests.append(item)
+    bad = [
+        r["unique_id"].split(".")[2] if len(r["unique_id"].split(".")) > 2 else r["unique_id"]
+        for r in tests
+        if r["status"] in ("fail", "error")
+    ]
     if bad:
         return _result(chk, "fail", len(bad), f"{len(bad)} 个 dbt 测试未过：{', '.join(bad[:5])}")
     if not tests:
