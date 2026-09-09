@@ -11,6 +11,19 @@ _LOG_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 _MAX_LINE_BYTES = 1024 * 1024
 
 
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"nonstandard JSON constant: {value}")
+
+
+def _unique_json_object(pairs: list[tuple[str, object]]) -> dict:
+    output: dict = {}
+    for key, value in pairs:
+        if key in output:
+            raise ValueError(f"duplicate JSON object key: {key}")
+        output[key] = value
+    return output
+
+
 def _log_dir(value) -> Path:
     if not isinstance(value, (str, os.PathLike)):
         raise ValueError("log_dir must be a filesystem path")
@@ -73,7 +86,7 @@ def append_jsonl(log_dir: Path, name, record: dict) -> None:
 
 
 def read_jsonl(log_dir: Path, name) -> list[dict]:
-    """Read bounded valid JSON-object lines while skipping corrupt/oversized records."""
+    """Read bounded unambiguous JSON-object lines while skipping corrupt/oversized records."""
     path = log_path(log_dir, name)
     if not path.exists():
         return []
@@ -95,8 +108,12 @@ def read_jsonl(log_dir: Path, name) -> list[dict]:
             if not text:
                 continue
             try:
-                value = json.loads(text)
-            except json.JSONDecodeError:
+                value = json.loads(
+                    text,
+                    parse_constant=_reject_json_constant,
+                    object_pairs_hook=_unique_json_object,
+                )
+            except (json.JSONDecodeError, ValueError):
                 continue
             if isinstance(value, dict):
                 output.append(value)
