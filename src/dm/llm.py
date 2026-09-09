@@ -16,6 +16,19 @@ _MAX_RESPONSE_CHARS = 1_000_000
 _ALLOWED_ROLES = {"system", "user", "assistant", "tool", "function", "developer"}
 
 
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"nonstandard JSON constant: {value}")
+
+
+def _unique_json_object(pairs: list[tuple[str, object]]) -> dict:
+    output: dict = {}
+    for key, value in pairs:
+        if key in output:
+            raise ValueError(f"duplicate JSON object key: {key}")
+        output[key] = value
+    return output
+
+
 def _finite_number(value, *, field_name: str):
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError(f"{field_name} 必须是有限数字")
@@ -217,8 +230,12 @@ def chat(messages: list, model: str | None = None, temperature: float = 0.2,
             if data == "[DONE]":
                 break
             try:
-                obj = json.loads(data)
-            except ValueError as exc:
+                obj = json.loads(
+                    data,
+                    parse_constant=_reject_json_constant,
+                    object_pairs_hook=_unique_json_object,
+                )
+            except (json.JSONDecodeError, ValueError) as exc:
                 raise RuntimeError("LLM 流式响应包含无效 JSON") from exc
             content = _stream_content(obj)
             if content is not None:
