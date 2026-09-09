@@ -59,3 +59,12 @@ def test_read_jsonl_skips_corrupt_and_non_object_lines(tmp_path):
     path = tmp_path / "audit.jsonl"
     path.write_text('{"ok":1}\n{bad\n[1,2]\n\n{"ok":2}\n', encoding="utf-8")
     assert read_jsonl(tmp_path, "audit") == [{"ok": 1}, {"ok": 2}]
+
+
+def test_read_jsonl_skips_nonstandard_constants_and_duplicate_keys(tmp_path):
+    path = tmp_path / "audit.jsonl"
+    path.write_text(
+        '{"ok":1}\n{"metric":NaN}\n{"id":1,"id":2}\n{"ok":2}\n',
+        encoding="utf-8",
+    )
+    assert read_jsonl(tmp_path, "audit") == [{"ok": 1}, {"ok": 2}]
