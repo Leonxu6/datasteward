@@ -9,6 +9,19 @@ from typing import Iterator
 _MAX_MANIFEST_BYTES = 64 * 1024 * 1024
 
 
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"nonstandard JSON constant: {value}")
+
+
+def _unique_json_object(pairs: list[tuple[str, object]]) -> dict:
+    output: dict = {}
+    for key, value in pairs:
+        if key in output:
+            raise ValueError(f"duplicate JSON object key: {key}")
+        output[key] = value
+    return output
+
+
 def _manifest(value: object) -> dict:
     if not isinstance(value, dict):
         raise ValueError("manifest must be a JSON object")
@@ -24,7 +37,7 @@ def _clean_text(value: object, *, field: str) -> str:
 
 
 def load_manifest(path: Path) -> dict | None:
-    """Load a bounded dbt manifest object or return ``None`` for invalid documents."""
+    """Load a bounded unambiguous dbt manifest object or return ``None`` for invalid documents."""
     if not isinstance(path, (str, os.PathLike)):
         raise ValueError("manifest path must be a filesystem path")
     path = Path(path)
@@ -32,8 +45,12 @@ def load_manifest(path: Path) -> dict | None:
         metadata = path.stat()
         if metadata.st_size > _MAX_MANIFEST_BYTES:
             return None
-        document = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError):
+        document = json.loads(
+            path.read_text(encoding="utf-8"),
+            parse_constant=_reject_json_constant,
+            object_pairs_hook=_unique_json_object,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
         return None
     return document if isinstance(document, dict) else None
 
