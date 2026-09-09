@@ -1,5 +1,3 @@
-import json
-
 from dm.datasets.dbt_manifest import iter_nodes, load_manifest, model_layer, parent_names
 
 
@@ -12,6 +10,14 @@ def test_load_manifest_rejects_missing_corrupt_and_non_object_documents(tmp_path
     assert load_manifest(path) is None
     path.write_text('{"nodes": {}}', encoding="utf-8")
     assert load_manifest(path) == {"nodes": {}}
+
+
+def test_load_manifest_rejects_nonstandard_constants_and_duplicate_keys(tmp_path):
+    path = tmp_path / "manifest.json"
+    path.write_text('{"metadata": {"generated_at": NaN}}', encoding="utf-8")
+    assert load_manifest(path) is None
+    path.write_text('{"nodes": {}, "nodes": {"model.project.shadow": {}}}', encoding="utf-8")
+    assert load_manifest(path) is None
 
 
 def test_iter_nodes_skips_wrong_types_and_malformed_entries():
