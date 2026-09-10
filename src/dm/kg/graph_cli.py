@@ -19,9 +19,22 @@ def _reject_nonstandard_constant(value: str) -> None:
     raise ValueError(f"nonstandard JSON constant: {value}")
 
 
+def _unique_json_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON object key: {key}")
+        result[key] = value
+    return result
+
+
 def _parse_args(raw: str) -> dict:
     try:
-        args = json.loads(raw, parse_constant=_reject_nonstandard_constant)
+        args = json.loads(
+            raw,
+            parse_constant=_reject_nonstandard_constant,
+            object_pairs_hook=_unique_json_object,
+        )
     except (json.JSONDecodeError, ValueError) as exc:
         raise ValueError("graph CLI 参数必须是合法 JSON") from exc
     if not isinstance(args, dict):
