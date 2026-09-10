@@ -17,6 +17,11 @@ KG_TABLES = ["material_category", "material", "supplier", "customer", "warehouse
              "storage_location", "inventory", "purchase_order", "purchase_arrival",
              "sales_order", "delivery_note", "production_order", "production_material_req"]
 _KGSET = set(KG_TABLES)
+_MAX_LLM_OUTPUT_CHARS = 100_000
+_MAX_EXTRACTED_TRIPLES = 200
+_MAX_ENTITY_ID_CHARS = 200
+_MAX_ENTITY_TYPE_CHARS = 80
+_MAX_RELATION_TYPE_CHARS = 40
 
 # 外键列 → 语义关系名（可读、便于多跳查询）；缺省回退 REF_<col>
 EDGE_NAME = {
@@ -104,6 +109,48 @@ _EXTRACT_PROMPT = """你是知识图谱关系抽取器。下面是一篇制造�
 不要编造文档中没有的关系。只回 JSON，不要解释。"""
 
 
+def _reject_json_constant(value: str):
+    raise ValueError(f"non-standard JSON constant is not allowed: {value}")
+
+
+def _unique_json_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON object key is not allowed: {key}")
+        result[key] = value
+    return result
+
+
+def _bounded_text(value, *, maximum):
+    if not isinstance(value, str):
+        return ""
+    value = " ".join(value.split())
+    return value[:maximum].strip()
+
+
+def _validated_triples(document):
+    if not isinstance(document, dict) or set(document) != {"triples"}:
+        return []
+    triples = document.get("triples")
+    if not isinstance(triples, list) or len(triples) > _MAX_EXTRACTED_TRIPLES:
+        return []
+    out = []
+    for triple in triples:
+        if not isinstance(triple, dict):
+            continue
+        sid = _bounded_text(triple.get("s"), maximum=_MAX_ENTITY_ID_CHARS)
+        oid = _bounded_text(triple.get("o"), maximum=_MAX_ENTITY_ID_CHARS)
+        stype = _bounded_text(triple.get("s_type"), maximum=_MAX_ENTITY_TYPE_CHARS)
+        otype = _bounded_text(triple.get("o_type"), maximum=_MAX_ENTITY_TYPE_CHARS)
+        relation = _bounded_text(triple.get("r"), maximum=_MAX_RELATION_TYPE_CHARS)
+        note = _bounded_text(triple.get("note", ""), maximum=200)
+        if not sid or not oid or not stype or not otype or not relation:
+            continue
+        out.append({"s": sid, "s_type": stype, "r": relation, "o": oid, "o_type": otype, "note": note})
+    return out
+
+
 def _llm_extract(doc_id, title, body):
     prompt = f"{_EXTRACT_PROMPT}\n\n[doc_id={doc_id}] {title}\n{body}"
     from dm.llm import chat
@@ -111,13 +158,46 @@ def _llm_extract(doc_id, title, body):
         out = chat([{"role": "user", "content": prompt}], temperature=0.0, timeout=120).strip()
     except RuntimeError:
         return []
+    if len(out) > _MAX_LLM_OUTPUT_CHARS:
+        return []
     i, j = out.find("{"), out.rfind("}")
     if i < 0 or j < 0:
         return []
     try:
-        return json.loads(out[i:j + 1]).get("triples", [])
-    except Exception:  # noqa: BLE001
+        document = json.loads(
+            out[i:j + 1],
+            parse_constant=_reject_json_constant,
+            object_pairs_hook=_unique_json_object,
+        )
+    except (json.JSONDecodeError, ValueError, TypeError):
         return []
+    return _validated_triples(document)
+
+
+def _safe_identifier(value, *, fallback, maximum):
+    if not isinstance(value, str):
+        return fallback
+    cleaned = "".join(ch for ch in value if ch.isascii() and (ch.isalnum() or ch == "_"))[:maximum]
+    if not cleaned or not (cleaned[0].isalpha() or cleaned[0] == "_"):
+        return fallback
+    return cleaned
+
+
+def _safe_label(s):
+    label = _safe_identifier(s, fallback="Entity", maximum=_MAX_ENTITY_TYPE_CHARS)
+    return label[:1].upper() + label[1:]
+
+
+def _safe_relation_type(value):
+    if not isinstance(value, str):
+        return "REL"
+    cleaned = "".join(
+        ch if ch.isascii() and (ch.isalnum() or ch == "_") else "_"
+        for ch in value.upper()
+    )[:_MAX_RELATION_TYPE_CHARS].strip("_")
+    if not cleaned or not (cleaned[0].isalpha() or cleaned[0] == "_"):
+        return "REL"
+    return cleaned
 
 
 def extract(verbose=True):
@@ -147,18 +227,15 @@ def extract(verbose=True):
                 s.run("MERGE (d:Document {id:$id}) SET d.title=$t, d.entities=$e, d._cn='文档'",
                       id=doc_id, t=title, e=entities or "")
                 for tr in triples:
-                    sid, st_, r, oid, ot = (str(tr.get("s", "")).strip(), tr.get("s_type", ""),
-                                            tr.get("r", "REL"), str(tr.get("o", "")).strip(), tr.get("o_type", ""))
-                    if not sid or not oid or not r:
-                        continue
-                    r = "".join(ch if (ch.isalnum() or ch == "_") else "_" for ch in r.upper())[:40] or "REL"
-                    note = str(tr.get("note", ""))[:200]
+                    sid, st_, r, oid, ot = tr["s"], tr["s_type"], tr["r"], tr["o"], tr["o_type"]
+                    relation_type = _safe_relation_type(r)
+                    note = tr["note"]
                     # 头/尾节点：已存在(骨架)的按 pk0 匹配；否则按类型 MERGE（Equipment/Document 等新类）
                     s.run(
                         "MERGE (a {id:$sid}) ON CREATE SET a:%s, a._cn=$st "
                         "MERGE (b {id:$oid}) ON CREATE SET b:%s, b._cn=$ot "
                         "MERGE (a)-[rel:%s {source:'doc'}]->(b) SET rel.note=$note, rel.doc=$doc"
-                        % (_safe_label(st_), _safe_label(ot), r),
+                        % (_safe_label(st_), _safe_label(ot), relation_type),
                         sid=sid, oid=oid, st=st_, ot=ot, note=note, doc=doc_id)
                     n_tri += 1
                 n_doc += 1
@@ -169,11 +246,6 @@ def extract(verbose=True):
         drv.close()
     print(f"=== 文档抽取完成：{n_doc} 篇 / {n_tri} 关系（source='doc'）===")
     return n_doc, n_tri
-
-
-def _safe_label(s):
-    s = "".join(ch for ch in str(s or "") if ch.isalnum())
-    return s[:1].upper() + s[1:] if s else "Entity"
 
 
 def status():
