@@ -17,10 +17,10 @@ def _unsafe_cypher_control(ch: str) -> bool:
 def _query_text(cypher: object) -> str:
     if not isinstance(cypher, str) or not cypher.strip():
         raise ValueError("cypher must be non-empty text")
-    if len(cypher.encode("utf-8")) > _MAX_CYPHER_BYTES:
-        raise ValueError(f"cypher must be at most {_MAX_CYPHER_BYTES} UTF-8 bytes")
     if any(_unsafe_cypher_control(ch) for ch in cypher):
         raise ValueError("cypher contains unsupported control characters")
+    if len(cypher.encode("utf-8")) > _MAX_CYPHER_BYTES:
+        raise ValueError(f"cypher must be at most {_MAX_CYPHER_BYTES} UTF-8 bytes")
     return cypher
 
 
