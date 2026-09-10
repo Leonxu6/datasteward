@@ -12,6 +12,15 @@ def test_graph_queries_reject_malformed_text_before_opening_driver(monkeypatch):
             store.run_write(value)
 
 
+@pytest.mark.parametrize("control", ["\u200d", "\u206a", chr(0xD800)])
+def test_graph_queries_reject_hidden_unicode_controls_before_opening_driver(monkeypatch, control):
+    monkeypatch.setattr(store, "driver", lambda: pytest.fail("driver should not be opened"))
+    with pytest.raises(ValueError, match="control"):
+        store.run_read(f"MATCH (n){control} RETURN n")
+    with pytest.raises(ValueError, match="control"):
+        store.run_write(f"MATCH (n){control} RETURN n")
+
+
 def test_graph_query_size_is_bounded_by_utf8_bytes(monkeypatch):
     monkeypatch.setattr(store, "driver", lambda: pytest.fail("driver should not be opened"))
     monkeypatch.setattr(store, "_MAX_CYPHER_BYTES", 5)
