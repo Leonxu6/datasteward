@@ -22,7 +22,8 @@ def main():
         top_k = 5
     from dm.docs.search import search
     hits = search(query, top_k=top_k)
-    sys.stdout.write("DMJSON:" + json.dumps(hits, ensure_ascii=False) + "\n")
+    payload = json.dumps(hits, ensure_ascii=False, allow_nan=False)
+    sys.stdout.write("DMJSON:" + payload + "\n")
     sys.stdout.flush()
 
 
