@@ -21,6 +21,11 @@ def test_parse_args_rejects_nonstandard_json_constants(constant):
         graph_cli._parse_args('{"limit":' + constant + "}")
 
 
+def test_parse_args_rejects_duplicate_object_keys():
+    with pytest.raises(ValueError, match="必须是合法 JSON"):
+        graph_cli._parse_args('{"limit":3,"limit":99}')
+
+
 def test_parse_args_redacts_json_decoder_details():
     secret = "super-secret-token"
     with pytest.raises(ValueError, match="必须是合法 JSON") as exc_info:
