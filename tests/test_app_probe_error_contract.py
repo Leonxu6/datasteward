@@ -29,3 +29,26 @@ def test_warehouse_probe_redacts_backend_exception(monkeypatch):
     assert result["ok"] is False
     assert "warehouse-secret" not in result["error"]
     assert "RuntimeError" in result["error"]
+
+
+def test_warehouse_probe_closes_connection_when_query_fails(monkeypatch):
+    from dm.warehouse import store
+
+    class BrokenConnection:
+        def __init__(self):
+            self.closed = False
+
+        def execute(self, query):
+            raise RuntimeError("password=query-secret")
+
+        def close(self):
+            self.closed = True
+
+    connection = BrokenConnection()
+    monkeypatch.setattr(store, "connect_ro", lambda: connection)
+
+    result = _call(data.wh_health)
+
+    assert result["ok"] is False
+    assert connection.closed is True
+    assert "query-secret" not in result["error"]
