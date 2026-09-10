@@ -32,6 +32,19 @@ def _ts(s):
         return None
 
 
+def _reject_json_constant(value: str):
+    raise ValueError(f"non-standard JSON constant is not allowed: {value}")
+
+
+def _unique_json_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON object key is not allowed: {key}")
+        result[key] = value
+    return result
+
+
 # ============================ 纯聚合 ============================
 def agg_audit(logs) -> dict:
     n = len(logs)
@@ -85,13 +98,19 @@ def session_steps(sid, steps):
 
 
 def parse_tool_call(content):
-    """agent_session 里 tool_call 的 content = 'mcp__dm__run_sql  {json}' → (短名, args dict)。"""
+    """Parse one persisted tool-call display record without trusting ambiguous JSON."""
     s = str(content)
     name, _, rest = s.partition("  ")
     short = name.split("__")[-1].strip()
     try:
-        args = json.loads(rest)
-    except Exception:  # noqa: BLE001
+        args = json.loads(
+            rest,
+            parse_constant=_reject_json_constant,
+            object_pairs_hook=_unique_json_object,
+        )
+    except (json.JSONDecodeError, ValueError, TypeError):
+        args = {}
+    if not isinstance(args, dict):
         args = {}
     return short, args
 
@@ -131,8 +150,10 @@ def wh_health() -> dict:
     try:
         t0 = _t.perf_counter()
         con = connect_ro()
-        con.execute("SELECT 1").fetchone()
-        con.close()
+        try:
+            con.execute("SELECT 1").fetchone()
+        finally:
+            con.close()
         info["ok"] = True
         info["latency_ms"] = round((_t.perf_counter() - t0) * 1000)
     except Exception as exc:  # noqa: BLE001
