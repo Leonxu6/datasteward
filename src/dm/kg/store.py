@@ -2,9 +2,16 @@
 
 连接参数取自 dm.config 的 NEO4J_*。只读查询与写入都走同一 driver；查询侧另有白名单兜底（query.py）。
 """
+import unicodedata
+
 from dm.config import NEO4J_PASSWORD, NEO4J_URI, NEO4J_USER
 
 _MAX_CYPHER_BYTES = 100_000
+
+
+def _unsafe_cypher_control(ch: str) -> bool:
+    category = unicodedata.category(ch)
+    return category in {"Cf", "Cs"} or (category == "Cc" and ch not in "\t\n\r")
 
 
 def _query_text(cypher: object) -> str:
@@ -12,7 +19,7 @@ def _query_text(cypher: object) -> str:
         raise ValueError("cypher must be non-empty text")
     if len(cypher.encode("utf-8")) > _MAX_CYPHER_BYTES:
         raise ValueError(f"cypher must be at most {_MAX_CYPHER_BYTES} UTF-8 bytes")
-    if any(ord(ch) < 9 or 13 < ord(ch) < 32 or ord(ch) == 127 for ch in cypher):
+    if any(_unsafe_cypher_control(ch) for ch in cypher):
         raise ValueError("cypher contains unsupported control characters")
     return cypher
 
