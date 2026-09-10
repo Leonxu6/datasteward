@@ -39,6 +39,11 @@ def test_parse_dmjson_rejects_nonstandard_json_numbers(constant):
         _isolation._parse_dmjson(f'DMJSON:{{"value":{constant}}}\n', "")
 
 
+def test_parse_dmjson_rejects_duplicate_object_keys():
+    with pytest.raises(RuntimeError, match="DMJSON"):
+        _isolation._parse_dmjson('DMJSON:{"ok":true,"ok":false}\n', "")
+
+
 def test_parse_dmjson_rejects_multiple_protocol_frames():
     with pytest.raises(RuntimeError, match="多个 DMJSON"):
         _isolation._parse_dmjson('DMJSON:{"a":1}\nDMJSON:{"a":2}\n', "")

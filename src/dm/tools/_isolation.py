@@ -43,6 +43,16 @@ def _reject_json_constant(value: str):
     raise ValueError(f"non-standard JSON constant is not allowed: {value}")
 
 
+def _unique_json_object(pairs):
+    """Reject duplicate object keys so protocol senders cannot hide overwritten values."""
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON object key is not allowed: {key}")
+        result[key] = value
+    return result
+
+
 def _parse_dmjson(out: str, err: str):
     lines = [ln for ln in out.splitlines() if ln.startswith(_DMJSON_PREFIX)]
     if not lines:
@@ -54,7 +64,11 @@ def _parse_dmjson(out: str, err: str):
         raise RuntimeError("子进程 DMJSON 结果超过大小上限")
     payload = line[len(_DMJSON_PREFIX):]
     try:
-        return json.loads(payload, parse_constant=_reject_json_constant)
+        return json.loads(
+            payload,
+            parse_constant=_reject_json_constant,
+            object_pairs_hook=_unique_json_object,
+        )
     except (json.JSONDecodeError, ValueError) as exc:
         raise RuntimeError(f"子进程 DMJSON 结果无效 ({exc.__class__.__name__})") from None
 
