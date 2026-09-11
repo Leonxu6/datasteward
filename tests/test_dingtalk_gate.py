@@ -87,6 +87,13 @@ def test_role_map_broken_yaml_degrades(tmp_path):
     assert rm.role_of("s001") == DEFAULT_ROLE
 
 
+def test_role_map_duplicate_staff_keys_degrade_instead_of_overriding(tmp_path):
+    p = tmp_path / "role_map.yaml"
+    p.write_text('roles:\n  "s001": 采购\n  "s001": 管理层\n', encoding="utf-8")
+    rm = _RoleMap(path=str(p))
+    assert rm.role_of("s001") == DEFAULT_ROLE
+
+
 def test_resolve_identity_nick_then_staff_then_anon(tmp_path):
     rm = _RoleMap(path=str(tmp_path / "nope.yaml"))
     assert resolve_identity(_msg(nick="张三", staff="s1"), rm) == ("张三", DEFAULT_ROLE)
