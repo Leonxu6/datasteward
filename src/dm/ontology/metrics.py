@@ -6,9 +6,9 @@
 import re
 from importlib.resources import files
 
-import yaml
-
 from dm.config import DW_SCHEMA as _DW_SCHEMA
+from dm.yaml_utils import safe_load_unique
+
 _IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _FILTER = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*(=|!=|>=|<=|>|<)\s*('[^']*'|-?\d+(\.\d+)?)\s*$")
 _ALLOWED_AGGS = {"sum", "count", "count_distinct", "avg", "min", "max"}
@@ -100,11 +100,16 @@ def _normalize_catalog(raw: object) -> dict[str, dict]:
     return catalog
 
 
+def _parse_catalog_yaml(text: object) -> dict[str, dict]:
+    """Parse the packaged metric catalog without ambiguous YAML mappings."""
+    return _normalize_catalog(safe_load_unique(text))
+
+
 def load_metrics() -> dict:
     global _CACHE
     if _CACHE is None:
-        raw = yaml.safe_load((files("dm.ontology") / "metrics.yaml").read_text(encoding="utf-8"))
-        _CACHE = _normalize_catalog(raw)
+        text = (files("dm.ontology") / "metrics.yaml").read_text(encoding="utf-8")
+        _CACHE = _parse_catalog_yaml(text)
     return _CACHE
 
 
