@@ -27,8 +27,10 @@ from dm.channels.validation import (
     normalize_positive_int,
     normalize_webhook_url,
 )
+from dm.yaml_utils import safe_load_unique
 
 DEFAULT_ROLE = "仓管"
+_ROLE_MAP_MAX_CHARS = 200_000
 
 
 def _normalize_secret(value):
@@ -100,10 +102,8 @@ class _RoleMap:
         if mtime == self._mtime:
             return
         try:
-            import yaml
-
             with open(self.path, encoding="utf-8") as handle:
-                document = yaml.safe_load(handle) or {}
+                document = safe_load_unique(handle.read(), max_chars=_ROLE_MAP_MAX_CHARS) or {}
             if not isinstance(document, dict):
                 raise ValueError("role map root must be a mapping")
             raw = document.get("roles") or {}
@@ -117,7 +117,7 @@ class _RoleMap:
             self._map = normalized
             print(f"[钉钉] 角色映射已加载：{len(self._map)} 人（{self.path}）")
         except Exception as exc:  # noqa: BLE001
-            print(f"[钉钉] 角色映射解析失败（{exc}），全员按默认角色「{DEFAULT_ROLE}」")
+            print(f"[钉钉] 角色映射解析失败（{exc.__class__.__name__}），全员按默认角色「{DEFAULT_ROLE}」")
             self._map = {}
         self._mtime = mtime
 
@@ -258,7 +258,7 @@ def run_stream():
                         gate.sem.release()
                 except Exception as exc:  # noqa: BLE001
                     try:
-                        self.reply_text(f"抱歉，处理出错：{exc}", incoming)
+                        self.reply_text(f"抱歉，处理出错（{exc.__class__.__name__}）。请稍后重试。", incoming)
                     except Exception:  # noqa: BLE001
                         pass
 
