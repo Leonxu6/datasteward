@@ -45,4 +45,8 @@ def safe_load_unique(text: object, *, max_chars: int = _MAX_YAML_CHARS) -> Any:
         raise ValueError("YAML input must be text")
     if len(text) > max_chars:
         raise ValueError(f"YAML input must be at most {max_chars} characters")
-    return yaml.load(text, Loader=_UniqueKeySafeLoader)
+    loader = _UniqueKeySafeLoader(text)
+    try:
+        return loader.get_single_data()
+    finally:
+        loader.dispose()
