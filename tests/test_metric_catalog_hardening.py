@@ -1,7 +1,7 @@
 import pytest
 
 import dm.ontology.metrics as metrics
-from dm.ontology.metrics import _normalize_catalog, metric_catalog
+from dm.ontology.metrics import _normalize_catalog, _parse_catalog_yaml, metric_catalog
 
 
 def _entry(name="metric_one", **overrides):
@@ -41,6 +41,24 @@ def test_normalize_catalog_indexes_valid_entries():
     first = _entry("sales")
     second = _entry("stock")
     assert _normalize_catalog({"metrics": [first, second]}) == {"sales": first, "stock": second}
+
+
+def test_parse_catalog_yaml_rejects_duplicate_mapping_keys():
+    document = """metrics:
+  - name: sales
+    agg: sum
+    agg: max
+    expr: amount
+    base_model: fact_sales
+"""
+    with pytest.raises(ValueError, match="duplicate YAML mapping key"):
+        _parse_catalog_yaml(document)
+
+
+def test_parse_catalog_yaml_rejects_duplicate_root_keys():
+    document = "metrics: []\nmetrics: []\n"
+    with pytest.raises(ValueError, match="duplicate YAML mapping key"):
+        _parse_catalog_yaml(document)
 
 
 def test_metric_catalog_returns_isolated_list_metadata(monkeypatch):
