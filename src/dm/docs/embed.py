@@ -19,6 +19,14 @@ from pathlib import Path
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS", "1")
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 
+_ALLOWED_BACKENDS = frozenset({"fastembed", "hash"})
+
+
+def _backend(value: object) -> str:
+    if not isinstance(value, str) or value != value.strip() or value not in _ALLOWED_BACKENDS:
+        raise ValueError(f"embedding backend must be one of: {', '.join(sorted(_ALLOWED_BACKENDS))}")
+    return value
+
 
 def _dimension(value: object) -> int:
     if isinstance(value, bool):
@@ -36,7 +44,7 @@ def _dimension(value: object) -> int:
     return result
 
 
-BACKEND = os.environ.get("DM_EMBED_BACKEND", "fastembed")
+BACKEND = _backend(os.environ.get("DM_EMBED_BACKEND", "fastembed"))
 MODEL_NAME = os.environ.get("DM_EMBED_MODEL", "BAAI/bge-small-zh-v1.5")
 DIM = _dimension(os.environ.get("DM_EMBED_DIM", "512"))
 CACHE_DIR = os.environ.get("DM_EMBED_CACHE") or str(Path.home() / ".cache" / "dm_fastembed")
@@ -168,7 +176,8 @@ def embed(texts, is_query=False):
     if not isinstance(is_query, bool):
         raise ValueError("is_query must be boolean")
     texts = _request_texts(texts)
-    if os.environ.get("DM_EMBED_BACKEND", BACKEND) == "hash":  # 动态读取，便于测试切 hash 后端
+    runtime_backend = _backend(os.environ.get("DM_EMBED_BACKEND", BACKEND))
+    if runtime_backend == "hash":  # 动态读取，便于测试切 hash 后端
         return [_hash_vec(t) for t in texts]
     # 全程 fd 级静默 stdout：模型加载 + 编码都可能打印，绝不能污染 stdio-MCP 的 JSON-RPC 通道
     with _silence_stdout():
