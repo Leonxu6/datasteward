@@ -20,9 +20,15 @@ def test_embedding_rejects_scalar_collections_and_empty_batches(monkeypatch):
 
 def test_embedding_rejects_invalid_text_items_before_model_use(monkeypatch):
     monkeypatch.setenv("DM_EMBED_BACKEND", "hash")
-    for values in ([""], ["   "], [7], ["bad\x00text"]):
+    for values in ([""], ["   "], [7], ["bad\x00text"], ["bad\u200dtext"], ["bad\ud800text"]):
         with pytest.raises(ValueError):
             embed.embed(values)
+
+
+def test_embedding_allows_normal_multiline_whitespace(monkeypatch):
+    monkeypatch.setenv("DM_EMBED_BACKEND", "hash")
+    vectors = embed.embed(["first line\nsecond line", "tab\tseparated"])
+    assert len(vectors) == 2
 
 
 def test_embedding_batch_and_text_sizes_are_bounded(monkeypatch):
