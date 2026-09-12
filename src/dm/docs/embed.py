@@ -28,6 +28,27 @@ def _backend(value: object) -> str:
     return value
 
 
+def _clean_setting_text(value: object, *, field: str, max_length: int) -> str:
+    if isinstance(max_length, bool) or not isinstance(max_length, int) or max_length < 1:
+        raise ValueError("max_length must be a positive integer")
+    if not isinstance(value, str) or not value or value != value.strip():
+        raise ValueError(f"{field} must be clean non-empty text")
+    if len(value) > max_length:
+        raise ValueError(f"{field} must be at most {max_length} characters")
+    if any(unicodedata.category(ch) in {"Cc", "Cf", "Cs"} for ch in value):
+        raise ValueError(f"{field} contains control characters")
+    return value
+
+
+def _cache_dir(value: object | None) -> str:
+    raw = "~/.cache/dm_fastembed" if value in (None, "") else value
+    raw = _clean_setting_text(raw, field="embedding cache directory", max_length=4096)
+    try:
+        return str(Path(raw).expanduser())
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise ValueError("embedding cache directory could not be expanded") from exc
+
+
 def _dimension(value: object) -> int:
     if isinstance(value, bool):
         raise ValueError("embedding dimension must be an integer")
@@ -45,9 +66,13 @@ def _dimension(value: object) -> int:
 
 
 BACKEND = _backend(os.environ.get("DM_EMBED_BACKEND", "fastembed"))
-MODEL_NAME = os.environ.get("DM_EMBED_MODEL", "BAAI/bge-small-zh-v1.5")
+MODEL_NAME = _clean_setting_text(
+    os.environ.get("DM_EMBED_MODEL", "BAAI/bge-small-zh-v1.5"),
+    field="embedding model name",
+    max_length=512,
+)
 DIM = _dimension(os.environ.get("DM_EMBED_DIM", "512"))
-CACHE_DIR = os.environ.get("DM_EMBED_CACHE") or str(Path.home() / ".cache" / "dm_fastembed")
+CACHE_DIR = _cache_dir(os.environ.get("DM_EMBED_CACHE"))
 _MAX_BATCH = 256
 _MAX_TEXT_CHARS = 20_000
 
