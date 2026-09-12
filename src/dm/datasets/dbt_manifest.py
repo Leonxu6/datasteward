@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import unicodedata
 from pathlib import Path
 from typing import Iterator
 
@@ -31,7 +32,7 @@ def _manifest(value: object) -> dict:
 def _clean_text(value: object, *, field: str) -> str:
     if not isinstance(value, str) or not value or value != value.strip():
         raise ValueError(f"{field} must be non-empty unpadded text")
-    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+    if any(unicodedata.category(ch) in {"Cc", "Cf", "Cs"} for ch in value):
         raise ValueError(f"{field} contains control characters")
     return value
 
@@ -43,7 +44,7 @@ def load_manifest(path: Path) -> dict | None:
     path = Path(path)
     try:
         metadata = path.stat()
-        if metadata.st_size > _MAX_MANIFEST_BYTES:
+        if not path.is_file() or metadata.st_size > _MAX_MANIFEST_BYTES:
             return None
         document = json.loads(
             path.read_text(encoding="utf-8"),
@@ -107,8 +108,9 @@ def model_layer(node: dict) -> str:
     if not isinstance(node, dict):
         raise ValueError("dbt node must be an object")
     fqn = node.get("fqn")
-    if isinstance(fqn, list) and len(fqn) > 2 and isinstance(fqn[1], str):
-        layer = fqn[1]
-        if layer and layer == layer.strip() and not any(ord(ch) < 32 or ord(ch) == 127 for ch in layer):
-            return layer
+    if isinstance(fqn, list) and len(fqn) > 2:
+        try:
+            return _clean_text(fqn[1], field="dbt model layer")
+        except ValueError:
+            pass
     return "dw"
