@@ -10,6 +10,7 @@ import contextlib
 import math
 import os
 import sys
+import unicodedata
 from pathlib import Path
 
 # Windows 关键修复：HF 缓存默认用符号链接，普通用户无权限 → WinError 1314，缓存残缺
@@ -68,8 +69,10 @@ def _request_texts(texts: object) -> list[str]:
             raise ValueError("embedding texts must be non-empty strings")
         if len(text) > _MAX_TEXT_CHARS:
             raise ValueError(f"embedding text must be at most {_MAX_TEXT_CHARS} characters")
-        if any(ord(ch) < 9 or 13 < ord(ch) < 32 or ord(ch) == 127 for ch in text):
-            raise ValueError("embedding text contains unsupported control characters")
+        for ch in text:
+            category = unicodedata.category(ch)
+            if category in {"Cf", "Cs"} or (category == "Cc" and ch not in "\t\n\r"):
+                raise ValueError("embedding text contains unsupported control characters")
         result.append(text)
     return result
 
