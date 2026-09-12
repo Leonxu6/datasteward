@@ -11,6 +11,13 @@ def test_hash_embedding_accepts_text_and_generators(monkeypatch):
     assert all(len(vector) == embed.DIM for vector in vectors)
 
 
+def test_embedding_backend_must_be_explicitly_supported(monkeypatch):
+    for value in ("", " hash", "hash ", "HASH", "unknown"):
+        monkeypatch.setenv("DM_EMBED_BACKEND", value)
+        with pytest.raises(ValueError, match="embedding backend"):
+            embed.embed(["hello"])
+
+
 def test_embedding_rejects_scalar_collections_and_empty_batches(monkeypatch):
     monkeypatch.setenv("DM_EMBED_BACKEND", "hash")
     for value in (None, b"hello", {"hello": 1}, [], 7):
