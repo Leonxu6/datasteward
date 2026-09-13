@@ -7,6 +7,7 @@ import os
 import re
 import string
 import unicodedata
+from datetime import date
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
@@ -127,6 +128,20 @@ def env_path(name: str, default: str, *, max_length: int = _MAX_PATH_LENGTH) -> 
         return str(Path(value).expanduser())
     except (OSError, RuntimeError, ValueError) as exc:
         raise ValueError(f"{name} 路径无法展开") from exc
+
+
+def env_iso_date(name: str, default: str = "", *, allow_empty: bool = True) -> str:
+    """Read a canonical ``YYYY-MM-DD`` date string, optionally allowing an empty sentinel."""
+    value = env_text(name, default, allow_empty=allow_empty, max_length=10)
+    if not value:
+        return ""
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError(f"{name} 必须是有效的 YYYY-MM-DD 日期") from exc
+    if parsed.isoformat() != value:
+        raise ValueError(f"{name} 必须使用规范的 YYYY-MM-DD 日期格式")
+    return value
 
 
 def env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
