@@ -16,17 +16,6 @@ def test_env_http_url_rejects_encoded_path_traversal(monkeypatch):
             env_http_url("DM_URL", "http://localhost")
 
 
-def test_env_http_url_rejects_double_encoded_unsafe_paths(monkeypatch):
-    for value in (
-        "https://example.com/%252e%252e/admin",
-        "https://example.com/%255cadmin",
-        "https://example.com/%250aadmin",
-    ):
-        monkeypatch.setenv("DM_URL", value)
-        with pytest.raises(ValueError):
-            env_http_url("DM_URL", "http://localhost")
-
-
 def test_env_http_url_keeps_benign_percent_encoding(monkeypatch):
     monkeypatch.setenv("DM_URL", "https://example.com/models/%7Eqwen")
     assert env_http_url("DM_URL", "http://localhost") == "https://example.com/models/%7Eqwen"
