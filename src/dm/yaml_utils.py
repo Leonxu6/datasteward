@@ -41,6 +41,8 @@ def safe_load_unique(text: object, *, max_chars: int = _MAX_YAML_CHARS) -> Any:
     """Safely parse bounded YAML text while rejecting duplicate mapping keys."""
     if not isinstance(max_chars, int) or isinstance(max_chars, bool) or max_chars < 1:
         raise ValueError("max_chars must be a positive integer")
+    if max_chars > _MAX_YAML_CHARS:
+        raise ValueError(f"max_chars must be at most {_MAX_YAML_CHARS}")
     if not isinstance(text, str):
         raise ValueError("YAML input must be text")
     if len(text) > max_chars:
