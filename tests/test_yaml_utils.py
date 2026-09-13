@@ -35,6 +35,11 @@ def test_safe_load_unique_rejects_unbounded_input_and_bad_limits():
             safe_load_unique("a: 1\n", max_chars=limit)
 
 
+def test_safe_load_unique_caps_caller_requested_budget():
+    with pytest.raises(ValueError, match="max_chars must be at most 1000000"):
+        safe_load_unique("a: 1\n", max_chars=1_000_001)
+
+
 def test_safe_load_unique_requires_text():
     with pytest.raises(ValueError, match="must be text"):
         safe_load_unique({"a": 1})
