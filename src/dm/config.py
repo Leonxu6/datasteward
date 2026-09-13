@@ -8,7 +8,7 @@ import os
 import shutil
 from pathlib import Path
 
-from dm.config_validation import env_bool, env_float, env_http_url, env_int, env_path, env_text
+from dm.config_validation import env_bool, env_float, env_http_url, env_int, env_iso_date, env_path, env_text
 
 DATA_DIR = Path(env_path("DM_DATA_DIR", str(Path.cwd()))).resolve()
 LOG_DIR = DATA_DIR / "logs"
@@ -84,15 +84,16 @@ LLM_WALL_TIMEOUT = env_float("DM_LLM_WALL_TIMEOUT", 240, minimum=0.1, maximum=86
 LLM_MAX_TOKENS = env_int("DM_LLM_MAX_TOKENS", 4096, minimum=1, maximum=131072)
 
 # ---- 演示数据日期锚 ----
-ANCHOR_TODAY = os.environ.get("DM_ANCHOR_TODAY", "").strip()
+ANCHOR_TODAY = env_iso_date("DM_ANCHOR_TODAY", "", allow_empty=True)
 
 # ---- LangGraph 检查点 ----
-CKPT_PG_URL = os.environ.get(
+CKPT_PG_URL = env_text(
     "DM_CKPT_PG_URL",
     f"postgresql://{SRC_PG_USER}:{SRC_PG_PASSWORD}@{SRC_PG_HOST}:{SRC_PG_PORT}/{SRC_PG_DB}",
+    max_length=4096,
 )
 
 # ---- Neo4j 知识图谱 ----
-NEO4J_URI = os.environ.get("DM_NEO4J_URI", "bolt://127.0.0.1:7687")
+NEO4J_URI = env_text("DM_NEO4J_URI", "bolt://127.0.0.1:7687", max_length=2048)
 NEO4J_USER = env_text("DM_NEO4J_USER", "neo4j")
 NEO4J_PASSWORD = env_text("DM_NEO4J_PASSWORD", "datasteward-dev", allow_empty=True, max_length=1000)
