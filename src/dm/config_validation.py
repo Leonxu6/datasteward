@@ -7,6 +7,7 @@ import os
 import re
 import string
 import unicodedata
+from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 _TRUE = {"1", "true", "yes", "on"}
@@ -16,6 +17,7 @@ _FLOAT_TEXT = re.compile(r"^-?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+
 _MAX_ENV_NAME = 128
 _MAX_NUMERIC_TEXT = 128
 _MAX_TEXT_LENGTH = 100_000
+_MAX_PATH_LENGTH = 4096
 _MAX_DNS_NAME = 253
 _MAX_DNS_LABEL = 63
 _HEX_DIGITS = frozenset(string.hexdigits)
@@ -113,6 +115,18 @@ def env_text(name: str, default: str, *, allow_empty: bool = False, max_length: 
     if _contains_unsafe_control(value):
         raise ValueError(f"{name} 不能包含控制字符")
     return value
+
+
+def env_path(name: str, default: str, *, max_length: int = _MAX_PATH_LENGTH) -> str:
+    """Read a bounded path and expand the local home marker without resolving symlinks."""
+    max_length = _positive_int(max_length, field="max_length")
+    if max_length > _MAX_PATH_LENGTH:
+        raise ValueError(f"max_length 不能超过 {_MAX_PATH_LENGTH}")
+    value = env_text(name, default, max_length=max_length)
+    try:
+        return str(Path(value).expanduser())
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise ValueError(f"{name} 路径无法展开") from exc
 
 
 def env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
