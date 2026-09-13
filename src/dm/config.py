@@ -8,10 +8,9 @@ import os
 import shutil
 from pathlib import Path
 
-from dm.config_validation import env_bool, env_float, env_http_url, env_int, env_text
+from dm.config_validation import env_bool, env_float, env_http_url, env_int, env_path, env_text
 
-_raw_data_dir = os.environ.get("DM_DATA_DIR")
-DATA_DIR = Path(_raw_data_dir or Path.cwd()).expanduser().resolve()
+DATA_DIR = Path(env_path("DM_DATA_DIR", str(Path.cwd()))).resolve()
 LOG_DIR = DATA_DIR / "logs"
 
 
@@ -72,7 +71,7 @@ SRC_MSSQL_PASSWORD = env_text("DM_SRC_MSSQL_PASSWORD", "", allow_empty=True, max
 SRC_MSSQL_DB = env_text("DM_SRC_MSSQL_DB", "", allow_empty=True)
 
 # ---- 文件连接器 ----
-FILE_SOURCE_DIR = Path(os.environ.get("DM_FILE_SOURCE_DIR") or (DATA_DIR / "file_sources")).expanduser()
+FILE_SOURCE_DIR = Path(env_path("DM_FILE_SOURCE_DIR", str(DATA_DIR / "file_sources")))
 
 # ---- LLM ----
 LLM_BASE_URL = env_http_url("DM_LLM_BASE_URL", "http://127.0.0.1:11434/v1")
