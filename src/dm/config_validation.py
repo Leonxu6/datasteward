@@ -7,7 +7,7 @@ import os
 import re
 import string
 import unicodedata
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off"}
@@ -207,4 +207,9 @@ def env_http_url(name: str, default: str) -> str:
         raise ValueError(f"{name} 不能包含查询参数或片段")
     if parsed.netloc.endswith(":") or port == 0:
         raise ValueError(f"{name} 必须使用有效的非零端口")
+    decoded_path = unquote(parsed.path)
+    if "\\" in decoded_path or _contains_unsafe_control(decoded_path):
+        raise ValueError(f"{name} 路径包含不安全的编码字符")
+    if any(segment in {".", ".."} for segment in decoded_path.split("/")):
+        raise ValueError(f"{name} 路径不能包含点路径段")
     return value.rstrip("/")
