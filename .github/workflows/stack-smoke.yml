@@ -31,6 +31,7 @@ jobs:
           done
           docker compose -f deploy/docker-compose.yml ps
       - run: pip install -e .[dev,rag,kg,agent]
+      - run: pip check
       - name: stack 测试子集（不含需 LLM 的 integration）
         run: pytest -m "stack and not integration" -q
       - name: 清理
