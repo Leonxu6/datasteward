@@ -24,6 +24,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -e .[dev,rag,kg,agent]
+      - run: pip check
       - run: pytest -m "not integration and not stack" -q
 
   # dbt 工程完整性：parse 纯离线，不连库
