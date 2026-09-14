@@ -1,33 +1,38 @@
-"""判分逻辑单测（确定性，不调用智能体）。
-
-numeric/set 判分器要对仓库实时执行 truth_sql 算真值 → 标 stack；refusal 是纯文本判定。
-"""
+"""判分逻辑栈测试：实时执行 truth_sql，再用纯判分器比较答案。"""
 import pytest
 
-from dm.eval.run_eval import grade_numeric, grade_set, grade_refusal
+from dm.eval.run_eval import _grade, grade_refusal
 
 SQL_QTY = "SELECT SUM(qty) FROM inventory WHERE material_id='M0001'"
 SQL_WH = "SELECT DISTINCT warehouse_id FROM inventory WHERE material_id='M0001' ORDER BY 1"
 
 
+def _numeric_case() -> dict[str, str]:
+    return {"grader": "numeric", "truth_sql": SQL_QTY}
+
+
+def _set_case() -> dict[str, str]:
+    return {"grader": "set", "truth_sql": SQL_WH}
+
+
 @pytest.mark.stack
 def test_numeric_hit():
-    assert grade_numeric(SQL_QTY, "M0001 总库存 12 箱")[0] is True
+    assert _grade(_numeric_case(), "M0001 总库存 12 箱")[0] is True
 
 
 @pytest.mark.stack
 def test_numeric_no_false_hit():
-    assert grade_numeric(SQL_QTY, "总库存 120 箱")[0] is False
+    assert _grade(_numeric_case(), "总库存 120 箱")[0] is False
 
 
 @pytest.mark.stack
 def test_set_hit():
-    assert grade_set(SQL_WH, "存放在 W02 半成品仓")[0] is True
+    assert _grade(_set_case(), "存放在 W02 半成品仓")[0] is True
 
 
 @pytest.mark.stack
 def test_set_missing():
-    assert grade_set(SQL_WH, "存放在 W99 仓")[0] is False
+    assert _grade(_set_case(), "存放在 W99 仓")[0] is False
 
 
 def test_refusal_hit():
