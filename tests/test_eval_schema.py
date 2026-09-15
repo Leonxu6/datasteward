@@ -56,6 +56,17 @@ def test_validate_case_rejects_bidirectional_controls():
         validate_case(_numeric_case(question="safe\u202eunsafe"))
 
 
+@pytest.mark.parametrize("hidden", ["\u200d", "\u206a", "\ud800"])
+def test_validate_case_rejects_generic_hidden_unicode_controls(hidden):
+    with pytest.raises(EvalCaseError, match="control"):
+        validate_case(_numeric_case(question=f"safe{hidden}unsafe"))
+
+
+def test_validate_case_keeps_legitimate_multiline_question_text():
+    validated = validate_case(_numeric_case(question="first line\nsecond\tcolumn"))
+    assert validated["question"] == "first line\nsecond\tcolumn"
+
+
 def test_validate_truth_facts_are_copied_and_bounded():
     case = {
         "id": "C3",
