@@ -237,6 +237,8 @@ def env_http_url(name: str, default: str) -> str:
     if parsed.netloc.endswith(":") or port == 0:
         raise ValueError(f"{name} 必须使用有效的非零端口")
     decoded_path = unquote(parsed.path)
+    if "%2f" in parsed.path.lower():
+        raise ValueError(f"{name} 路径不能包含编码后的斜杠分隔符")
     if "\\" in decoded_path or _contains_unsafe_control(decoded_path):
         raise ValueError(f"{name} 路径包含不安全的编码字符")
     if any(segment in {".", ".."} for segment in decoded_path.split("/")):
