@@ -109,7 +109,13 @@ def _valid_hostname(hostname: str) -> bool:
     if labels and all(_numeric_address_token(label) for label in labels):
         return False
     for label in labels:
-        if not label or len(label) > _MAX_DNS_LABEL or label.startswith("-") or label.endswith("-"):
+        if (
+            not label
+            or len(label) > _MAX_DNS_LABEL
+            or label.startswith("-")
+            or label.endswith("-")
+            or not any(ch.isalnum() for ch in label)
+        ):
             return False
         if not all(ch.isalnum() or ch in {"-", "_"} for ch in label):
             return False
