@@ -21,6 +21,7 @@ _MAX_TEXT_LENGTH = 100_000
 _MAX_PATH_LENGTH = 4096
 _MAX_DNS_NAME = 253
 _MAX_DNS_LABEL = 63
+_MAX_ZONE_ID = 64
 _HEX_DIGITS = frozenset(string.hexdigits)
 _BIDI_CONTROLS = {
     "\u061c", "\u200e", "\u200f", "\u202a", "\u202b", "\u202c", "\u202d", "\u202e",
@@ -66,6 +67,28 @@ def _finite_bound(value: object, *, field: str) -> float:
     return result
 
 
+def _valid_ip_literal(hostname: str) -> bool:
+    base, marker, zone = hostname.partition("%")
+    if marker and (
+        not zone
+        or zone in {".", ".."}
+        or not zone.isascii()
+        or len(zone) > _MAX_ZONE_ID
+        or not all(ch.isalnum() or ch in {".", "_", "-"} for ch in zone)
+    ):
+        return False
+    try:
+        address = ipaddress.ip_address(base)
+    except ValueError:
+        return False
+    if marker and (
+        address.version != 6
+        or not (address.is_link_local or address.is_multicast)
+    ):
+        return False
+    return True
+
+
 def _numeric_address_token(label: str) -> bool:
     if label.isascii() and label.isdigit():
         return True
@@ -74,11 +97,8 @@ def _numeric_address_token(label: str) -> bool:
 
 
 def _valid_hostname(hostname: str) -> bool:
-    try:
-        ipaddress.ip_address(hostname)
+    if _valid_ip_literal(hostname):
         return True
-    except ValueError:
-        pass
     if hostname.lower() == "localhost":
         return True
     if not hostname.isascii() or len(hostname) > _MAX_DNS_NAME:
