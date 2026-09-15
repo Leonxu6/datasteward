@@ -5,16 +5,23 @@ an agent, warehouse, or LLM call can create an expensive or misleading run.
 """
 from __future__ import annotations
 
+import unicodedata
 from collections.abc import Mapping, Sequence
 
 _ALLOWED_GRADERS = frozenset({"numeric", "set", "refusal", "contains", "llm_judge"})
 _MAX_CASES = 1_000
 _MAX_TEXT = 20_000
-_BIDI_CONTROLS = frozenset(chr(code) for code in (*range(0x202A, 0x202F), *range(0x2066, 0x206A)))
 
 
 class EvalCaseError(ValueError):
     """Raised when an eval case does not satisfy the repository contract."""
+
+
+def _has_unsafe_control(value: str) -> bool:
+    return any(
+        ch not in "\n\t" and unicodedata.category(ch) in {"Cc", "Cf", "Cs"}
+        for ch in value
+    )
 
 
 def _text(value: object, *, field: str, max_length: int = _MAX_TEXT) -> str:
@@ -26,7 +33,7 @@ def _text(value: object, *, field: str, max_length: int = _MAX_TEXT) -> str:
         raise EvalCaseError(f"{field} must not have surrounding whitespace")
     if len(value) > max_length:
         raise EvalCaseError(f"{field} is too long")
-    if any((ord(ch) < 32 and ch not in "\n\t") or ch in _BIDI_CONTROLS for ch in value):
+    if _has_unsafe_control(value):
         raise EvalCaseError(f"{field} contains unsafe control characters")
     return value
 
