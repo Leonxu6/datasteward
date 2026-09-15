@@ -11,6 +11,7 @@ from dm.config_validation import env_http_url
         "http://db..internal:9030",
         "http://数据库:9030",
         "http://" + "a" * 64 + ":9030",
+        "http://[2001:db8::1%25eth0]:9030",
     ],
 )
 def test_service_urls_reject_malformed_hostnames(monkeypatch, url):
@@ -22,3 +23,9 @@ def test_service_urls_reject_malformed_hostnames(monkeypatch, url):
 def test_service_urls_keep_local_service_aliases(monkeypatch):
     monkeypatch.setenv("DM_TEST_URL", "http://starrocks_fe:9030")
     assert env_http_url("DM_TEST_URL", "http://localhost:9030") == "http://starrocks_fe:9030"
+
+
+def test_service_urls_keep_scoped_link_local_ipv6(monkeypatch):
+    value = "http://[fe80::1%25eth0]:9030"
+    monkeypatch.setenv("DM_TEST_URL", value)
+    assert env_http_url("DM_TEST_URL", "http://localhost:9030") == value
