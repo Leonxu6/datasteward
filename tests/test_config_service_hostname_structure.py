@@ -11,6 +11,7 @@ from dm.config_validation import env_http_url
         "http://db..internal:9030",
         "http://数据库:9030",
         "http://" + "a" * 64 + ":9030",
+        "http://___:9030",
         "http://[2001:db8::1%25eth0]:9030",
     ],
 )
