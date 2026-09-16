@@ -14,6 +14,8 @@ Ports, batch sizes, row limits, and timeouts should reject booleans even though 
 
 Service URLs should use an expected scheme, include a hostname, and reject ambiguous backslashes, embedded credentials, whitespace, query strings, or fragments when the value represents a base URL.
 
+Treat percent-encoded paths as a trust boundary too. Every `%` escape must be complete hexadecimal syntax and the decoded bytes must be valid UTF-8 before checking dot segments, encoded separators, or control characters. Invalid escapes such as `%`, `%GG`, or an invalid UTF-8 byte must fail closed instead of being normalized differently by proxies and HTTP clients. Ordinary valid UTF-8 percent encoding remains supported when it does not create an ambiguous path separator or traversal segment.
+
 ## Identifiers
 
 Database schema, table, and cursor identifiers require driver-appropriate quoting and validation. Never interpolate unvalidated free-form identifiers into SQL.
