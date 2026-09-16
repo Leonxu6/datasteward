@@ -26,6 +26,22 @@ def test_env_http_url_rejects_encoded_slash_separators(monkeypatch):
             env_http_url("DM_URL", "http://localhost")
 
 
+def test_env_http_url_rejects_malformed_percent_encoding(monkeypatch):
+    for value in (
+        "https://example.com/api/%",
+        "https://example.com/api/%2",
+        "https://example.com/api/%GG",
+        "https://example.com/api/%FF",
+    ):
+        monkeypatch.setenv("DM_URL", value)
+        with pytest.raises(ValueError, match="百分号编码"):
+            env_http_url("DM_URL", "http://localhost")
+
+
 def test_env_http_url_keeps_benign_percent_encoding(monkeypatch):
-    monkeypatch.setenv("DM_URL", "https://example.com/models/%7Eqwen")
-    assert env_http_url("DM_URL", "http://localhost") == "https://example.com/models/%7Eqwen"
+    for value in (
+        "https://example.com/models/%7Eqwen",
+        "https://example.com/models/%E4%B8%AD",
+    ):
+        monkeypatch.setenv("DM_URL", value)
+        assert env_http_url("DM_URL", "http://localhost") == value
