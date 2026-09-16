@@ -15,6 +15,7 @@ _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off"}
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _FLOAT_TEXT = re.compile(r"^-?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$")
+_INVALID_PERCENT_ESCAPE = re.compile(r"%(?![0-9A-Fa-f]{2})")
 _MAX_ENV_NAME = 128
 _MAX_NUMERIC_TEXT = 128
 _MAX_TEXT_LENGTH = 100_000
@@ -120,6 +121,16 @@ def _valid_hostname(hostname: str) -> bool:
         if not all(ch.isalnum() or ch in {"-", "_"} for ch in label):
             return False
     return True
+
+
+def _decode_url_path(path: str, *, name: str) -> str:
+    """Decode one URL path only when every escape is syntactically valid UTF-8."""
+    if _INVALID_PERCENT_ESCAPE.search(path):
+        raise ValueError(f"{name} 路径包含无效的百分号编码")
+    try:
+        return unquote(path, errors="strict")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"{name} 路径包含无效的 UTF-8 百分号编码") from exc
 
 
 def env_text(name: str, default: str, *, allow_empty: bool = False, max_length: int = 1000) -> str:
@@ -262,7 +273,7 @@ def env_http_url(name: str, default: str) -> str:
         raise ValueError(f"{name} 不能包含查询参数或片段")
     if parsed.netloc.endswith(":") or port == 0:
         raise ValueError(f"{name} 必须使用有效的非零端口")
-    decoded_path = unquote(parsed.path)
+    decoded_path = _decode_url_path(parsed.path, name=name)
     if "%2f" in parsed.path.lower():
         raise ValueError(f"{name} 路径不能包含编码后的斜杠分隔符")
     if "\\" in decoded_path or _contains_unsafe_control(decoded_path):
