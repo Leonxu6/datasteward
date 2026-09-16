@@ -30,6 +30,11 @@ SR = {"jdbc": f"jdbc:mysql://{_SR_HOST}:9030", "load": f"{_SR_HOST}:8030",
       "db": WH_DB, "user": "root", "pw": ""}
 
 
+def _sql_string(value: object) -> str:
+    """Render one Flink SQL string literal without letting config values break its quotes."""
+    return "'" + str(value).replace("'", "''") + "'"
+
+
 def ft(typ):
     return _FT.get(typ.upper(), "STRING")
 
@@ -45,11 +50,11 @@ def src_ddl(t):
     return (
         f'CREATE TABLE `src_{t["name"]}` (\n{_cols(t)}\n) WITH (\n'
         f"  'connector' = 'postgres-cdc',\n"
-        f"  'hostname' = '{PG['host']}',\n  'port' = '{PG['port']}',\n"
-        f"  'username' = '{PG['user']}',\n  'password' = '{PG['pw']}',\n"
-        f"  'database-name' = '{PG['db']}',\n  'schema-name' = 'public',\n"
-        f"  'table-name' = '{t['name']}',\n"
-        f"  'slot.name' = 'flink_{t['name']}',\n"
+        f"  'hostname' = {_sql_string(PG['host'])},\n  'port' = {_sql_string(PG['port'])},\n"
+        f"  'username' = {_sql_string(PG['user'])},\n  'password' = {_sql_string(PG['pw'])},\n"
+        f"  'database-name' = {_sql_string(PG['db'])},\n  'schema-name' = 'public',\n"
+        f"  'table-name' = {_sql_string(t['name'])},\n"
+        f"  'slot.name' = {_sql_string('flink_' + t['name'])},\n"
         f"  'decoding.plugin.name' = 'pgoutput',\n"
         f"  'scan.incremental.snapshot.enabled' = 'true'\n);")
 
@@ -58,9 +63,9 @@ def sink_ddl(t):
     return (
         f'CREATE TABLE `sink_{t["name"]}` (\n{_cols(t)}\n) WITH (\n'
         f"  'connector' = 'starrocks',\n"
-        f"  'jdbc-url' = '{SR['jdbc']}',\n  'load-url' = '{SR['load']}',\n"
-        f"  'database-name' = '{SR['db']}',\n  'table-name' = '{t['name']}',\n"
-        f"  'username' = '{SR['user']}',\n  'password' = '{SR['pw']}',\n"
+        f"  'jdbc-url' = {_sql_string(SR['jdbc'])},\n  'load-url' = {_sql_string(SR['load'])},\n"
+        f"  'database-name' = {_sql_string(SR['db'])},\n  'table-name' = {_sql_string(t['name'])},\n"
+        f"  'username' = {_sql_string(SR['user'])},\n  'password' = {_sql_string(SR['pw'])},\n"
         f"  'sink.semantic' = 'at-least-once',\n"
         f"  'sink.buffer-flush.interval-ms' = '3000'\n);")
 
