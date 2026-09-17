@@ -9,6 +9,7 @@
   python scripts/audit_sensitive.py --report audit-report.md
 """
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -31,16 +32,27 @@ def tracked_files(root: Path) -> list[Path]:
     return [root / p for p in out.split("\0") if p and (root / p).suffix.lower() not in TEXT_EXT_SKIP]
 
 
+def _read_tracked_text(path: Path) -> str | None:
+    """Read repository text without dereferencing a tracked symlink outside the worktree."""
+    try:
+        if path.is_symlink():
+            return os.readlink(path)
+        if not path.is_file():
+            return None
+        return path.read_text(encoding="utf-8")
+    except (UnicodeDecodeError, OSError):
+        return None
+
+
 def scan(root: Path) -> list[tuple[str, int, str, str]]:
     pats = [(p, re.compile(p, re.IGNORECASE)) for p in FORBIDDEN]
     hits = []
     me = Path(__file__).resolve()
     for f in tracked_files(root):
-        if f.resolve() == me:
+        if not f.is_symlink() and f.resolve() == me:
             continue
-        try:
-            text = f.read_text(encoding="utf-8")
-        except (UnicodeDecodeError, OSError):
+        text = _read_tracked_text(f)
+        if text is None:
             continue
         for ln, line in enumerate(text.splitlines(), 1):
             for raw, rx in pats:
