@@ -11,7 +11,10 @@ _LINK = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
 
 def broken_local_links(root: Path) -> list[tuple[Path, str]]:
     broken: list[tuple[Path, str]] = []
+    root_resolved = root.resolve()
     for source in sorted(root.rglob("*.md")):
+        if source.is_symlink() or not source.is_file():
+            continue
         text = source.read_text(encoding="utf-8")
         for raw_target in _LINK.findall(text):
             raw_target = raw_target.strip()
@@ -23,8 +26,14 @@ def broken_local_links(root: Path) -> list[tuple[Path, str]]:
             target = unquote(parsed.path)
             if not target:
                 continue
-            resolved = (root / target.lstrip("/")) if target.startswith("/") else (source.parent / target)
-            if not resolved.resolve().exists():
+            candidate = (root / target.lstrip("/")) if target.startswith("/") else (source.parent / target)
+            try:
+                resolved = candidate.resolve()
+                inside_root = resolved.is_relative_to(root_resolved)
+            except (OSError, RuntimeError):
+                inside_root = False
+                resolved = candidate
+            if not inside_root or not resolved.exists():
                 broken.append((source.relative_to(root), raw_target))
     return broken
 
