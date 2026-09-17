@@ -25,10 +25,10 @@ _GIT_TIMEOUT = 10
 
 def tracked_files(root: Path) -> list[Path]:
     out = subprocess.run(
-        ["git", "ls-files"], cwd=root, capture_output=True, text=True,
+        ["git", "ls-files", "-z"], cwd=root, capture_output=True, text=True,
         encoding="utf-8", check=True, timeout=_GIT_TIMEOUT,
     ).stdout
-    return [root / p for p in out.splitlines() if p and (root / p).suffix.lower() not in TEXT_EXT_SKIP]
+    return [root / p for p in out.split("\0") if p and (root / p).suffix.lower() not in TEXT_EXT_SKIP]
 
 
 def scan(root: Path) -> list[tuple[str, int, str, str]]:
