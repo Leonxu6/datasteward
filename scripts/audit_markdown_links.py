@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit
 
 _LINK = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
 
@@ -14,10 +14,15 @@ def broken_local_links(root: Path) -> list[tuple[Path, str]]:
     for source in sorted(root.rglob("*.md")):
         text = source.read_text(encoding="utf-8")
         for raw_target in _LINK.findall(text):
-            target = raw_target.strip().split("#", 1)[0]
-            if not target or target.startswith(("http://", "https://", "mailto:")):
+            raw_target = raw_target.strip()
+            if not raw_target:
                 continue
-            target = unquote(target)
+            parsed = urlsplit(raw_target)
+            if parsed.scheme or parsed.netloc:
+                continue
+            target = unquote(parsed.path)
+            if not target:
+                continue
             resolved = (root / target.lstrip("/")) if target.startswith("/") else (source.parent / target)
             if not resolved.resolve().exists():
                 broken.append((source.relative_to(root), raw_target))
