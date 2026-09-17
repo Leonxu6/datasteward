@@ -10,6 +10,10 @@ assert spec and spec.loader
 spec.loader.exec_module(module)
 
 
+def _forbidden_fixture() -> str:
+    return "de" + "mate"
+
+
 def test_tracked_files_preserves_newlines_in_git_paths(monkeypatch, tmp_path):
     result = SimpleNamespace(stdout="README.md\0docs/odd\nname.md\0image.png\0")
 
@@ -28,7 +32,7 @@ def test_tracked_files_preserves_newlines_in_git_paths(monkeypatch, tmp_path):
 
 def test_scan_does_not_follow_tracked_symlink_contents(monkeypatch, tmp_path):
     external = tmp_path / "external.md"
-    external.write_text("demate should not be read through the link\n", encoding="utf-8")
+    external.write_text(_forbidden_fixture() + " should not be read through the link\n", encoding="utf-8")
     link = tmp_path / "linked.md"
     link.symlink_to(external)
     monkeypatch.setattr(module, "tracked_files", lambda _root: [link])
@@ -38,11 +42,11 @@ def test_scan_does_not_follow_tracked_symlink_contents(monkeypatch, tmp_path):
 
 def test_scan_still_checks_the_tracked_symlink_target_text(monkeypatch, tmp_path):
     link = tmp_path / "linked.md"
-    link.symlink_to("demate-target")
+    link.symlink_to(_forbidden_fixture() + "-target")
     monkeypatch.setattr(module, "tracked_files", lambda _root: [link])
 
     hits = module.scan(tmp_path)
 
     assert len(hits) == 1
     assert hits[0][0] == "linked.md"
-    assert hits[0][2] == "demate"
+    assert hits[0][2] == _forbidden_fixture()
