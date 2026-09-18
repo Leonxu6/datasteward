@@ -10,7 +10,8 @@ from pathlib import Path
 
 from dm.config_validation import env_bool, env_float, env_http_url, env_int, env_iso_date, env_path, env_text
 
-DATA_DIR = Path(env_path("DM_DATA_DIR", str(Path.cwd()))).resolve()
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DATA_DIR = Path(env_path("DM_DATA_DIR", str(PROJECT_ROOT / "data"))).resolve()
 LOG_DIR = DATA_DIR / "logs"
 
 
