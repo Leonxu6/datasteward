@@ -50,13 +50,17 @@ def tracked_files(root: Path) -> list[Path]:
 
 
 def production_python_files(root: Path) -> list[Path]:
-    """Return tracked runtime Python files, excluding tests and audit tooling."""
+    """Return regular tracked runtime Python files without following symlinks."""
     root = require_root(root)
-    return [
-        rel
-        for rel in tracked_files(root)
-        if rel.suffix == ".py" and rel.parts and rel.parts[0] not in NON_RUNTIME_ROOTS
-    ]
+    files: list[Path] = []
+    for rel in tracked_files(root):
+        if rel.suffix != ".py" or not rel.parts or rel.parts[0] in NON_RUNTIME_ROOTS:
+            continue
+        path = root / rel
+        if path.is_symlink() or not path.is_file():
+            continue
+        files.append(rel)
+    return files
 
 
 def print_failures(failures: list[str]) -> int:
