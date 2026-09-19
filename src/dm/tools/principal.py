@@ -24,12 +24,12 @@ class Principal:
     warehouse_id: str = ""
 
     def __post_init__(self):
-        normalize_identity_text(self.user, field_name="user", max_length=200, allow_empty=False)
-        normalize_identity_text(self.role, field_name="role", max_length=100, allow_empty=False)
-        normalize_identity_text(self.purpose, field_name="purpose", max_length=500, allow_empty=True)
-        normalize_identity_text(self.session_id, field_name="session_id", max_length=200, allow_empty=True)
-        normalize_channel(self.channel, default="cli")
-        normalize_identity_text(self.warehouse_id, field_name="warehouse_id", max_length=100, allow_empty=True)
+        object.__setattr__(self, "user", normalize_identity_text(self.user, field_name="user", max_length=200, allow_empty=False))
+        object.__setattr__(self, "role", normalize_identity_text(self.role, field_name="role", max_length=100, allow_empty=False))
+        object.__setattr__(self, "purpose", normalize_identity_text(self.purpose, field_name="purpose", max_length=500, allow_empty=True))
+        object.__setattr__(self, "session_id", normalize_identity_text(self.session_id, field_name="session_id", max_length=200, allow_empty=True))
+        object.__setattr__(self, "channel", normalize_channel(self.channel, default="cli"))
+        object.__setattr__(self, "warehouse_id", normalize_identity_text(self.warehouse_id, field_name="warehouse_id", max_length=100, allow_empty=True))
 
     def to_user(self) -> User:
         """转成权限引擎的 User。"""
