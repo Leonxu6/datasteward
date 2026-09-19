@@ -18,6 +18,7 @@ _FLOAT_TEXT = re.compile(r"^-?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+
 _INVALID_PERCENT_ESCAPE = re.compile(r"%(?![0-9A-Fa-f]{2})")
 _MAX_ENV_NAME = 128
 _MAX_NUMERIC_TEXT = 128
+_MAX_BOOL_TEXT = 16
 _MAX_TEXT_LENGTH = 100_000
 _MAX_PATH_LENGTH = 4096
 _MAX_DNS_NAME = 253
@@ -242,6 +243,8 @@ def env_bool(name: str, default: bool) -> bool:
         if not isinstance(default, bool):
             raise ValueError(f"{name} 默认值必须是布尔值")
         return default
+    if len(raw) > _MAX_BOOL_TEXT:
+        raise ValueError(f"{name} 布尔文本不能超过 {_MAX_BOOL_TEXT} 个字符")
     if raw != raw.strip() or not raw:
         raise ValueError(f"{name} 必须是布尔值")
     normalized = raw.lower()
