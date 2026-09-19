@@ -17,7 +17,7 @@ LOG_DIR = DATA_DIR / "logs"
 
 def resolve_claude() -> str:
     """定位可执行的 claude CLI；找不到时返回字面量 ``claude`` 交由上层报错。"""
-    exe = os.environ.get("CLAUDE_BIN")
+    exe = env_text("CLAUDE_BIN", "", allow_empty=True, max_length=4096)
     if exe and os.access(exe, os.X_OK):
         return exe
 
