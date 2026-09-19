@@ -94,6 +94,12 @@ def test_env_bool_requires_explicit_supported_spellings(monkeypatch):
             env_bool("DM_FLAG", False)
 
 
+def test_env_bool_bounds_work_before_case_normalization(monkeypatch):
+    monkeypatch.setenv("DM_FLAG", "true" * 10_000)
+    with pytest.raises(ValueError, match="布尔文本"):
+        env_bool("DM_FLAG", False)
+
+
 def test_env_bool_validates_default_type(monkeypatch):
     monkeypatch.delenv("DM_FLAG", raising=False)
     for default in (0, 1, "true", None):
