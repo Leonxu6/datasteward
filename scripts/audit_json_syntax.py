@@ -7,6 +7,8 @@ from pathlib import Path
 
 from scripts.audit_common import print_failures, require_root, tracked_files
 
+_MAX_JSON_BYTES = 4 * 1024 * 1024
+
 
 def _reject_nonstandard_constant(value: str) -> None:
     raise json.JSONDecodeError("nonstandard JSON constant", value, 0)
@@ -22,14 +24,20 @@ def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
 
 
 def audit_file(path: Path) -> list[str]:
+    if path.is_symlink():
+        return [f"invalid JSON: {path.name}: symbolic links are not accepted"]
+    if not path.is_file():
+        return [f"invalid JSON: {path.name}: expected a regular file"]
     try:
+        if path.stat().st_size > _MAX_JSON_BYTES:
+            return [f"invalid JSON: {path.name}: file exceeds {_MAX_JSON_BYTES} byte audit limit"]
         json.loads(
             path.read_text(encoding="utf-8"),
             parse_constant=_reject_nonstandard_constant,
             object_pairs_hook=_unique_object,
         )
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        return [f"invalid JSON: {exc}"]
+        return [f"invalid JSON: {path.name}: {exc}"]
     return []
 
 
