@@ -26,6 +26,7 @@ _AUDITS = (
     "audit_workflow_security.py",
     "audit_json_syntax.py",
     "audit_toml_syntax.py",
+    "audit_yaml_syntax.py",
     "audit_unicode_bidi.py",
     "audit_dynamic_code.py",
     "audit_subprocess_shell.py",
