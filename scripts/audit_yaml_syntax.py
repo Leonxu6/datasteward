@@ -45,6 +45,15 @@ class _StrictSafeLoader(yaml.SafeLoader):
         return super().construct_mapping(node, deep=deep)
 
 
+def _load_strict_yaml(text: str) -> object:
+    """Parse one document through the strict SafeLoader without generic yaml.load()."""
+    loader = _StrictSafeLoader(text)
+    try:
+        return loader.get_single_data()
+    finally:
+        loader.dispose()
+
+
 def audit_file(path: Path) -> list[str]:
     if path.is_symlink():
         return [f"invalid YAML: {path.name}: symbolic links are not accepted"]
@@ -54,7 +63,7 @@ def audit_file(path: Path) -> list[str]:
         if path.stat().st_size > _MAX_YAML_BYTES:
             return [f"invalid YAML: {path.name}: file exceeds {_MAX_YAML_BYTES} byte audit limit"]
         text = path.read_text(encoding="utf-8")
-        yaml.load(text, Loader=_StrictSafeLoader)
+        _load_strict_yaml(text)
     except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
         return [f"invalid YAML: {path.name}: {exc}"]
     return []
