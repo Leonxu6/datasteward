@@ -26,9 +26,9 @@ pip install -e .[dev,rag,kg,agent,connectors,dbt,orchestration,dingtalk]
 
 ### 仓库维护审计
 
-维护审计不仅检查敏感信息，也检查配置/文档语法、供应链和常见危险代码模式。JSON/TOML 语法审计会拒绝符号链接和伪装成配置文件的目录，避免审计器跨出仓库读取其他文件；JSON 还拒绝重复 object key 与 `NaN`/`Infinity` 等非标准常量。
+维护审计不仅检查敏感信息，也检查配置/文档语法、供应链和常见危险代码模式。JSON/TOML/YAML 语法审计会拒绝符号链接和伪装成配置文件的目录，避免审计器跨出仓库读取其他文件；JSON 还拒绝重复 object key 与 `NaN`/`Infinity` 等非标准常量；YAML 使用 safe loader，拒绝字面重复 mapping key，同时保留 Docker Compose `<<:` anchor 等标准 merge-key override 语义。
 
-为了让 CI 的资源成本保持可预测，单个被跟踪的 JSON 文件上限为 **4 MiB**，TOML 文件上限为 **2 MiB**。超过上限时审计会明确失败，而不是把整个超大文件读入内存继续解析。如果确实需要提交更大的机器生成数据，请不要把它伪装成运行配置，优先放到合适的 artifact/data 流程中。
+为了让 CI 的资源成本保持可预测，单个被跟踪的 JSON 文件上限为 **4 MiB**，TOML 与 YAML 文件上限均为 **2 MiB**。超过上限时审计会明确失败，而不是把整个超大文件读入内存继续解析。如果确实需要提交更大的机器生成数据，请不要把它伪装成运行配置，优先放到合适的 artifact/data 流程中。
 
 ### Windows 注意事项
 
@@ -79,9 +79,9 @@ pip install -e .[dev,rag,kg,agent,connectors,dbt,orchestration,dingtalk]
 
 ### Repository maintenance audits
 
-Maintenance checks cover more than secret scanning: they also validate configuration/document syntax, supply-chain contracts, and common dangerous code patterns. JSON/TOML syntax audits reject symbolic links and directories masquerading as configuration files so the checker does not follow repository paths into unrelated files. JSON additionally rejects duplicate object keys and non-standard constants such as `NaN` and `Infinity`.
+Maintenance checks cover more than secret scanning: they also validate configuration/document syntax, supply-chain contracts, and common dangerous code patterns. JSON/TOML/YAML syntax audits reject symbolic links and directories masquerading as configuration files so the checker does not follow repository paths into unrelated files. JSON additionally rejects duplicate object keys and non-standard constants such as `NaN` and `Infinity`; YAML uses a safe loader, rejects literal duplicate mapping keys, and preserves standard merge-key overrides such as Docker Compose `<<:` anchors.
 
-To keep CI resource usage predictable, each tracked JSON file is limited to **4 MiB** and each TOML file to **2 MiB**. Oversized files fail with an explicit audit error instead of being read and parsed without a bound. If a larger generated payload is genuinely required, keep it in an appropriate artifact/data path rather than disguising it as runtime configuration.
+To keep CI resource usage predictable, each tracked JSON file is limited to **4 MiB**, while tracked TOML and YAML files are each limited to **2 MiB**. Oversized files fail with an explicit audit error instead of being read and parsed without a bound. If a larger generated payload is genuinely required, keep it in an appropriate artifact/data path rather than disguising it as runtime configuration.
 
 ### Windows notes
 
