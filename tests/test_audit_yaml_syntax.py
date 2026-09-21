@@ -9,6 +9,19 @@ def test_yaml_syntax_accepts_valid_yaml(tmp_path: Path):
     assert audit_file(path) == []
 
 
+def test_yaml_syntax_accepts_merge_key_with_explicit_override(tmp_path: Path):
+    path = tmp_path / "compose.yml"
+    path.write_text(
+        "defaults: &defaults\n"
+        "  restart: unless-stopped\n"
+        "service:\n"
+        "  <<: *defaults\n"
+        "  restart: always\n",
+        encoding="utf-8",
+    )
+    assert audit_file(path) == []
+
+
 def test_yaml_syntax_rejects_duplicate_keys(tmp_path: Path):
     path = tmp_path / "config.yml"
     path.write_text("service:\n  host: first\n  host: second\n", encoding="utf-8")
