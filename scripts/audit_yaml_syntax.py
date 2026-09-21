@@ -10,15 +10,20 @@ from yaml.constructor import ConstructorError
 from scripts.audit_common import print_failures, require_root, tracked_files
 
 _MAX_YAML_BYTES = 2 * 1024 * 1024
+_MERGE_TAG = "tag:yaml.org,2002:merge"
 
 
 class _StrictSafeLoader(yaml.SafeLoader):
-    """SafeLoader variant that rejects duplicate mapping keys."""
+    """SafeLoader variant that rejects literal duplicate mapping keys."""
 
     def construct_mapping(self, node, deep: bool = False):
-        self.flatten_mapping(node)
-        mapping = {}
-        for key_node, value_node in node.value:
+        seen = set()
+        for key_node, _ in node.value:
+            # YAML merge keys intentionally allow an explicit local key to
+            # override an inherited value. Treat only literal siblings as
+            # duplicates, then let SafeLoader apply normal merge semantics.
+            if key_node.tag == _MERGE_TAG:
+                continue
             key = self.construct_object(key_node, deep=deep)
             try:
                 hash(key)
@@ -29,15 +34,15 @@ class _StrictSafeLoader(yaml.SafeLoader):
                     "found an unhashable mapping key",
                     key_node.start_mark,
                 ) from exc
-            if key in mapping:
+            if key in seen:
                 raise ConstructorError(
                     "while constructing a mapping",
                     node.start_mark,
                     f"found duplicate key {key!r}",
                     key_node.start_mark,
                 )
-            mapping[key] = self.construct_object(value_node, deep=deep)
-        return mapping
+            seen.add(key)
+        return super().construct_mapping(node, deep=deep)
 
 
 def audit_file(path: Path) -> list[str]:
