@@ -26,6 +26,8 @@ def _path(value, *, field: str) -> Path:
     if path.name in {"", ".", ".."}:
         raise ValueError(f"{field} must name a file")
     try:
+        if path.is_symlink():
+            raise ValueError(f"{field} must not be a symbolic link")
         if path.exists() and path.is_dir():
             raise ValueError(f"{field} must name a file, not a directory")
     except OSError as exc:
