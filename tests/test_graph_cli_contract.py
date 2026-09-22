@@ -33,6 +33,17 @@ def test_parse_args_redacts_json_decoder_details():
     assert secret not in str(exc_info.value)
 
 
+def test_parse_args_rejects_non_text_inputs():
+    with pytest.raises(ValueError, match="JSON 文本"):
+        graph_cli._parse_args(b'{"entity_id":"M0001"}')
+
+
+def test_parse_args_rejects_oversized_payload_before_json_decode():
+    raw = '{"entity_id":"' + ("M" * graph_cli._MAX_ARGS_CHARS) + '"}'
+    with pytest.raises(ValueError, match="大小上限"):
+        graph_cli._parse_args(raw)
+
+
 def test_emit_uses_strict_json(capsys):
     graph_cli._emit({"ok": True, "items": [1, 2]})
     line = capsys.readouterr().out.strip()
