@@ -8,6 +8,7 @@ import json
 import sys
 
 _ALLOWED_MODES = {"find_related", "impact_path", "cypher"}
+_MAX_ARGS_CHARS = 65_536
 
 
 def _emit(payload) -> None:
@@ -29,6 +30,10 @@ def _unique_json_object(pairs):
 
 
 def _parse_args(raw: str) -> dict:
+    if not isinstance(raw, str):
+        raise ValueError("graph CLI 参数必须是 JSON 文本")
+    if len(raw) > _MAX_ARGS_CHARS:
+        raise ValueError("graph CLI 参数超过大小上限")
     try:
         args = json.loads(
             raw,
