@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from dm.connect.sync_state import (
+    _MAX_STATE_BYTES,
     atomic_write_json,
     load_json_mapping,
     max_non_null,
@@ -29,6 +30,13 @@ def test_load_json_mapping_rejects_nonstandard_numbers_and_duplicate_keys(tmp_pa
     for raw in ('{"cursor":NaN}', '{"cursor":Infinity}', '{"cursor":1,"cursor":2}'):
         path.write_text(raw, encoding="utf-8")
         assert load_json_mapping(path) == {}
+
+
+def test_load_json_mapping_rejects_oversized_state_before_parse(tmp_path):
+    path = tmp_path / "state.json"
+    path.write_text("{" + (" " * _MAX_STATE_BYTES) + "}", encoding="utf-8")
+    assert path.stat().st_size > _MAX_STATE_BYTES
+    assert load_json_mapping(path) == {}
 
 
 def test_atomic_write_json_replaces_complete_document(tmp_path):
