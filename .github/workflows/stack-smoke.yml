@@ -24,12 +24,18 @@ jobs:
         run: |
           docker compose -f deploy/docker-compose.yml up -d starrocks postgres
           echo "等待 StarRocks healthy（最长 8 分钟）..."
+          ST=""
           for i in $(seq 1 48); do
             ST=$(docker compose -f deploy/docker-compose.yml ps starrocks --format '{{.Health}}' || true)
             [ "$ST" = "healthy" ] && break
             sleep 10
           done
           docker compose -f deploy/docker-compose.yml ps
+          if [ "$ST" != "healthy" ]; then
+            echo "StarRocks did not become healthy within 8 minutes" >&2
+            docker compose -f deploy/docker-compose.yml logs --tail=200 starrocks >&2 || true
+            exit 1
+          fi
       - run: pip install -e .[dev,rag,kg,agent]
       - run: pip check
       - name: stack 测试子集（不含需 LLM 的 integration）
