@@ -8,6 +8,8 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Iterable
 
+_MAX_STATE_BYTES = 1_048_576
+
 
 def _path(value, *, field: str) -> Path:
     if not isinstance(value, (str, os.PathLike)):
@@ -58,6 +60,8 @@ def load_json_mapping(path: Path) -> dict:
     """Load a strict JSON object, returning an empty mapping for missing/corrupt/non-object files."""
     path = _path(path, field="state path")
     try:
+        if path.stat().st_size > _MAX_STATE_BYTES:
+            return {}
         raw = json.loads(
             path.read_text(encoding="utf-8"),
             parse_constant=_reject_json_constant,
