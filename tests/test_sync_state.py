@@ -39,6 +39,22 @@ def test_load_json_mapping_rejects_oversized_state_before_parse(tmp_path):
     assert load_json_mapping(path) == {}
 
 
+def test_state_helpers_reject_symlinked_state_files(tmp_path):
+    target = tmp_path / "outside.json"
+    target.write_text('{"cursor": 7}', encoding="utf-8")
+    link = tmp_path / "state.json"
+    try:
+        link.symlink_to(target)
+    except OSError:
+        pytest.skip("filesystem does not permit symlink creation")
+
+    with pytest.raises(ValueError, match="symbolic link"):
+        load_json_mapping(link)
+    with pytest.raises(ValueError, match="symbolic link"):
+        atomic_write_json(link, {"cursor": 8})
+    assert json.loads(target.read_text(encoding="utf-8")) == {"cursor": 7}
+
+
 def test_atomic_write_json_replaces_complete_document(tmp_path):
     path = tmp_path / "nested" / "state.json"
     atomic_write_json(path, {"a": 1})
