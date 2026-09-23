@@ -52,3 +52,18 @@ def test_production_python_files_skips_symlinks_and_non_files(monkeypatch, tmp_p
     )
 
     assert audit_common.production_python_files(tmp_path) == [Path("src/datasteward/runtime.py")]
+
+
+def test_production_python_files_rejects_oversized_runtime_source(monkeypatch, tmp_path):
+    package = tmp_path / "src" / "datasteward"
+    package.mkdir(parents=True)
+    oversized = package / "runtime.py"
+    oversized.write_bytes(b"x" * (audit_common.MAX_PRODUCTION_PYTHON_BYTES + 1))
+    monkeypatch.setattr(
+        audit_common,
+        "tracked_files",
+        lambda root: [Path("src/datasteward/runtime.py")],
+    )
+
+    with pytest.raises(ValueError, match="exceeds .* audit limit"):
+        audit_common.production_python_files(tmp_path)
