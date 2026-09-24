@@ -6,7 +6,9 @@ import re
 from dm.kg.store import run_read
 
 _WRITE = re.compile(
-    r"\b(create|merge|delete|set|remove|detach|drop|load\s+csv|foreach|call|apoc\.|dbms\.|db\.create)\b",
+    r"\b(create|merge|delete|set|remove|detach|drop|load\s+csv|foreach|call|apoc\.|dbms\.|db\.create|"
+    r"alter|rename|grant|deny|revoke|start\s+database|stop\s+database|terminate\s+transactions?|"
+    r"enable\s+server|deallocate|reallocate)\b",
     re.I,
 )
 _IDENTIFIER = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
