@@ -62,6 +62,24 @@ def test_restricted_cypher_rejects_procedure_calls_and_writes(monkeypatch):
         assert "已拒绝" in query.restricted_cypher(cypher)["error"]
 
 
+def test_restricted_cypher_rejects_administrative_commands(monkeypatch):
+    monkeypatch.setattr(query, "run_read", lambda *args, **kwargs: pytest.fail("driver should not be called"))
+    for cypher in (
+        "ALTER USER alice SET PASSWORD 'secret'",
+        "GRANT ROLE reader TO alice",
+        "DENY MATCH {*} ON GRAPH neo4j TO reader",
+        "REVOKE ROLE reader FROM alice",
+        "START DATABASE neo4j",
+        "STOP DATABASE neo4j",
+        "TERMINATE TRANSACTIONS 'tx-1'",
+        "ENABLE SERVER 'server-1'",
+        "DEALLOCATE DATABASES FROM SERVER 'server-1'",
+        "REALLOCATE DATABASES",
+        "RENAME USER alice TO bob",
+    ):
+        assert "已拒绝" in query.restricted_cypher(cypher)["error"]
+
+
 def test_restricted_cypher_adds_a_validated_limit(monkeypatch):
     calls = []
     monkeypatch.setattr(query, "run_read", lambda cypher, **params: calls.append(cypher) or [{"id": 1}])
