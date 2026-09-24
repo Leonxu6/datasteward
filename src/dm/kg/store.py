@@ -115,7 +115,14 @@ def counts():
 
 def ping():
     try:
-        run_read("RETURN 1 AS ok")
+        rows = run_read("RETURN 1 AS ok")
+        if (
+            len(rows) != 1
+            or not isinstance(rows[0], dict)
+            or isinstance(rows[0].get("ok"), bool)
+            or rows[0].get("ok") != 1
+        ):
+            return False, "Neo4j health check returned an unexpected response"
         return True, ""
     except Exception as exc:  # noqa: BLE001
         return False, f"Neo4j health check failed ({exc.__class__.__name__})"
