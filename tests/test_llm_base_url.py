@@ -17,6 +17,8 @@ import dm.llm as llm
         "localhost:4000/v1",
         "http:///v1",
         "http://[::1",
+        "http://localhost:4000/v1?",
+        "http://localhost:4000/v1#",
     ],
 )
 def test_chat_rejects_invalid_gateway_base_url_before_request(monkeypatch, base_url):
