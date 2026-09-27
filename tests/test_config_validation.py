@@ -118,7 +118,9 @@ def test_env_http_url_requires_clean_service_base(monkeypatch):
         "https://example.com/a b",
         "https://example.com\\@evil.test/path",
         "https://example.com/api?token=1",
+        "https://example.com/api?",
         "https://example.com/api#section",
+        "https://example.com/api#",
     )
     for value in invalid:
         monkeypatch.setenv("DM_URL", value)
