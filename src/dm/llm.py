@@ -96,7 +96,7 @@ def _gateway_base_url(value) -> str:
         raise ValueError("LLM_BASE_URL 必须是有效的 HTTP(S) URL")
     if parsed.username is not None or parsed.password is not None:
         raise ValueError("LLM_BASE_URL 不能内嵌凭据")
-    if parsed.query or parsed.fragment:
+    if "?" in value or "#" in value:
         raise ValueError("LLM_BASE_URL 不能包含查询参数或片段")
     if parsed.netloc.endswith(":") or port == 0:
         raise ValueError("LLM_BASE_URL 必须使用有效的非零端口")
