@@ -272,7 +272,7 @@ def env_http_url(name: str, default: str) -> str:
         raise ValueError(f"{name} 主机名格式无效")
     if parsed.username is not None or parsed.password is not None:
         raise ValueError(f"{name} 不能在 URL 中内嵌凭据")
-    if parsed.query or parsed.fragment:
+    if "?" in value or "#" in value:
         raise ValueError(f"{name} 不能包含查询参数或片段")
     if parsed.netloc.endswith(":") or port == 0:
         raise ValueError(f"{name} 必须使用有效的非零端口")
