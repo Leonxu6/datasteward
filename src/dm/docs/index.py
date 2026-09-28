@@ -48,36 +48,46 @@ def chunk_text(text, target=380, overlap=80):
 def reindex(force=False, verbose=True):
     """对 content-hash 变化（或 force）的文档重切片重嵌入，写入 doc_chunk。"""
     init_schema()
-    meta = connect()              # 读注册表 + 更新状态
-    mcur = meta.cursor()
-    vec = connect_vec()           # 写向量（注册 pgvector 适配）
+    # Keep a document's chunk replacement and indexed marker in one transaction.
+    # Autocommit on separate connections could expose an empty or partial index
+    # after an insertion failure while still claiming the old hash was indexed.
+    vec = connect_vec(autocommit=False)
+    mcur = vec.cursor()
     vcur = vec.cursor()
-    mcur.execute("SELECT doc_id, doc_type, title, entities, source_path, content_hash, indexed_hash "
-                 "FROM document ORDER BY doc_id")
-    rows = mcur.fetchall()
     n_doc = n_chunk = skipped = 0
-    for doc_id, dtype, title, entities, path, chash, ihash in rows:
-        if not force and chash is not None and chash == ihash:
-            skipped += 1
-            continue
-        body = Path(path).read_text(encoding="utf-8")
-        chunks = chunk_text(body)
-        embs = embed(chunks)      # 批量嵌入（文档侧）
-        vcur.execute("DELETE FROM doc_chunk WHERE doc_id=%s", (doc_id,))
-        recs = [(f"{doc_id}-{i:03d}", doc_id, dtype, title, entities, i, ch,
-                 np.asarray(e, dtype="float32"))
-                for i, (ch, e) in enumerate(zip(chunks, embs))]
-        vcur.executemany(
-            "INSERT INTO doc_chunk(chunk_id,doc_id,doc_type,title,entities,chunk_no,content,embedding) "
-            "VALUES(%s,%s,%s,%s,%s,%s,%s,%s)", recs)
-        mcur.execute("UPDATE document SET indexed_hash=%s, n_chunks=%s, indexed_at=%s WHERE doc_id=%s",
-                     (chash, len(chunks), datetime.now(), doc_id))
-        n_doc += 1
-        n_chunk += len(chunks)
-        if verbose:
-            print(f"  索引 {doc_id} «{title[:24]}» → {len(chunks)} 片")
-    vec.close()
-    meta.close()
+    try:
+        mcur.execute("SELECT doc_id, doc_type, title, entities, source_path, content_hash, indexed_hash "
+                     "FROM document ORDER BY doc_id")
+        rows = mcur.fetchall()
+        for doc_id, dtype, title, entities, path, chash, ihash in rows:
+            if not force and chash is not None and chash == ihash:
+                skipped += 1
+                continue
+            try:
+                body = Path(path).read_text(encoding="utf-8")
+                chunks = chunk_text(body)
+                embs = embed(chunks)      # 批量嵌入（文档侧）
+                recs = [(f"{doc_id}-{i:03d}", doc_id, dtype, title, entities, i, ch,
+                         np.asarray(e, dtype="float32"))
+                        for i, (ch, e) in enumerate(zip(chunks, embs))]
+                vcur.execute("DELETE FROM doc_chunk WHERE doc_id=%s", (doc_id,))
+                vcur.executemany(
+                    "INSERT INTO doc_chunk(chunk_id,doc_id,doc_type,title,entities,chunk_no,content,embedding) "
+                    "VALUES(%s,%s,%s,%s,%s,%s,%s,%s)", recs)
+                mcur.execute("UPDATE document SET indexed_hash=%s, n_chunks=%s, indexed_at=%s WHERE doc_id=%s",
+                             (chash, len(chunks), datetime.now(), doc_id))
+                vec.commit()
+            except Exception:
+                vec.rollback()
+                raise
+            n_doc += 1
+            n_chunk += len(chunks)
+            if verbose:
+                print(f"  索引 {doc_id} «{title[:24]}» → {len(chunks)} 片")
+    finally:
+        vcur.close()
+        mcur.close()
+        vec.close()
     nd, nc = counts()
     if verbose:
         print(f"=== 重索引 {n_doc} 篇（{n_chunk} 片），跳过未变 {skipped} 篇；"
