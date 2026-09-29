@@ -93,3 +93,20 @@ def test_reindex_rejects_incomplete_embedding_batches_before_deleting_old_chunks
     assert connection.rollbacks == 1
     assert not any(statement.startswith("DELETE FROM doc_chunk") for statement in connection.statements)
     assert connection.closed
+
+
+def test_reindex_allows_nullable_document_title_in_verbose_output(monkeypatch, tmp_path, capsys):
+    source = tmp_path / "document.txt"
+    source.write_text("A useful document", encoding="utf-8")
+    connection = _Connection(
+        [("DOC1", "manual", None, "", str(source), "new-hash", "old-hash")]
+    )
+    monkeypatch.setattr(index, "init_schema", lambda: None)
+    monkeypatch.setattr(index, "connect_vec", lambda *, autocommit: connection)
+    monkeypatch.setattr(index, "embed", lambda chunks: [[0.1, 0.2] for _ in chunks])
+    monkeypatch.setattr(index, "counts", lambda: (1, 1))
+
+    assert index.reindex(verbose=True) == (1, 1)
+    assert "DOC1 «»" in capsys.readouterr().out
+    assert connection.commits == 1
+    assert connection.closed
