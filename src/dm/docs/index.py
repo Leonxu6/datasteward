@@ -24,6 +24,14 @@ from dm.docs.store import connect, connect_vec, counts, init_schema
 
 def chunk_text(text, target=380, overlap=80):
     """中文友好切片：先按段落切，合并到 target 长度；超长段落滑窗切（带 overlap）。"""
+    if isinstance(target, bool) or not isinstance(target, int) or target < 1:
+        raise ValueError("target must be a positive integer")
+    if isinstance(overlap, bool) or not isinstance(overlap, int) or overlap < 0:
+        raise ValueError("overlap must be a non-negative integer")
+    if overlap >= target:
+        raise ValueError("overlap must be smaller than target")
+    if not isinstance(text, str):
+        raise ValueError("text must be a string")
     paras = [p.strip() for p in re.split(r"\n\s*\n|\n", text) if p.strip()]
     chunks, buf = [], ""
     for p in paras:
