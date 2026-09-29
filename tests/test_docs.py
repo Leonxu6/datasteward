@@ -4,6 +4,8 @@
 """
 import os
 
+import pytest
+
 os.environ["DM_EMBED_BACKEND"] = "hash"  # 切到无依赖的确定性后端，避免下载模型
 
 from dm.docs.embed import DIM, embed_one  # noqa: E402
@@ -19,6 +21,20 @@ def test_chunk_text_nonempty_and_bounded():
     chunks = chunk_text(txt, target=380, overlap=80)
     assert chunks and all(c.strip() for c in chunks)
     assert all(len(c) <= 380 for c in chunks)  # 超长段已滑窗切到上限内
+
+
+@pytest.mark.parametrize(
+    ("target", "overlap"),
+    [(0, 0), (-1, 0), (True, 0), (10, -1), (10, True), (10, 10), (10, 11)],
+)
+def test_chunk_text_rejects_invalid_window_configuration(target, overlap):
+    with pytest.raises(ValueError):
+        chunk_text("a long paragraph", target=target, overlap=overlap)
+
+
+def test_chunk_text_rejects_non_text_input():
+    with pytest.raises(ValueError, match="text must be a string"):
+        chunk_text(None)
 
 
 def test_embed_hash_dim_and_deterministic():
