@@ -93,7 +93,8 @@ def reindex(force=False, verbose=True):
             n_doc += 1
             n_chunk += len(chunks)
             if verbose:
-                print(f"  索引 {doc_id} «{title[:24]}» → {len(chunks)} 片")
+                display_title = title if isinstance(title, str) else ""
+                print(f"  索引 {doc_id} «{display_title[:24]}» → {len(chunks)} 片")
     finally:
         vcur.close()
         mcur.close()
