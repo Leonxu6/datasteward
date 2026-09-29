@@ -75,9 +75,11 @@ def reindex(force=False, verbose=True):
                 body = Path(path).read_text(encoding="utf-8")
                 chunks = chunk_text(body)
                 embs = embed(chunks)      # 批量嵌入（文档侧）
+                if not isinstance(embs, (list, tuple)) or len(embs) != len(chunks):
+                    raise RuntimeError("embedding backend returned an unexpected vector count")
                 recs = [(f"{doc_id}-{i:03d}", doc_id, dtype, title, entities, i, ch,
                          np.asarray(e, dtype="float32"))
-                        for i, (ch, e) in enumerate(zip(chunks, embs))]
+                        for i, (ch, e) in enumerate(zip(chunks, embs, strict=True))]
                 vcur.execute("DELETE FROM doc_chunk WHERE doc_id=%s", (doc_id,))
                 vcur.executemany(
                     "INSERT INTO doc_chunk(chunk_id,doc_id,doc_type,title,entities,chunk_no,content,embedding) "
