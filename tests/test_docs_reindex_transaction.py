@@ -71,3 +71,25 @@ def test_reindex_replaces_chunks_and_marker_in_one_transaction(monkeypatch, tmp_
         assert connection.rollbacks == 0
         assert any(statement.startswith("UPDATE document") for statement in connection.statements)
     assert connection.closed
+
+
+@pytest.mark.parametrize("embeddings", [[], [[0.1], [0.2]], None])
+def test_reindex_rejects_incomplete_embedding_batches_before_deleting_old_chunks(
+    monkeypatch, tmp_path, embeddings
+):
+    source = tmp_path / "document.txt"
+    source.write_text("A useful document", encoding="utf-8")
+    connection = _Connection(
+        [("DOC1", "manual", "Manual", "", str(source), "new-hash", "old-hash")]
+    )
+    monkeypatch.setattr(index, "init_schema", lambda: None)
+    monkeypatch.setattr(index, "connect_vec", lambda *, autocommit: connection)
+    monkeypatch.setattr(index, "embed", lambda chunks: embeddings)
+
+    with pytest.raises(RuntimeError, match="unexpected vector count"):
+        index.reindex(verbose=False)
+
+    assert connection.commits == 0
+    assert connection.rollbacks == 1
+    assert not any(statement.startswith("DELETE FROM doc_chunk") for statement in connection.statements)
+    assert connection.closed
