@@ -24,6 +24,12 @@ Read the structured `actual` value and message. A data-quality failure is differ
 
 Confirm the configured dbt directory and whether `target/run_results.json` exists. A missing artifact, a run containing no tests, and failing tests are distinct states. Run `dbt parse` or `dbt build` as appropriate rather than creating target artifacts by hand.
 
+## Document reindex fails
+
+Each document's old chunks, replacement chunks, and indexed-hash marker are updated in one transaction. A failed embedding or vector write therefore leaves the previous searchable version intact. Fix the backend error and rerun `dm-docs index`; do not delete `doc_chunk` rows manually.
+
+An embedding-count mismatch means the backend returned fewer or more vectors than requested and is rejected before old chunks are removed. Custom chunk windows must use a positive `target` and `0 <= overlap < target`; invalid windows fail immediately instead of entering a non-progressing loop.
+
 ## Compose configuration fails
 
 Render the Compose configuration first and resolve missing variables, invalid mounts, or service references before starting containers. Keep local credentials out of committed deployment files.
