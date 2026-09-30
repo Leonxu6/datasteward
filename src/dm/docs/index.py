@@ -14,11 +14,11 @@ CLI（dm-docs）：
 import re
 import sys
 from datetime import datetime
-from pathlib import Path
 
 import numpy as np
 
 from dm.docs.embed import embed
+from dm.docs.source import read_document_source
 from dm.docs.store import connect, connect_vec, counts, init_schema
 
 
@@ -72,7 +72,7 @@ def reindex(force=False, verbose=True):
                 skipped += 1
                 continue
             try:
-                body = Path(path).read_text(encoding="utf-8")
+                body = read_document_source(path)
                 chunks = chunk_text(body)
                 embs = embed(chunks)      # 批量嵌入（文档侧）
                 if not isinstance(embs, (list, tuple)) or len(embs) != len(chunks):
