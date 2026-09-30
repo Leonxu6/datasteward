@@ -87,6 +87,10 @@ neo4j 驱动同样**别在 stdio-MCP 的 asyncio 事件循环里直跑**——gr
 
 ## S2：非结构化 RAG（合成文档 → 本地嵌入 → pgvector → search_documents）
 
+### 文档源读取边界
+
+`document.source_path` 会同时供向量索引和知识图谱抽取读取。两条链路现在统一只接受普通 UTF-8 文件，拒绝符号链接、目录和超过 1 MiB 的输入，避免错误或被篡改的元数据触发特殊文件访问和无界内存占用。源文件缺失时，知识图谱抽取仍保留原有的标题回退；格式或大小违规则明确失败，便于修正注册数据，而不是静默生成不完整关系。
+
 ### 坑8：Windows 上 fastembed/HF 缓存符号链接权限（WinError 1314）
 **现象**：fastembed 首次下载 bge 模型后，再开进程加载报 `Could not find tokenizer_config.json in …Temp\fastembed_cache\…`——onnx 模型在、tokenizer 配置丢了。
 **根因**：huggingface_hub 缓存默认用符号链接把 blob 链到 snapshot；Windows 非管理员/未开开发者模式无权限建符号链接（WinError 1314），小文件链接失败 → 缓存残缺；且默认缓存落 `%TEMP%`，清理后每次重下。
