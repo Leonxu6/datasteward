@@ -69,3 +69,16 @@ def test_dynamic_graph_identifiers_stay_ascii_and_syntax_safe():
     assert build._safe_label("材料") == "Entity"
     assert build._safe_relation_type("processed-on") == "PROCESSED_ON"
     assert build._safe_relation_type("123") == "REL"
+
+
+def test_document_body_uses_title_when_source_is_missing(tmp_path):
+    assert build._document_body(tmp_path / "missing.md", "Fallback title") == "Fallback title"
+
+
+def test_document_body_propagates_source_validation_errors(monkeypatch):
+    def reject_source(path):
+        raise ValueError("document source must be a regular file")
+
+    monkeypatch.setattr(build, "read_document_source", reject_source)
+    with pytest.raises(ValueError, match="regular file"):
+        build._document_body("registered-source.md", "Fallback title")
