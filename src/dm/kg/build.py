@@ -9,6 +9,7 @@ CLI: dm-kg build|skeleton|extract|status|clear
 import json
 import sys
 
+from dm.docs.source import read_document_source
 from dm.schema import TABLES, table_by_name
 from dm.warehouse.store import connect_ro
 
@@ -200,6 +201,16 @@ def _safe_relation_type(value):
     return cleaned
 
 
+def _document_body(path, title):
+    """Load an extractable document while preserving the title fallback for missing files."""
+    if not path:
+        return title or ""
+    try:
+        return read_document_source(path)
+    except FileNotFoundError:
+        return title or ""
+
+
 def extract(verbose=True):
     """读 document 表的每篇文档 → LLM 抽关系 → 并入图（Equipment/Document 节点 + 抽取边，标 source='doc'）。"""
     import psycopg2
@@ -220,8 +231,7 @@ def extract(verbose=True):
             s.run("MATCH (n:Document) DETACH DELETE n")
             s.run("MATCH (n:Equipment) DETACH DELETE n")
             for doc_id, title, path, entities in docs:
-                from pathlib import Path
-                body = Path(path).read_text(encoding="utf-8") if path and Path(path).exists() else (title or "")
+                body = _document_body(path, title)
                 triples = _llm_extract(doc_id, title, body[:3000])
                 # 文档节点
                 s.run("MERGE (d:Document {id:$id}) SET d.title=$t, d.entities=$e, d._cn='文档'",
