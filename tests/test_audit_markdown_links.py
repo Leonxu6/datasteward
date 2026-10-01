@@ -51,3 +51,12 @@ def test_checker_does_not_follow_markdown_source_symlinks(tmp_path):
     (root / "linked.md").symlink_to(external)
 
     assert module.broken_local_links(root) == []
+
+
+def test_checker_ignores_virtual_environment_documentation(tmp_path):
+    dependency_docs = tmp_path / ".venv" / "lib" / "package"
+    dependency_docs.mkdir(parents=True)
+    (dependency_docs / "README.md").write_text("[missing](internal-file.md)\n", encoding="utf-8")
+    (tmp_path / "README.md").write_text("[local](README.md)\n", encoding="utf-8")
+
+    assert module.broken_local_links(tmp_path) == []
