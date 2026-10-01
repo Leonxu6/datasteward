@@ -44,6 +44,15 @@ def test_rejects_directory_source(tmp_path):
         read_document_source(tmp_path)
 
 
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="platform has no FIFO support")
+def test_rejects_fifo_without_waiting_for_a_writer(tmp_path):
+    fifo = tmp_path / "document.pipe"
+    os.mkfifo(fifo)
+
+    with pytest.raises(ValueError, match="regular file"):
+        read_document_source(fifo)
+
+
 @pytest.mark.skipif(not hasattr(os, "symlink"), reason="platform has no symlink support")
 def test_rejects_symbolic_link_source(tmp_path):
     target = tmp_path / "target.md"
