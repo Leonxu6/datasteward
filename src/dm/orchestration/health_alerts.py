@@ -78,7 +78,7 @@ def failure_cursor(failures: Sequence[Mapping[str, str]]) -> str:
         digest = hashlib.sha256(message.encode("utf-8")).hexdigest()[:16]
         entries.append((check_id, digest))
     entries = sorted(set(entries))
-    return json.dumps(entries, ensure_ascii=False, separators=(",", ":"))
+    return json.dumps(entries, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
 
 
 def render_failure_alert(failures: Sequence[Mapping[str, str]]) -> str:
