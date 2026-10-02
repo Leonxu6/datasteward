@@ -262,7 +262,7 @@ def run_stream():
                     except Exception:  # noqa: BLE001
                         pass
 
-            asyncio.create_task(work())
+            asyncio.create_task(work(), name="dingtalk-message-worker")
             return dingtalk_stream.AckMessage.STATUS_OK, "OK"
 
     credential = dingtalk_stream.Credential(app_key, app_secret)
