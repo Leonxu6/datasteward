@@ -184,7 +184,7 @@ def _run_agent_claude(question: str, channel: str, model: str | None, on_step,
                 "HF_HUB_DISABLE_SYMLINKS": "1", "USERPROFILE": str(Path.home())},
     }}}
     cfg_path = LOG_DIR / f"mcpcfg_{sid}.json"
-    cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
+    cfg_path.write_text(json.dumps(cfg, allow_nan=False), encoding="utf-8")
 
     base = [
         resolve_claude(), "-p",
@@ -251,7 +251,7 @@ def _run_agent_claude(question: str, channel: str, model: str | None, on_step,
                         parts.append(txt)
                     elif blk.get("type") == "tool_use":
                         saw_tool = True
-                        args = json.dumps(blk.get("input", {}), ensure_ascii=False)
+                        args = json.dumps(blk.get("input", {}), ensure_ascii=False, allow_nan=False)
                         log("tool_call", f'{blk.get("name", "")}  {args}')
                         parts.append(_fmt_tool(blk.get("name", ""), blk.get("input", {}) or {}))
                 if parts:

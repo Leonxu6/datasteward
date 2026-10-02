@@ -215,7 +215,7 @@ def run_graph(question: str, principal, model: str | None, log, emit, fmt_tool, 
             log("plan", text)
             parts.append(text)
         for tc in (ai.tool_calls or []):
-            args_json = json.dumps(tc.get("args") or {}, ensure_ascii=False)
+            args_json = json.dumps(tc.get("args") or {}, ensure_ascii=False, allow_nan=False)
             log("tool_call", f'{tc["name"]}  {args_json}')
             parts.append(fmt_tool(tc["name"], tc.get("args") or {}))
         if parts:
