@@ -52,6 +52,7 @@ def execute_action(principal: Principal, action: str, material_id: str = "", new
               "qty": qty, "so_id": so_id}
     try:
         res = _validated_result(_exec(action, params, user=principal.to_user(), approve=approve))
+        json.dumps(res, ensure_ascii=False, default=str, allow_nan=False)
     except Exception as exc:  # noqa: BLE001
         _audit_failure(principal, action, t0, exc)
         return "ERROR: Action 执行失败"
@@ -66,4 +67,4 @@ def execute_action(principal: Principal, action: str, material_id: str = "", new
         res["audit_ok"] = False
         res["audit_warning"] = "action completed but audit persistence failed"
 
-    return json.dumps(res, ensure_ascii=False, default=str, indent=2)
+    return json.dumps(res, ensure_ascii=False, default=str, allow_nan=False, indent=2)

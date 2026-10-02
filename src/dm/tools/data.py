@@ -67,7 +67,7 @@ def list_tables(principal: Principal) -> str:
                     n = _row_count(row[0])
                 out.append({"table": t["name"], "cn": t["cn"], "desc": t["desc"], "rows": n})
         _audit_best_effort(principal, "list_tables", {}, "", [t["name"] for t in TABLES], len(out), t0, True)
-        return json.dumps(out, ensure_ascii=False, indent=2)
+        return json.dumps(out, ensure_ascii=False, allow_nan=False, indent=2)
     except Exception as e:  # noqa: BLE001
         _audit_best_effort(principal, "list_tables", {}, "", [], 0, t0, False, str(e))
         return "ERROR: 无法读取表目录。详细错误已写入审计日志。"
@@ -91,7 +91,7 @@ def describe_table(principal: Principal, name: str) -> str:
             for c in t["columns"]]
     _audit_best_effort(principal, "describe_table", {"name": name}, "", [name], len(cols), t0, True)
     return json.dumps({"table": name, "cn": t["cn"], "desc": t["desc"], "columns": cols},
-                      ensure_ascii=False, indent=2)
+                      ensure_ascii=False, allow_nan=False, indent=2)
 
 
 def run_sql(principal: Principal, sql: str) -> str:

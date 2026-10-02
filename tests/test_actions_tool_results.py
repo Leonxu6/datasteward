@@ -26,3 +26,17 @@ def test_valid_failed_action_result_uses_deny_audit_decision():
         response = execute_action(principal, "adjust_safety_stock", material_id="M1", new_value=5)
     assert '"ok": false' in response
     assert audit.call_args.kwargs["decision"] == "deny"
+
+
+def test_action_result_rejects_nonstandard_json_numbers():
+    principal = Principal(user="alice", role="仓管")
+    result = {"ok": True, "target": "material", "score": float("nan")}
+    with patch("dm.ontology.actions.execute_action", return_value=result), patch(
+        "dm.tools.actions_tool.audit_event"
+    ) as audit:
+        response = execute_action(principal, "adjust_safety_stock", material_id="M1", new_value=5)
+
+    assert response == "ERROR: Action 执行失败"
+    assert "NaN" not in response
+    assert audit.call_count == 1
+    assert audit.call_args.kwargs["decision"] == "error"

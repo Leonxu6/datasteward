@@ -15,7 +15,7 @@ _TIMEOUT = 45
 def _argv(mode, entity_id, target_type, max_hops, cypher, limit):
     args = {"entity_id": entity_id, "target_type": target_type, "max_hops": max_hops,
             "cypher": cypher, "limit": limit}
-    return [mode, json.dumps(args, ensure_ascii=False)]
+    return [mode, json.dumps(args, ensure_ascii=False, allow_nan=False)]
 
 
 def _validated_result(value: object) -> dict:
