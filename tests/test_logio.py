@@ -1,9 +1,18 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 
 from dm.warehouse import logio
 from dm.warehouse.logio import append_jsonl, encode_record, log_path, normalize_log_name, read_jsonl
+
+
+def test_utc_timestamp_is_timezone_aware_and_second_precision():
+    value = logio.utc_timestamp()
+    parsed = datetime.fromisoformat(value)
+
+    assert parsed.tzinfo is not None
+    assert parsed.utcoffset() == timezone.utc.utcoffset(parsed)
+    assert parsed.microsecond == 0
 
 
 def test_log_name_rejects_path_traversal_and_ambiguous_names(tmp_path):

@@ -4,11 +4,16 @@ from __future__ import annotations
 import json
 import os
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 _LOG_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 _MAX_LINE_BYTES = 1024 * 1024
+
+
+def utc_timestamp() -> str:
+    """Return a second-precision ISO timestamp with an explicit UTC offset."""
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def _reject_json_constant(value: str) -> None:
