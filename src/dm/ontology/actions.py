@@ -19,6 +19,7 @@ from dm.config import (
     SRC_PG_DB, SRC_PG_HOST, SRC_PG_PASSWORD, SRC_PG_PORT, SRC_PG_USER,
 )
 from dm.security import User, can_execute_action, user_from_env
+from dm.warehouse.logio import utc_timestamp
 from dm.warehouse.store import append_log, read_log
 
 TODAY = date(2026, 6, 25)  # 与 warehouse/generate.py 固定日期一致（eval 真值依赖）
@@ -72,7 +73,7 @@ def _new_id(prefix="ACT"):
 def _audit_action(aid, action, params, user: User, decision, detail, table="", ok=True):
     append_log("audit_log", {
         "audit_id": "A" + datetime.now().strftime("%Y%m%d%H%M%S%f"),
-        "ts": datetime.now().isoformat(timespec="seconds"),
+        "ts": utc_timestamp(),
         "session_id": aid, "channel": "action",
         "category": "actionExecute", "decision": decision,
         "user": user.name, "role": user.role, "purpose": user.purpose,
@@ -85,7 +86,7 @@ def _audit_action(aid, action, params, user: User, decision, detail, table="", o
 def _record(aid, action, params, user: User, *, table, op, pk_col, pk_val,
             before, after, status):
     append_log("action_log", {
-        "action_id": aid, "ts": datetime.now().isoformat(timespec="seconds"),
+        "action_id": aid, "ts": utc_timestamp(),
         "action": action, "params": params, "user": user.name, "role": user.role,
         "purpose": user.purpose, "table": table, "op": op, "pk_col": pk_col, "pk_val": pk_val,
         "target": pk_val, "before": before, "after": after, "status": status, "rolled_back": False,
@@ -301,7 +302,7 @@ def rollback_action(action_id, user: User = None) -> dict:
     finally:
         con.close()
     append_log("action_log", {**rec, "status": "rolled_back", "rolled_back": True,
-                              "rollback_ts": datetime.now().isoformat(timespec="seconds")})
+                              "rollback_ts": utc_timestamp()})
     _audit_action("RB" + action_id, rec["action"], {"rollback_of": action_id}, user, "allow",
                   detail, rec["table"])
     return {"ok": True, "message": f"已回滚：{detail}"}
