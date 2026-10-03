@@ -16,6 +16,8 @@ Append-only JSONL logs should use safe paths and durable serialization. Complex 
 
 All JSON emitted across agent traces, tool responses, worker arguments, and health-alert cursors uses the strict JSON number contract. Python's non-standard `NaN` and `Infinity` tokens are rejected at the boundary instead of being handed to downstream parsers that may accept, reinterpret, or reject them inconsistently.
 
+Persisted Agent traces and governed Action records use second-precision ISO 8601 timestamps with an explicit UTC offset. Consumers may convert those timestamps for display, but storage and correlation must never depend on a host's implicit local timezone.
+
 ## Read-only paths
 
 Health checks and query previews should use read-only connections when possible. A helper named `connect_ro` should never gain hidden write behavior.
