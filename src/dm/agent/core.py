@@ -24,6 +24,7 @@ from pathlib import Path
 from dm.agent.prompts import NUDGE, SYSTEM  # noqa: F401  (SYSTEM 供外部引用兼容)
 from dm.config import DATA_DIR, resolve_claude
 from dm.schema import TABLES
+from dm.warehouse.logio import utc_timestamp
 from dm.warehouse.store import LOG_DIR, append_log, read_log
 
 # MCP 子进程在未 `pip install -e .` 时兜底导入 dm：指向 src/ 目录（claude 旧路径用）
@@ -139,7 +140,7 @@ def run_agent(question: str, channel: str = "cli", model: str | None = None, on_
     def log(stype, content, final_answer=""):
         state["step"] += 1
         append_log("agent_session", {
-            "session_id": sid, "ts": datetime.now().isoformat(timespec="seconds"),
+            "session_id": sid, "ts": utc_timestamp(),
             "channel": channel, "question": question, "step_no": state["step"],
             "step_type": stype, "content": content, "final_answer": final_answer,
         })
@@ -205,7 +206,7 @@ def _run_agent_claude(question: str, channel: str, model: str | None, on_step,
     def log(stype, content, final_answer=""):
         state["step"] += 1
         append_log("agent_session", {
-            "session_id": sid, "ts": datetime.now().isoformat(timespec="seconds"),
+            "session_id": sid, "ts": utc_timestamp(),
             "channel": channel, "question": question, "step_no": state["step"],
             "step_type": stype, "content": content, "final_answer": final_answer,
         })
