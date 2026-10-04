@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import stat
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -77,8 +78,18 @@ def append_jsonl(log_dir: Path, name, record: dict) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     path = log_path(directory, name)
     payload = encode_record(record)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o640)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND
+    if hasattr(os, "O_NONBLOCK"):
+        flags |= os.O_NONBLOCK
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd = os.open(path, flags, 0o640)
     try:
+        metadata = os.fstat(fd)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise OSError("JSONL target must be a regular file")
+        if hasattr(os, "fchmod"):
+            os.fchmod(fd, stat.S_IMODE(metadata.st_mode) & 0o640)
         offset = 0
         while offset < len(payload):
             written = os.write(fd, payload[offset:])
