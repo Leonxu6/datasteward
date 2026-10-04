@@ -1,3 +1,5 @@
+import os
+import stat
 from datetime import datetime, timezone
 
 import pytest
@@ -62,6 +64,42 @@ def test_append_jsonl_retries_short_writes_until_record_is_complete(tmp_path, mo
 
     assert len(calls) > 1
     assert read_jsonl(tmp_path, "audit") == [{"id": 7, "message": "完整记录"}]
+
+
+@pytest.mark.skipif(not hasattr(os, "fchmod"), reason="platform has no descriptor chmod")
+def test_append_jsonl_tightens_existing_file_permissions(tmp_path):
+    path = tmp_path / "audit.jsonl"
+    path.write_text('{"id":1}\n', encoding="utf-8")
+    path.chmod(0o666)
+
+    append_jsonl(tmp_path, "audit", {"id": 2})
+
+    assert stat.S_IMODE(path.stat().st_mode) == 0o640
+    assert read_jsonl(tmp_path, "audit") == [{"id": 1}, {"id": 2}]
+
+
+@pytest.mark.skipif(
+    not hasattr(os, "mkfifo") or not hasattr(os, "O_NONBLOCK"),
+    reason="platform cannot create and reject FIFOs without blocking",
+)
+def test_append_jsonl_rejects_fifo_targets(tmp_path):
+    path = tmp_path / "audit.jsonl"
+    os.mkfifo(path)
+
+    with pytest.raises(OSError):
+        append_jsonl(tmp_path, "audit", {"id": 1})
+
+
+@pytest.mark.skipif(not hasattr(os, "O_NOFOLLOW"), reason="platform has no O_NOFOLLOW")
+def test_append_jsonl_rejects_symlink_targets(tmp_path):
+    target = tmp_path / "real.jsonl"
+    target.write_text('{"id":1}\n', encoding="utf-8")
+    (tmp_path / "audit.jsonl").symlink_to(target)
+
+    with pytest.raises(OSError):
+        append_jsonl(tmp_path, "audit", {"id": 2})
+
+    assert target.read_text(encoding="utf-8") == '{"id":1}\n'
 
 
 def test_read_jsonl_skips_corrupt_and_non_object_lines(tmp_path):
