@@ -12,7 +12,7 @@ Validate fetch batch sizes before touching the driver. Incremental `fetchmany` l
 
 ## Logging
 
-Append-only JSONL logs should use safe paths and durable serialization. Complex values should either be normalized or rejected with useful errors; one malformed record must not corrupt the entire log.
+Append-only JSONL logs should use safe paths and durable serialization. Complex values should either be normalized or rejected with useful errors; one malformed record must not corrupt the entire log. Append targets are opened non-blocking and validated from the open file descriptor, so FIFOs and other special files cannot stall or capture an audit writer. Supported platforms also refuse symbolic-link targets. Existing log permissions are narrowed to at most `0640` without making a more restrictive file broader.
 
 All JSON emitted across agent traces, tool responses, worker arguments, and health-alert cursors uses the strict JSON number contract. Python's non-standard `NaN` and `Infinity` tokens are rejected at the boundary instead of being handed to downstream parsers that may accept, reinterpret, or reject them inconsistently.
 
