@@ -104,33 +104,47 @@ def append_jsonl(log_dir: Path, name, record: dict) -> None:
 def read_jsonl(log_dir: Path, name) -> list[dict]:
     """Read bounded unambiguous JSON-object lines while skipping corrupt/oversized records."""
     path = log_path(log_dir, name)
-    if not path.exists():
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NONBLOCK"):
+        flags |= os.O_NONBLOCK
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        fd = os.open(path, flags)
+    except FileNotFoundError:
         return []
     output: list[dict] = []
-    with path.open("rb") as handle:
-        while True:
-            line = handle.readline(_MAX_LINE_BYTES + 1)
-            if not line:
-                break
-            if len(line) > _MAX_LINE_BYTES:
-                if not line.endswith(b"\n"):
-                    while line and not line.endswith(b"\n"):
-                        line = handle.readline(_MAX_LINE_BYTES + 1)
-                continue
-            try:
-                text = line.decode("utf-8").strip()
-            except UnicodeDecodeError:
-                continue
-            if not text:
-                continue
-            try:
-                value = json.loads(
-                    text,
-                    parse_constant=_reject_json_constant,
-                    object_pairs_hook=_unique_json_object,
-                )
-            except (json.JSONDecodeError, ValueError):
-                continue
-            if isinstance(value, dict):
-                output.append(value)
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise OSError("JSONL source must be a regular file")
+        with os.fdopen(fd, "rb") as handle:
+            fd = -1
+            while True:
+                line = handle.readline(_MAX_LINE_BYTES + 1)
+                if not line:
+                    break
+                if len(line) > _MAX_LINE_BYTES:
+                    if not line.endswith(b"\n"):
+                        while line and not line.endswith(b"\n"):
+                            line = handle.readline(_MAX_LINE_BYTES + 1)
+                    continue
+                try:
+                    text = line.decode("utf-8").strip()
+                except UnicodeDecodeError:
+                    continue
+                if not text:
+                    continue
+                try:
+                    value = json.loads(
+                        text,
+                        parse_constant=_reject_json_constant,
+                        object_pairs_hook=_unique_json_object,
+                    )
+                except (json.JSONDecodeError, ValueError):
+                    continue
+                if isinstance(value, dict):
+                    output.append(value)
+    finally:
+        if fd >= 0:
+            os.close(fd)
     return output
