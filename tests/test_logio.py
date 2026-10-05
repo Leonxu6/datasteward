@@ -102,6 +102,27 @@ def test_append_jsonl_rejects_symlink_targets(tmp_path):
     assert target.read_text(encoding="utf-8") == '{"id":1}\n'
 
 
+@pytest.mark.skipif(
+    not hasattr(os, "mkfifo") or not hasattr(os, "O_NONBLOCK"),
+    reason="platform cannot create and reject FIFOs without blocking",
+)
+def test_read_jsonl_rejects_fifo_sources(tmp_path):
+    os.mkfifo(tmp_path / "audit.jsonl")
+
+    with pytest.raises(OSError, match="regular file"):
+        read_jsonl(tmp_path, "audit")
+
+
+@pytest.mark.skipif(not hasattr(os, "O_NOFOLLOW"), reason="platform has no O_NOFOLLOW")
+def test_read_jsonl_rejects_symlink_sources(tmp_path):
+    target = tmp_path / "real.jsonl"
+    target.write_text('{"id":1}\n', encoding="utf-8")
+    (tmp_path / "audit.jsonl").symlink_to(target)
+
+    with pytest.raises(OSError):
+        read_jsonl(tmp_path, "audit")
+
+
 def test_read_jsonl_skips_corrupt_and_non_object_lines(tmp_path):
     path = tmp_path / "audit.jsonl"
     path.write_text('{"ok":1}\n{bad\n[1,2]\n\n{"ok":2}\n', encoding="utf-8")
