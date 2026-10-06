@@ -1,4 +1,6 @@
 """文件连接器：CSV / Excel（接 MES 导出、线下台账）。"""
+import os
+import stat
 from os import PathLike
 from pathlib import Path
 from typing import Optional
@@ -144,8 +146,24 @@ class FileConnector(Connector):
 
     def _read_df(self, path: Path, nrows: Optional[int] = None):
         import pandas as pd
-        if path.suffix.lower() == ".csv": return pd.read_csv(path, nrows=nrows)
-        return pd.read_excel(path, nrows=nrows)
+        if path.is_symlink():
+            raise ValueError("文件源不能是符号链接")
+        flags = os.O_RDONLY
+        flags |= getattr(os, "O_BINARY", 0)
+        flags |= getattr(os, "O_NONBLOCK", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(path, flags)
+        try:
+            if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+                raise ValueError("文件源必须是普通文件")
+            with os.fdopen(descriptor, "rb") as handle:
+                descriptor = -1
+                if path.suffix.lower() == ".csv":
+                    return pd.read_csv(handle, nrows=nrows)
+                return pd.read_excel(handle, nrows=nrows)
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
 
     def test_connection(self) -> tuple:
         try:
