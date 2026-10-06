@@ -1,5 +1,6 @@
 """FileConnector 的纯单元测试：目录校验、文件解析、类型归一与增量读取边界。"""
 
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -125,6 +126,31 @@ def test_introspect_ignores_directories_named_like_supported_files(tmp_path):
     (tmp_path / "nested.csv").mkdir(); (tmp_path / "actual.csv").write_text("id,active\n1,true\n", encoding="utf-8")
     datasets = _connector(tmp_path).introspect()
     assert [dataset.name for dataset in datasets] == ["actual"] and datasets[0].col_names() == ["id", "active"]
+
+
+def test_descriptor_reader_rejects_symlink_source(tmp_path):
+    target = tmp_path / "outside.csv"
+    target.write_text("id\n1\n", encoding="utf-8")
+    link = tmp_path / "orders.csv"
+    try:
+        link.symlink_to(target)
+    except OSError:
+        pytest.skip("filesystem does not permit symlink creation")
+
+    with pytest.raises(ValueError, match="符号链接"):
+        _connector(tmp_path)._read_df(link)
+
+
+@pytest.mark.skipif(
+    not hasattr(os, "mkfifo") or not hasattr(os, "O_NONBLOCK"),
+    reason="platform cannot create and reject FIFOs without blocking",
+)
+def test_descriptor_reader_rejects_fifo_without_blocking(tmp_path):
+    fifo = tmp_path / "orders.csv"
+    os.mkfifo(fifo)
+
+    with pytest.raises(ValueError, match="普通文件"):
+        _connector(tmp_path)._read_df(fifo)
 
 
 def test_zero_limit_returns_no_rows(tmp_path):
