@@ -266,11 +266,13 @@ _HANDLERS = {
 def approve_action(action_id, user: User = None) -> dict:
     """批准一个 pending Action → 实际写回。"""
     user = user or user_from_env()
-    rec = next((r for r in read_log("action_log") if r["action_id"] == action_id), None)
+    recs = [r for r in read_log("action_log") if r.get("action_id") == action_id]
+    rec = recs[-1] if recs else None
     if not rec:
         return {"ok": False, "error": "未找到该 Action"}
-    if rec["status"] != "pending":
-        return {"ok": False, "error": f"该 Action 状态为 {rec['status']}，不可审批"}
+    status = rec.get("status")
+    if status != "pending":
+        return {"ok": False, "error": f"该 Action 状态为 {status or 'unknown'}，不可审批"}
     return execute_action(rec["action"], rec["params"], user=user, approve=True,
                           action_id=action_id)
 
