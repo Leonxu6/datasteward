@@ -127,7 +127,7 @@ print('pending:', r)
 print(approve_action(r['action_id'], user=User(name='boss', role='管理层')))"
 ```
 
-`execute_action` with the default `approve=False` only validates + records a pending action — nothing is written. Approval executes it **against the Postgres source** (never the warehouse), and Flink CDC flows the change back into StarRocks. Try it with `role='仓管'` and watch the write-permission gate (independent of read permissions) reject it.
+`execute_action` with the default `approve=False` only validates + records a pending action — nothing is written. Approval executes it **against the Postgres source** (never the warehouse), and Flink CDC flows the change back into StarRocks. Approval always checks the latest recorded state for that `action_id`, so an already executed or rolled-back action cannot be replayed through an older pending record. Try it with `role='仓管'` and watch the write-permission gate (independent of read permissions) reject it.
 
 **4. Rollback — every executed action can be reverted, with provenance**
 
