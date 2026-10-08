@@ -93,32 +93,38 @@ def _record(aid, action, params, user: User, *, table, op, pk_col, pk_val,
     })
 
 
+def _integer_parameter(params: dict, name: str) -> int | None:
+    """Return a schema-valid integer without coercing booleans or decimals."""
+    value = params.get(name)
+    return value if type(value) is int else None
+
+
 def _validate(action, params) -> str:
     """提交条件（不需 DB 的部分）；返回错误串（None 通过）。"""
     if action == "adjust_safety_stock":
         if not params.get("material_id"):
             return "material_id 必填"
-        try:
-            if int(params.get("new_value")) < 0:
-                return "new_value 不能为负"
-        except (TypeError, ValueError):
+        new_value = _integer_parameter(params, "new_value")
+        if new_value is None:
             return "new_value 必须为整数"
+        if new_value < 0:
+            return "new_value 不能为负"
     elif action == "create_purchase_requisition":
         if not params.get("material_id") or not params.get("supplier_id"):
             return "material_id、supplier_id 必填"
-        try:
-            if int(params.get("qty")) <= 0:
-                return "qty 必须为正整数"
-        except (TypeError, ValueError):
+        qty = _integer_parameter(params, "qty")
+        if qty is None:
             return "qty 必须为整数"
+        if qty <= 0:
+            return "qty 必须为正整数"
     elif action == "create_delivery":
         if not params.get("so_id"):
             return "so_id 必填"
-        try:
-            if int(params.get("qty")) <= 0:
-                return "qty 必须为正整数"
-        except (TypeError, ValueError):
+        qty = _integer_parameter(params, "qty")
+        if qty is None:
             return "qty 必须为整数"
+        if qty <= 0:
+            return "qty 必须为正整数"
     else:
         return f"未知 Action：{action}"
     return None
