@@ -127,6 +127,10 @@ print('pending:', r)
 print(approve_action(r['action_id'], user=User(name='boss', role='管理层')))"
 ```
 
+Action fields declared as `Integer` must be JSON integers. Boolean values, decimal
+numbers, and numeric strings are rejected instead of being silently coerced; this
+keeps approval previews and eventual database writes on the same schema contract.
+
 `execute_action` with the default `approve=False` only validates + records a pending action — nothing is written. Approval executes it **against the Postgres source** (never the warehouse), and Flink CDC flows the change back into StarRocks. Approval always checks the latest recorded state for that `action_id`, so an already executed or rolled-back action cannot be replayed through an older pending record. Try it with `role='仓管'` and watch the write-permission gate (independent of read permissions) reject it.
 
 **4. Rollback — every executed action can be reverted, with provenance**
