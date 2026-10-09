@@ -12,6 +12,10 @@ Cursors and connections must close on success and on exceptions. Incremental rea
 
 Local CSV and Excel sources are reopened through a non-blocking, no-follow file descriptor immediately before parsing and accepted only when descriptor metadata identifies a regular file. This closes the gap between directory discovery and parsing: a source swapped for a symlink, FIFO, device, or other special file is rejected instead of being followed or blocking a worker.
 
+The CDC mutation demo accepts only a finite positive `--interval`. Its cursor
+and source connection are closed when the worker is interrupted or exits with
+an error, so repeated demonstrations do not accumulate abandoned sessions.
+
 ## Incremental reads
 
 Treat `since` and cursor-column configuration as a pair. Reject incomplete combinations. Apply filtering before limits so previews do not silently skip eligible rows. Preserve numeric and timestamp precision across extraction and loading.
