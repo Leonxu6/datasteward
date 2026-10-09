@@ -7,6 +7,7 @@
 连接 SRC_PG_*（Windows 经 SSH 隧道 15432→主机 5432）。
 """
 import argparse
+import math
 import random
 import sys
 import time
@@ -21,22 +22,18 @@ from dm.config import (SRC_PG_DB, SRC_PG_HOST, SRC_PG_PASSWORD, SRC_PG_PORT,
 EVAL_CRITICAL = ("M0001", "M0046", "M0050", "M0042")
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--interval", type=float, default=3.0, help="每步间隔秒数")
-    args = ap.parse_args()
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
+def _positive_interval(value: str) -> float:
+    """Parse a finite positive sleep interval for the mutation worker."""
+    try:
+        interval = float(value)
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError("interval must be a finite positive number") from exc
+    if not math.isfinite(interval) or interval <= 0:
+        raise argparse.ArgumentTypeError("interval must be a finite positive number")
+    return interval
 
-    conn = psycopg2.connect(host=SRC_PG_HOST, port=SRC_PG_PORT, user=SRC_PG_USER,
-                            password=SRC_PG_PASSWORD, dbname=SRC_PG_DB, connect_timeout=15)
-    conn.autocommit = True
-    cur = conn.cursor()
-    cur.execute('SELECT id, material_id, warehouse_id, location_id FROM inventory '
-                'WHERE material_id NOT IN %s', (EVAL_CRITICAL,))
-    safe = cur.fetchall()
-    print(f"mutate: {len(safe)} 个可改库存行（已避开 {EVAL_CRITICAL}），间隔 {args.interval}s，Ctrl-C 停止\n")
 
+def _run_mutations(cur, safe, interval: float) -> None:
     seq = 0
     while True:
         seq += 1
@@ -65,7 +62,31 @@ def main():
                     print(f"[{ts}] #{seq} (无 MUT 行可删，跳过)")
         except Exception as e:  # noqa: BLE001
             print(f"[{ts}] #{seq} ERR {e}")
-        time.sleep(args.interval)
+        time.sleep(interval)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--interval", type=_positive_interval, default=3.0, help="每步间隔秒数（有限正数）")
+    args = ap.parse_args()
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+
+    conn = psycopg2.connect(host=SRC_PG_HOST, port=SRC_PG_PORT, user=SRC_PG_USER,
+                            password=SRC_PG_PASSWORD, dbname=SRC_PG_DB, connect_timeout=15)
+    try:
+        conn.autocommit = True
+        cur = conn.cursor()
+        try:
+            cur.execute('SELECT id, material_id, warehouse_id, location_id FROM inventory '
+                        'WHERE material_id NOT IN %s', (EVAL_CRITICAL,))
+            safe = cur.fetchall()
+            print(f"mutate: {len(safe)} 个可改库存行（已避开 {EVAL_CRITICAL}），间隔 {args.interval}s，Ctrl-C 停止\n")
+            _run_mutations(cur, safe, args.interval)
+        finally:
+            cur.close()
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":
