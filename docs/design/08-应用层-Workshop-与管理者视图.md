@@ -285,7 +285,7 @@ Control Panel 是 Foundry 的集中管理界面（`Cmd/Ctrl+J` 全局搜索）�
 
 我们的栈：StarRocks 数仓（OLAP）/ PostgreSQL 源（OLTP）/ Flink CDC / Neo4j 图 / pgvector / 只读 MCP + JSONL 审计 / 无头 Claude / Streamlit 多页治理台。
 
-**先立铁律**：Palantir "读走对象、写走 Action、每步留痕"。我们**已做到**"读走只读 MCP（3 个只读工具）+ 每步 JSONL 留痕"，**缺"写走 Action"**。今天的切片可**先只读**；愿景是加一条**受控写回路径**（审批 + 留痕的 Action），而不是直接改库。
+**先立铁律**：Palantir "读走对象、写走 Action、每步留痕"。平台现在通过只读 MCP 查询对象，通过治理化 Action 执行需审批、可审计的写回，并以 JSONL 保存操作轨迹；应用页不得绕过这些边界直接改库。
 
 ### 4.1 现有 8 页与新页的对应
 
@@ -301,6 +301,8 @@ Palantir 的三大应用面（Workshop 操作应用 / Object Explorer / Control 
 | **Inline Action / Button Group** | `st.button` 触发受控 Action | 先在治理台弹审批表单 → 通过后经独立写回接口（PoC 先写回 PostgreSQL 源，Flink CDC 再同步进 StarRocks，形成 writeback 闭环）→ 每次 Action 追加一条 JSONL（对应 audit.3 的 `requestCreate/Approve/Execute` + `dataTransform`） |
 
 > 具体 KPI 可用平台里稳定的测试 ID 演示：`SO0001`（需 `M0046`×265）、`M0001`（库存 12 @ `W02`）、`S001`（PO `PO0021`）。
+
+任务队列采用有界读取：每次最多向游标请求 16 行，页面展示前 15 行，并在仍有后续任务时明确提示用户处理后刷新。这样数据库不会为了一个只显示 15 张卡片的页面物化完整结果集；页面 KPI 也明确表示“本页”数量，避免把截断值误解为全局总数。
 
 #### (2) Object Explorer → "探索页" + Neo4j 图谱页
 
