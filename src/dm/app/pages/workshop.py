@@ -15,13 +15,20 @@ from dm.ontology import execute_action
 from dm.security import ROLES, User
 from dm.warehouse.store import connect_ro
 
+_QUEUE_PAGE_SIZE = 15
+_MAX_QUEUE_QUERY_ROWS = 100
 
-def _q(sql):
+
+def _q(sql: str, *, limit: int = _QUEUE_PAGE_SIZE) -> tuple[list[dict], bool]:
+    """Read one bounded queue page and report whether more rows exist."""
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= _MAX_QUEUE_QUERY_ROWS:
+        raise ValueError(f"queue limit must be an integer between 1 and {_MAX_QUEUE_QUERY_ROWS}")
     con = connect_ro()
     try:
         cur = con.execute(sql)
         cols = [d[0] for d in cur.description]
-        return [dict(zip(cols, r)) for r in cur.fetchall()]
+        rows = cur.fetchmany(limit + 1)
+        return [dict(zip(cols, row)) for row in rows[:limit]], len(rows) > limit
     finally:
         con.close()
 
@@ -34,7 +41,7 @@ def render():
 
     with t0:
         try:
-            rows = _q(
+            rows, truncated = _q(
                 "SELECT m.material_id, m.name, m.safety_stock, "
                 "COALESCE(SUM(i.qty),0) AS stock "
                 "FROM material m LEFT JOIN inventory i ON i.material_id=m.material_id "
@@ -43,10 +50,12 @@ def render():
         except Exception as exc:  # noqa: BLE001
             C.banner(safe_error_summary("读取缺料任务", exc) + "（确认隧道转发 9030）")
             return
-        C.kpi_row([("缺料物料数", len(rows), "库存<安全库存", "warn" if rows else "ok")], min_w=160)
+        C.kpi_row([("本页缺料物料", len(rows), "库存<安全库存", "warn" if rows else "ok")], min_w=160)
+        if truncated:
+            st.caption(f"结果超过 {_QUEUE_PAGE_SIZE} 条；本页仅显示最靠前的任务，请处理后刷新。")
         if not rows:
             st.success("无缺料物料。")
-        for r in rows[:15]:
+        for r in rows:
             gap = r["safety_stock"] - r["stock"]
             with C.card(f'{r["material_id"]} · {r["name"]}（库存 {r["stock"]} < 安全 {r["safety_stock"]}，缺口 {gap}）'):
                 c1, c2, c3 = st.columns([2, 2, 2])
@@ -67,18 +76,20 @@ def render():
 
     with t1:
         try:
-            rows = _q(
+            rows, truncated = _q(
                 "SELECT so.so_id, so.material_id, so.qty, COALESCE(inv.stock,0) AS stock "
                 "FROM sales_order so LEFT JOIN "
                 "(SELECT material_id, SUM(qty) stock FROM inventory GROUP BY material_id) inv "
-                "ON inv.material_id=so.material_id WHERE so.status='未完成' ORDER BY so.so_id LIMIT 30")
+                "ON inv.material_id=so.material_id WHERE so.status='未完成' ORDER BY so.so_id")
         except Exception as exc:  # noqa: BLE001
             C.banner(safe_error_summary("读取发货任务", exc))
             return
         shippable = [r for r in rows if r["stock"] >= r["qty"]]
-        C.kpi_row([("未完成订单行", len(rows), "", "info"),
+        C.kpi_row([("本页未完成订单", len(rows), "", "info"),
                    ("库存充足可发", len(shippable), "", "ok")], min_w=140)
-        for r in rows[:15]:
+        if truncated:
+            st.caption(f"结果超过 {_QUEUE_PAGE_SIZE} 条；本页仅显示最靠前的任务，请处理后刷新。")
+        for r in rows:
             ok = r["stock"] >= r["qty"]
             tag = "✅ 库存充足" if ok else "⛔ 库存不足"
             with C.card(f'{r["so_id"]} · 物料 {r["material_id"]} 需 {r["qty"]}，库存 {r["stock"]}（{tag}）'):
