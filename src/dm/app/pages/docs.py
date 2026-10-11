@@ -10,6 +10,35 @@ import streamlit as st
 from .. import components as C
 from ..errors import safe_error_summary
 
+_REGISTRY_PAGE_SIZE = 500
+_REGISTRY_MAX_PAGE_SIZE = 1000
+_REGISTRY_QUERY = (
+    "SELECT doc_id, doc_type, title, entities, n_chunks, "
+    "CASE WHEN content_hash=indexed_hash THEN '✅' ELSE '⏳' END, indexed_at "
+    "FROM document ORDER BY doc_id"
+)
+
+
+def _registry_rows(docstore, *, limit: int = _REGISTRY_PAGE_SIZE) -> tuple[list, bool]:
+    """Read one bounded registry page and close both DB resources on every path."""
+    if (
+        isinstance(limit, bool)
+        or not isinstance(limit, int)
+        or not 1 <= limit <= _REGISTRY_MAX_PAGE_SIZE
+    ):
+        raise ValueError(f"registry limit must be an integer from 1 to {_REGISTRY_MAX_PAGE_SIZE}")
+    con = docstore.connect()
+    try:
+        cur = con.cursor()
+        try:
+            cur.execute(_REGISTRY_QUERY)
+            rows = list(cur.fetchmany(limit + 1))
+        finally:
+            cur.close()
+    finally:
+        con.close()
+    return rows[:limit], len(rows) > limit
+
 
 def render():
     try:
@@ -33,17 +62,16 @@ def render():
             ("嵌入模型", "bge-small-zh", "", "info"),
         ], min_w=150)
         try:
-            con = docstore.connect()
-            cur = con.cursor()
-            cur.execute("SELECT doc_id, doc_type, title, entities, n_chunks, "
-                        "CASE WHEN content_hash=indexed_hash THEN '✅' ELSE '⏳' END, indexed_at "
-                        "FROM document ORDER BY doc_id")
-            rows = cur.fetchall()
-            con.close()
+            rows, truncated = _registry_rows(docstore)
         except Exception as exc:  # noqa: BLE001
             C.banner(safe_error_summary("读取文档注册表", exc))
             return
         with C.card("文档注册表", "合成文档引用真实物料/供应商/订单/到货/设备 ID，可与数仓跨域链接"):
+            if truncated:
+                st.caption(
+                    f"当前按 doc_id 仅展示前 {_REGISTRY_PAGE_SIZE} 条；"
+                    "文档总数与切片总数仍以顶部 KPI 为准。"
+                )
             df = pd.DataFrame(rows, columns=["doc_id", "类型", "标题", "关联实体", "切片", "索引", "索引时间"])
             st.dataframe(df, use_container_width=True, hide_index=True, height=420)
 
