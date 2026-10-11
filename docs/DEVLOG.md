@@ -91,6 +91,10 @@ neo4j 驱动同样**别在 stdio-MCP 的 asyncio 事件循环里直跑**——gr
 
 `document.source_path` 会同时供向量索引和知识图谱抽取读取。两条链路现在统一只接受普通 UTF-8 文件，拒绝符号链接、目录、FIFO/设备等特殊文件和超过 1 MiB 的输入。读取器以 non-blocking/no-follow 标志打开后再按文件描述符验证类型，避免错误或被篡改的元数据在类型检查前卡住进程，也缩小检查与打开之间的符号链接竞态。源文件缺失时，知识图谱抽取仍保留原有的标题回退；格式或大小违规则明确失败，便于修正注册数据，而不是静默生成不完整关系。
 
+### 文档注册表展示边界
+
+管理台的文档注册表按 `doc_id` 稳定排序，每次最多显示 500 条。查询仅多取一条作为截断信号，不再将整张注册表物化到 Streamlit 进程；发生查询异常时游标和连接也会在同一边界内关闭。页面出现截断时会明示提示，顶部“文档数/向量切片” KPI 仍表示全库统计，不与当前展示页混淆。
+
 ### 坑8：Windows 上 fastembed/HF 缓存符号链接权限（WinError 1314）
 **现象**：fastembed 首次下载 bge 模型后，再开进程加载报 `Could not find tokenizer_config.json in …Temp\fastembed_cache\…`——onnx 模型在、tokenizer 配置丢了。
 **根因**：huggingface_hub 缓存默认用符号链接把 blob 链到 snapshot；Windows 非管理员/未开开发者模式无权限建符号链接（WinError 1314），小文件链接失败 → 缓存残缺；且默认缓存落 `%TEMP%`，清理后每次重下。
