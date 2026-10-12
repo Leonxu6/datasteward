@@ -23,6 +23,7 @@ _MAX_EXTRACTED_TRIPLES = 200
 _MAX_ENTITY_ID_CHARS = 200
 _MAX_ENTITY_TYPE_CHARS = 80
 _MAX_RELATION_TYPE_CHARS = 40
+_KG_BATCH_SIZE = 500
 
 # 外键列 → 语义关系名（可读、便于多跳查询）；缺省回退 REF_<col>
 EDGE_NAME = {
@@ -45,13 +46,44 @@ def _norm(v):
     return None if v is None else str(v)
 
 
+def _fetch_batches(cursor, *, size=_KG_BATCH_SIZE):
+    """Yield bounded database batches and stop before reading a closed result."""
+    if isinstance(size, bool) or not isinstance(size, int) or size < 1:
+        raise ValueError("knowledge-graph batch size must be a positive integer")
+    while True:
+        rows = cursor.fetchmany(size)
+        if not isinstance(rows, (list, tuple)):
+            raise RuntimeError("knowledge-graph query returned a malformed batch")
+        if not rows:
+            return
+        yield rows
+        if len(rows) < size:
+            return
+
+
+def _table_rows(batch, columns, table):
+    """Convert one driver batch into graph records with a stable synthetic id."""
+    primary_key = _pk_cols(table)
+    rows = []
+    for raw in batch:
+        if not isinstance(raw, (list, tuple)) or len(raw) != len(columns):
+            raise RuntimeError("knowledge-graph query returned a malformed row")
+        row = {columns[index]: _norm(raw[index]) for index in range(len(columns))}
+        row["id"] = "#".join(str(row.get(column)) for column in primary_key)
+        row["_cn"] = table["cn"]
+        rows.append(row)
+    return rows
+
+
 def skeleton(verbose=True):
     """从 StarRocks 重建骨架：业务行→节点、FK→语义边。清空后重建（幂等）。"""
     from dm.kg.store import driver
-    drv = driver()
-    sr = connect_ro()
+    drv = None
+    sr = None
     n_nodes = n_edges = 0
     try:
+        drv = driver()
+        sr = connect_ro()
         with drv.session() as s:
             s.run("MATCH (n) DETACH DELETE n")
             for name in KG_TABLES:
@@ -59,43 +91,57 @@ def skeleton(verbose=True):
                 s.run(f"CREATE INDEX IF NOT EXISTS FOR (n:{lab}) ON (n.id)")
                 s.run(f"CREATE INDEX IF NOT EXISTS FOR (n:{lab}) ON (n.{_pk_cols(table_by_name(name))[0]})")
 
-            cache = {}  # name -> list[dict] 行（建边时复用）
             for name in KG_TABLES:
                 t = table_by_name(name)
                 lab = _label(name)
-                cur = sr.execute(f'SELECT * FROM `{name}`')
-                cols = [d[0] for d in cur.description]
-                rows = [{cols[i]: _norm(r[i]) for i in range(len(cols))} for r in cur.fetchall()]
-                pkc = _pk_cols(t)
-                for d in rows:
-                    d["id"] = "#".join(str(d.get(c)) for c in pkc)
-                    d["_cn"] = t["cn"]
-                cache[name] = rows
-                s.run(f"UNWIND $recs AS rec CREATE (n:{lab}) SET n = rec", recs=rows)
-                n_nodes += len(rows)
+                with sr.execute(f'SELECT * FROM `{name}`') as cur:
+                    cols = [d[0] for d in cur.description]
+                    table_nodes = 0
+                    for batch in _fetch_batches(cur):
+                        rows = _table_rows(batch, cols, t)
+                        s.run(f"UNWIND $recs AS rec CREATE (n:{lab}) SET n = rec", recs=rows)
+                        table_nodes += len(rows)
+                        n_nodes += len(rows)
                 if verbose:
-                    print(f"  节点 {lab:24} {len(rows):>5}")
+                    print(f"  节点 {lab:24} {table_nodes:>5}")
 
             for name in KG_TABLES:
                 t = table_by_name(name)
                 lab = _label(name)
-                for (col, ref) in t["fks"]:
-                    if ref not in _KGSET:
-                        continue
-                    ref_pk0 = _pk_cols(table_by_name(ref))[0]
-                    ename = EDGE_NAME.get(col, f"REF_{col.upper()}")
-                    rlab = _label(ref)
-                    edges = [{"src": d["id"], "dst": d[col]} for d in cache[name] if d.get(col) is not None]
-                    if not edges:
-                        continue
-                    s.run(f"UNWIND $edges AS e MATCH (a:{lab} {{id:e.src}}),(b:{rlab}) "
-                          f"WHERE b.{ref_pk0}=e.dst CREATE (a)-[:{ename} {{source:'fk'}}]->(b)", edges=edges)
-                    n_edges += len(edges)
-                    if verbose:
-                        print(f"  边  {lab}-[{ename}]->{rlab}: {len(edges)}")
+                foreign_keys = [(column, ref) for column, ref in t["fks"] if ref in _KGSET]
+                if not foreign_keys:
+                    continue
+                with sr.execute(f'SELECT * FROM `{name}`') as cur:
+                    cols = [d[0] for d in cur.description]
+                    edge_counts = {column: 0 for column, _ in foreign_keys}
+                    for batch in _fetch_batches(cur):
+                        rows = _table_rows(batch, cols, t)
+                        for col, ref in foreign_keys:
+                            ref_pk0 = _pk_cols(table_by_name(ref))[0]
+                            ename = EDGE_NAME.get(col, f"REF_{col.upper()}")
+                            rlab = _label(ref)
+                            edges = [
+                                {"src": row["id"], "dst": row[col]}
+                                for row in rows
+                                if row.get(col) is not None
+                            ]
+                            if not edges:
+                                continue
+                            s.run(f"UNWIND $edges AS e MATCH (a:{lab} {{id:e.src}}),(b:{rlab}) "
+                                  f"WHERE b.{ref_pk0}=e.dst CREATE (a)-[:{ename} {{source:'fk'}}]->(b)", edges=edges)
+                            edge_counts[col] += len(edges)
+                            n_edges += len(edges)
+                if verbose:
+                    for col, ref in foreign_keys:
+                        count = edge_counts[col]
+                        if count:
+                            ename = EDGE_NAME.get(col, f"REF_{col.upper()}")
+                            print(f"  边  {lab}-[{ename}]->{_label(ref)}: {count}")
     finally:
-        sr.close()
-        drv.close()
+        if sr is not None:
+            sr.close()
+        if drv is not None:
+            drv.close()
     print(f"=== 骨架完成：{n_nodes} 节点 / {n_edges} 边（FK）===")
     return n_nodes, n_edges
 
@@ -217,43 +263,53 @@ def extract(verbose=True):
 
     from dm.config import SRC_PG_DB, SRC_PG_HOST, SRC_PG_PASSWORD, SRC_PG_PORT, SRC_PG_USER
     from dm.kg.store import driver
-    pg = psycopg2.connect(host=SRC_PG_HOST, port=SRC_PG_PORT, user=SRC_PG_USER,
-                          password=SRC_PG_PASSWORD, dbname=SRC_PG_DB, connect_timeout=10)
-    cur = pg.cursor()
-    cur.execute("SELECT doc_id, title, source_path, entities FROM document ORDER BY doc_id")
-    docs = cur.fetchall()
-    drv = driver()
+    pg = None
+    cur = None
+    drv = None
     n_doc = n_tri = 0
     try:
+        pg = psycopg2.connect(host=SRC_PG_HOST, port=SRC_PG_PORT, user=SRC_PG_USER,
+                              password=SRC_PG_PASSWORD, dbname=SRC_PG_DB, connect_timeout=10)
+        cur = pg.cursor()
+        cur.execute("SELECT doc_id, title, source_path, entities FROM document ORDER BY doc_id")
+        drv = driver()
         with drv.session() as s:
             # 清掉上一轮抽取的边/文档节点（只动 source='doc' 的，骨架不碰）
             s.run("MATCH ()-[r {source:'doc'}]->() DELETE r")
             s.run("MATCH (n:Document) DETACH DELETE n")
             s.run("MATCH (n:Equipment) DETACH DELETE n")
-            for doc_id, title, path, entities in docs:
-                body = _document_body(path, title)
-                triples = _llm_extract(doc_id, title, body[:3000])
-                # 文档节点
-                s.run("MERGE (d:Document {id:$id}) SET d.title=$t, d.entities=$e, d._cn='文档'",
-                      id=doc_id, t=title, e=entities or "")
-                for tr in triples:
-                    sid, st_, r, oid, ot = tr["s"], tr["s_type"], tr["r"], tr["o"], tr["o_type"]
-                    relation_type = _safe_relation_type(r)
-                    note = tr["note"]
-                    # 头/尾节点：已存在(骨架)的按 pk0 匹配；否则按类型 MERGE（Equipment/Document 等新类）
-                    s.run(
-                        "MERGE (a {id:$sid}) ON CREATE SET a:%s, a._cn=$st "
-                        "MERGE (b {id:$oid}) ON CREATE SET b:%s, b._cn=$ot "
-                        "MERGE (a)-[rel:%s {source:'doc'}]->(b) SET rel.note=$note, rel.doc=$doc"
-                        % (_safe_label(st_), _safe_label(ot), relation_type),
-                        sid=sid, oid=oid, st=st_, ot=ot, note=note, doc=doc_id)
-                    n_tri += 1
-                n_doc += 1
-                if verbose:
-                    print(f"  抽取 {doc_id} «{(title or '')[:22]}» → {len(triples)} 关系")
+            for batch in _fetch_batches(cur):
+                for row in batch:
+                    if not isinstance(row, (list, tuple)) or len(row) != 4:
+                        raise RuntimeError("document registry returned a malformed row")
+                    doc_id, title, path, entities = row
+                    body = _document_body(path, title)
+                    triples = _llm_extract(doc_id, title, body[:3000])
+                    # 文档节点
+                    s.run("MERGE (d:Document {id:$id}) SET d.title=$t, d.entities=$e, d._cn='文档'",
+                          id=doc_id, t=title, e=entities or "")
+                    for tr in triples:
+                        sid, st_, r, oid, ot = tr["s"], tr["s_type"], tr["r"], tr["o"], tr["o_type"]
+                        relation_type = _safe_relation_type(r)
+                        note = tr["note"]
+                        # 头/尾节点：已存在(骨架)的按 pk0 匹配；否则按类型 MERGE（Equipment/Document 等新类）
+                        s.run(
+                            "MERGE (a {id:$sid}) ON CREATE SET a:%s, a._cn=$st "
+                            "MERGE (b {id:$oid}) ON CREATE SET b:%s, b._cn=$ot "
+                            "MERGE (a)-[rel:%s {source:'doc'}]->(b) SET rel.note=$note, rel.doc=$doc"
+                            % (_safe_label(st_), _safe_label(ot), relation_type),
+                            sid=sid, oid=oid, st=st_, ot=ot, note=note, doc=doc_id)
+                        n_tri += 1
+                    n_doc += 1
+                    if verbose:
+                        print(f"  抽取 {doc_id} «{(title or '')[:22]}» → {len(triples)} 关系")
     finally:
-        pg.close()
-        drv.close()
+        if cur is not None:
+            cur.close()
+        if pg is not None:
+            pg.close()
+        if drv is not None:
+            drv.close()
     print(f"=== 文档抽取完成：{n_doc} 篇 / {n_tri} 关系（source='doc'）===")
     return n_doc, n_tri
 
