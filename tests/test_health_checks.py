@@ -94,6 +94,22 @@ def test_freshness_check_handles_timezone_aware_source_values(monkeypatch):
     assert result["status"] == "ok"
 
 
+def test_freshness_check_interprets_naive_source_values_as_utc(monkeypatch):
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            assert tz is timezone.utc
+            return cls(2026, 10, 13, 12, 0, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(checks, "datetime", FrozenDateTime)
+    monkeypatch.setattr(checks, "_sr_scalar", lambda _sql: "2026-10-13T09:00:00")
+
+    result = checks.run_check(_freshness_check(max_age_days=0))
+
+    assert result["status"] == "ok"
+    assert result["actual"] == "0天"
+
+
 def test_freshness_check_warns_when_source_timestamp_is_in_the_future(monkeypatch):
     future = datetime.now() + timedelta(days=2)
     monkeypatch.setattr(checks, "_sr_scalar", lambda _sql: future)

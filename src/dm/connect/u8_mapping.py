@@ -8,7 +8,7 @@ CLI: dm-u8 full|sync|status [表名...]
 """
 import sys
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from dm.config import LOG_DIR, WH_DB
@@ -150,7 +150,7 @@ def sync(tables=None, full=False, verbose=True) -> dict:
     requested = validate_requested_names(tables, mapped_names)
     selected = set(requested) if requested is not None else None
 
-    sid = "U8SYNC" + datetime.now().strftime("%Y%m%d%H%M%S")
+    sid = "U8SYNC" + datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
     principal = Principal(
         user="pipeline", role="管理员", purpose="数据同步", session_id=sid, channel="pipeline"
     )
@@ -191,7 +191,9 @@ def sync(tables=None, full=False, verbose=True) -> dict:
                     cursor_max = max_non_null(row[cursor_index] for row in rows)
 
                 if rows:
-                    now = datetime.now().replace(microsecond=0)
+                    # StarRocks DATETIME has no timezone field. Store a UTC wall
+                    # clock value explicitly instead of inheriting the host zone.
+                    now = datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
                     collist = ", ".join(f"`{column}`" for column in cols) + ", `_synced_at`"
                     placeholders = ", ".join(["%s"] * (len(cols) + 1))
                     values = [tuple([_norm(value) for value in row] + [now]) for row in rows]

@@ -13,7 +13,7 @@ CLI（dm-docs）：
 """
 import re
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 import numpy as np
 
@@ -84,8 +84,11 @@ def reindex(force=False, verbose=True):
                 vcur.executemany(
                     "INSERT INTO doc_chunk(chunk_id,doc_id,doc_type,title,entities,chunk_no,content,embedding) "
                     "VALUES(%s,%s,%s,%s,%s,%s,%s,%s)", recs)
+                # The schema uses TIMESTAMP without timezone. Persist an explicit
+                # UTC wall-clock value so index metadata is stable across hosts.
+                indexed_at = datetime.now(timezone.utc).replace(tzinfo=None)
                 mcur.execute("UPDATE document SET indexed_hash=%s, n_chunks=%s, indexed_at=%s WHERE doc_id=%s",
-                             (chash, len(chunks), datetime.now(), doc_id))
+                             (chash, len(chunks), indexed_at, doc_id))
                 vec.commit()
             except Exception:
                 vec.rollback()

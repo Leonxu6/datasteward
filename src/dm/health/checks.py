@@ -1,7 +1,7 @@
 """数据健康监控（对标 Palantir Data Health / Foundry Rules）。"""
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from dm.config import SRC_PG_DB, SRC_PG_HOST, SRC_PG_PASSWORD, SRC_PG_PORT, SRC_PG_USER
@@ -152,7 +152,11 @@ def run_check(chk: dict) -> dict:
             if mx is None:
                 return _result(chk, "warn", None, "无时间数据")
             timestamp = _to_dt(mx)
-            now = datetime.now(timestamp.tzinfo) if timestamp.tzinfo is not None else datetime.now()
+            # Source columns may be timezone-naive. Interpret those values as UTC
+            # rather than depending on the machine running the health worker.
+            if timestamp.tzinfo is None:
+                timestamp = timestamp.replace(tzinfo=timezone.utc)
+            now = datetime.now(timezone.utc)
             age = (now - timestamp).days
             if age < 0:
                 return _result(chk, "warn", f"{age}天", "最新时间戳位于未来，检查源系统时钟或时区")

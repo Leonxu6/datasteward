@@ -1,5 +1,7 @@
 """A failed vector write must not destroy the previously indexed document."""
 
+from datetime import datetime, timezone
+
 import pytest
 
 from dm.docs import index
@@ -11,6 +13,7 @@ class _Cursor:
 
     def execute(self, statement, params=None):
         self.connection.statements.append(statement)
+        self.connection.params.append(params)
 
     def executemany(self, statement, records):
         self.connection.statements.append(statement)
@@ -29,6 +32,7 @@ class _Connection:
         self.rows = rows
         self.fail_insert = fail_insert
         self.statements = []
+        self.params = []
         self.commits = 0
         self.rollbacks = 0
         self.closed = False
@@ -110,3 +114,31 @@ def test_reindex_allows_nullable_document_title_in_verbose_output(monkeypatch, t
     assert "DOC1 «»" in capsys.readouterr().out
     assert connection.commits == 1
     assert connection.closed
+
+
+def test_reindex_persists_a_utc_derived_naive_database_timestamp(monkeypatch, tmp_path):
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            assert tz is timezone.utc
+            return cls(2026, 10, 13, 9, 30, tzinfo=timezone.utc)
+
+    source = tmp_path / "document.txt"
+    source.write_text("A useful document", encoding="utf-8")
+    connection = _Connection(
+        [("DOC1", "manual", "Manual", "", str(source), "new-hash", "old-hash")]
+    )
+    monkeypatch.setattr(index, "datetime", FrozenDateTime)
+    monkeypatch.setattr(index, "init_schema", lambda: None)
+    monkeypatch.setattr(index, "connect_vec", lambda *, autocommit: connection)
+    monkeypatch.setattr(index, "embed", lambda chunks: [[0.1, 0.2] for _ in chunks])
+    monkeypatch.setattr(index, "counts", lambda: (1, 1))
+
+    assert index.reindex(verbose=False) == (1, 1)
+
+    update_params = next(
+        params for params in connection.params
+        if isinstance(params, tuple) and len(params) == 4 and params[0] == "new-hash"
+    )
+    assert update_params[2] == datetime(2026, 10, 13, 9, 30)
+    assert update_params[2].tzinfo is None
