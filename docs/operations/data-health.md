@@ -12,7 +12,7 @@ Row counts must be non-negative integers. Missing source or sink counts are fail
 
 ## Freshness
 
-Accept valid naive and timezone-aware timestamps. Invalid or empty timestamps should fail the check. Future timestamps indicate source-clock or timezone problems and should be surfaced as warnings rather than interpreted as extremely fresh data.
+Accept valid naive and timezone-aware timestamps. Offset-aware values retain their offset semantics; legacy naive source values are interpreted as UTC so results do not depend on the health worker's host timezone. Invalid or empty timestamps should fail the check. Future timestamps indicate source-clock or timezone problems and should be surfaced as warnings rather than interpreted as extremely fresh data.
 
 ## Schema
 
