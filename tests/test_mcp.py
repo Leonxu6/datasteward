@@ -18,7 +18,10 @@ SRC = str(Path(dm.__file__).resolve().parent.parent)
 
 
 async def _run():
+    # The default MCP role is warehouse-scoped and therefore requires the
+    # row-policy attribute used by the deterministic M0001 fixture.
     env = {**os.environ, "DM_SESSION_ID": "test-001", "DM_CHANNEL": "test",
+           "DM_WAREHOUSE": "W02",
            "PYTHONPATH": SRC, "PYTHONUTF8": "1"}
     params = StdioServerParameters(
         command=sys.executable, args=["-m", "dm.connector.mcp_server"], env=env)
