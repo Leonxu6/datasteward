@@ -13,12 +13,6 @@ import sys
 import unicodedata
 from pathlib import Path
 
-# Windows 关键修复：HF 缓存默认用符号链接，普通用户无权限 → WinError 1314，缓存残缺
-# （tokenizer_config.json 丢失）。禁用符号链接改为复制；并把缓存放到稳定持久目录（非 Temp，
-# 避免被清理后每次重下）。须在 import fastembed/huggingface_hub 之前设置。
-os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS", "1")
-os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
-
 _ALLOWED_BACKENDS = frozenset({"fastembed", "hash"})
 
 
