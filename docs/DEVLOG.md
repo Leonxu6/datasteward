@@ -110,7 +110,7 @@ neo4j 驱动同样**别在 stdio-MCP 的 asyncio 事件循环里直跑**——gr
 ### 坑8：Windows 上 fastembed/HF 缓存符号链接权限（WinError 1314）
 **现象**：fastembed 首次下载 bge 模型后，再开进程加载报 `Could not find tokenizer_config.json in …Temp\fastembed_cache\…`——onnx 模型在、tokenizer 配置丢了。
 **根因**：huggingface_hub 缓存默认用符号链接把 blob 链到 snapshot；Windows 非管理员/未开开发者模式无权限建符号链接（WinError 1314），小文件链接失败 → 缓存残缺；且默认缓存落 `%TEMP%`，清理后每次重下。
-**解法**（`dm/docs/embed.py`，**须在 import fastembed 之前**设）：`HF_HUB_DISABLE_SYMLINKS=1`（改为复制）+ 固定缓存目录 `~/.cache/dm_fastembed`（非 Temp）。模型 `BAAI/bge-small-zh-v1.5`（512 维，~90MB，CPU）。
+**解法**：默认使用固定缓存目录 `~/.cache/dm_fastembed`（非 Temp）。Windows 未启用开发者模式且确实遇到符号链接权限错误时，由部署环境在进程启动前显式设置 `HF_HUB_DISABLE_SYMLINKS=1`（改为复制）及可选的 `HF_HUB_DISABLE_SYMLINKS_WARNING=1`；示例见 `.env.example`。库导入不再静默修改进程级环境，避免影响同一 Python 进程里的其他 Hugging Face 客户端。模型为 `BAAI/bge-small-zh-v1.5`（512 维，~90MB，CPU）。
 
 ### 坑9：纯向量检索对"实体专属"问题区分力弱 → 混合检索
 **现象**：6 份措辞高度相似的采购合同，问"供应商 S001 的违约金"反而命中 S003 合同（向量分仅差 ~0.01）。
