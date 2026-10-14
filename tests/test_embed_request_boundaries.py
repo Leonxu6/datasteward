@@ -1,6 +1,35 @@
+import os
+from pathlib import Path
+import subprocess
+import sys
+
 import pytest
 
 from dm.docs import embed
+
+
+def test_embedding_import_does_not_mutate_huggingface_environment():
+    env = os.environ.copy()
+    env.pop("HF_HUB_DISABLE_SYMLINKS", None)
+    env.pop("HF_HUB_DISABLE_SYMLINKS_WARNING", None)
+    source_root = str(Path(__file__).resolve().parents[1] / "src")
+    env["PYTHONPATH"] = os.pathsep.join(filter(None, (source_root, env.get("PYTHONPATH"))))
+    code = (
+        "import os; import dm.docs.embed; "
+        "print(os.environ.get('HF_HUB_DISABLE_SYMLINKS', 'missing')); "
+        "print(os.environ.get('HF_HUB_DISABLE_SYMLINKS_WARNING', 'missing'))"
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=True,
+        env=env,
+    )
+
+    assert result.stdout.splitlines() == ["missing", "missing"]
 
 
 def test_hash_embedding_accepts_text_and_generators(monkeypatch):
