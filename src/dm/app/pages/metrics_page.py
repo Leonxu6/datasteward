@@ -6,8 +6,27 @@
 import pandas as pd
 import streamlit as st
 
+from dm.app.errors import safe_error_summary
 from dm.ontology.metrics import compile_metric, metric_catalog
 from dm.warehouse.store import connect_ro
+
+_MAX_TRIAL_ROWS = 200
+
+
+def _run_metric_trial(sql: str, *, row_limit: int = _MAX_TRIAL_ROWS) -> tuple[list[str], list]:
+    """Run one bounded metric preview and release its cursor and connection."""
+    if (
+        isinstance(row_limit, bool)
+        or not isinstance(row_limit, int)
+        or not 1 <= row_limit <= _MAX_TRIAL_ROWS
+    ):
+        raise ValueError(f"trial row limit must be an integer from 1 to {_MAX_TRIAL_ROWS}")
+
+    with connect_ro() as con:
+        with con.execute(sql) as cur:
+            cols = [d[0] for d in cur.description] if cur.description else []
+            rows = list(cur.fetchmany(row_limit))
+    return cols, rows
 
 
 def render():
@@ -42,12 +61,8 @@ def render():
             try:
                 sql, _ = compile_metric(name, dims, [f for f in flt.split(";") if f.strip()], limit=200)
                 st.code(sql, language="sql")
-                con = connect_ro()
-                cur = con.execute(sql)
-                cols = [d[0] for d in cur.description] if cur.description else []
-                rows = cur.fetchall()
-                con.close()
-                st.dataframe(pd.DataFrame(list(rows), columns=cols),
+                cols, rows = _run_metric_trial(sql)
+                st.dataframe(pd.DataFrame(rows, columns=cols),
                              use_container_width=True, hide_index=True)
             except Exception as e:  # noqa: BLE001
-                st.error(f"试算失败：{e}")
+                st.error(safe_error_summary("指标试算", e))
