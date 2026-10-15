@@ -18,6 +18,10 @@ File connectors should remain inside their configured root, reject ambiguous dat
 
 Base URLs must use the expected scheme, include a hostname, and reject credentials or ambiguous syntax. API keys must not contain control characters that can alter headers.
 
+## Administrative previews
+
+Administrative pages are still user-facing trust boundaries. Metric trials compile through the shared metric registry, fetch at most 200 rows, and close both the result cursor and read-only warehouse connection on success or failure. Display a stable error category in the page rather than raw driver text, which can contain credentials, hosts, SQL fragments, or other deployment details.
+
 ## Audit data
 
 Audit records must be durable enough to diagnose actions but should avoid secret values and unbounded argument serialization. Treat audit serialization failures as operational problems, not a reason to silently drop records.
