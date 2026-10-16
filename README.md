@@ -118,7 +118,7 @@ For a running stack and configured model:
 docker compose -f deploy/docker-compose.yml run --rm dm-cli dm-eval
 ```
 
-The evaluation runner supports numeric, set, refusal, and narrative grading. Numeric cases compare against SQL ground truth from the running warehouse; narrative grading can use an LLM judge. Results depend on the dataset, endpoint, and model configuration. No aggregate performance claim is made here.
+The evaluation runner supports numeric, set, refusal, and narrative grading. Numeric cases compare against SQL ground truth from the running warehouse; narrative grading can use an LLM judge. Ground-truth queries materialize at most 10,000 rows and fail the affected case when that contract is exceeded, rather than consuming an unbounded warehouse result. Results depend on the dataset, endpoint, and model configuration. No aggregate performance claim is made here.
 
 ## Scope and trust boundaries
 
