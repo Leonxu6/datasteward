@@ -25,6 +25,7 @@ from dm.eval.yaml_loader import load_eval_cases  # noqa: E402
 from dm.warehouse.store import append_log, connect_ro  # noqa: E402
 
 _MAX_LOG_ANSWER = 1_200
+_MAX_TRUTH_ROWS = 10_000
 
 
 @dataclass(frozen=True)
@@ -38,11 +39,12 @@ class CaseOutcome:
 
 
 def _truth(sql: str):
-    con = connect_ro()
-    try:
-        return con.execute(sql).fetchall()
-    finally:
-        con.close()
+    with connect_ro() as con:
+        with con.execute(sql) as cur:
+            rows = list(cur.fetchmany(_MAX_TRUTH_ROWS + 1))
+    if len(rows) > _MAX_TRUTH_ROWS:
+        raise EvalCaseError(f"truth query returned more than {_MAX_TRUTH_ROWS} rows")
+    return rows
 
 
 def _agent_result(value: object) -> tuple[str, str]:
