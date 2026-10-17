@@ -42,6 +42,34 @@ _SQL_TABLE_RE = re.compile(r"\b(?:FROM|JOIN)\s+`?([A-Za-z_][\w.]*)`?", re.IGNORE
 _GRAPH_MODE_CN = {"find_related": "找关联实体", "impact_path": "查影响链路", "cypher": "图查询"}
 
 
+def _write_private_json(path: Path, value: object) -> None:
+    """Create one private JSON file without following or replacing an existing path."""
+    payload = json.dumps(value, ensure_ascii=False, allow_nan=False).encode("utf-8")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(path, flags, 0o600)
+    completed = False
+    try:
+        offset = 0
+        while offset < len(payload):
+            written = os.write(descriptor, payload[offset:])
+            if written <= 0:
+                raise OSError(f"private JSON write stalled after {offset}/{len(payload)} bytes")
+            offset += written
+        os.fsync(descriptor)
+        completed = True
+    finally:
+        try:
+            os.close(descriptor)
+        finally:
+            if not completed:
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
+
+
 def _table_label(name: str) -> str:
     cn = _TABLE_CN.get(name)
     return f"【{cn}】" if cn else f"【{name}】"
@@ -185,7 +213,7 @@ def _run_agent_claude(question: str, channel: str, model: str | None, on_step,
                 "HF_HUB_DISABLE_SYMLINKS": "1", "USERPROFILE": str(Path.home())},
     }}}
     cfg_path = LOG_DIR / f"mcpcfg_{sid}.json"
-    cfg_path.write_text(json.dumps(cfg, allow_nan=False), encoding="utf-8")
+    _write_private_json(cfg_path, cfg)
 
     base = [
         resolve_claude(), "-p",
