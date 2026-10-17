@@ -14,6 +14,8 @@ Values belong in driver parameters. Schema, table, and cursor identifiers requir
 
 File connectors should remain inside their configured root, reject ambiguous dataset names, and handle symlinks deliberately. Temporary office files and platform metadata should not become datasets merely because their extensions look readable.
 
+The legacy Claude/MCP fallback writes its per-session MCP configuration with exclusive creation and owner-only permissions. It refuses an existing or symbolic-link target, completes and syncs the JSON before launching the subprocess, and removes the file after the session. These temporary files contain operator identity and purpose metadata even though they do not contain database credentials.
+
 ## HTTP and model gateways
 
 Base URLs must use the expected scheme, include a hostname, and reject credentials or ambiguous syntax. API keys must not contain control characters that can alter headers.
