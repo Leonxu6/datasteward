@@ -70,10 +70,15 @@ def agg_audit(logs) -> dict:
 
 
 def agg_sessions(steps) -> dict:
-    order = list(dict.fromkeys(s.get("session_id") for s in steps if s.get("session_id")))
+    grouped = {}
+    for step in steps:
+        sid = step.get("session_id")
+        if sid:
+            grouped.setdefault(sid, []).append(step)
+    order = list(grouped)
     channels, step_counts, recent, days = Counter(), [], [], Counter()
     for sid in order:
-        ss = sorted((s for s in steps if s.get("session_id") == sid), key=lambda s: s.get("step_no", 0))
+        ss = sorted(grouped[sid], key=lambda s: s.get("step_no", 0))
         head = ss[0] if ss else {}
         channels[head.get("channel") or "?"] += 1
         step_counts.append(len(ss))
@@ -116,8 +121,12 @@ def parse_tool_call(content):
 
 
 def agg_eval(runs) -> dict:
-    order = list(dict.fromkeys(r.get("run_id") for r in runs if r.get("run_id")))
-    by = {rid: [r for r in runs if r.get("run_id") == rid] for rid in order}
+    by = {}
+    for row in runs:
+        run_id = row.get("run_id")
+        if run_id:
+            by.setdefault(run_id, []).append(row)
+    order = list(by)
     trend = []
     for rid in order:
         rr = by[rid]
