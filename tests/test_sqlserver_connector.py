@@ -123,7 +123,7 @@ def test_read_table_qualifies_configured_schema(monkeypatch):
     connector = SqlServerConnector(Source(name="u8", source_type="sqlserver", params={"schema": "erp"})); cursor = _ReadCursor(); fake = _IntrospectionConnection(cursor=cursor)
     monkeypatch.setattr(sqlserver_module, "_load_driver", lambda: (object(), "pyodbc")); monkeypatch.setattr(connector, "_connect", lambda: fake)
     connector.read_table("orders", cursor_col="id", since=10)
-    assert cursor.sql == "SELECT * FROM [erp].[orders] WHERE [id] > ?" and cursor.params == (10,)
+    assert cursor.sql == "SELECT * FROM [erp].[orders] WHERE [id] > ? ORDER BY [id] ASC" and cursor.params == (10,)
 
 
 @pytest.mark.parametrize("name", [None, 123, ["orders"], "", " orders", "orders ", "orders\x00raw"])

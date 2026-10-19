@@ -115,7 +115,7 @@ def test_read_table_qualifies_configured_schema(monkeypatch):
     assert columns == ["id", "updated_at"]
     assert rows == [(2, "2026-08-13")]
     sql, params = cursor.calls[0]
-    assert sql == 'SELECT * FROM "erp"."orders" WHERE "updated_at" > %s LIMIT %s'
+    assert sql == 'SELECT * FROM "erp"."orders" WHERE "updated_at" > %s ORDER BY "updated_at" ASC LIMIT %s'
     assert params == ["2026-08-01", 2]
 
 
@@ -126,7 +126,7 @@ def test_read_table_safely_quotes_complex_identifiers(monkeypatch):
     monkeypatch.setattr(connector, "_connect", lambda: fake)
     connector.read_table('Order "Items"', cursor_col="updated at", since="2026-08-01")
     sql, params = cursor.calls[0]
-    assert sql == 'SELECT * FROM "ERP Data"."Order ""Items""" WHERE "updated at" > %s'
+    assert sql == 'SELECT * FROM "ERP Data"."Order ""Items""" WHERE "updated at" > %s ORDER BY "updated at" ASC'
     assert params == ["2026-08-01"]
 
 

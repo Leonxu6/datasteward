@@ -125,7 +125,7 @@ class SqlServerConnector(Connector):
                 cursor_sql = _quote_ident(cursor_col, field_name="cursor_col")
             except ValueError as exc:
                 raise ValueError(f"非法游标列: {cursor_col!r}") from exc
-            sql += f" WHERE {cursor_sql} > {ph}"; params.append(since)
+            sql += f" WHERE {cursor_sql} > {ph} ORDER BY {cursor_sql} ASC"; params.append(since)
         with self._cursor() as cur: cur.execute(sql, tuple(params) if params else ()); cols = [d[0] for d in cur.description]; rows = [tuple(row) for row in cur.fetchall()]
         return cols, rows
 

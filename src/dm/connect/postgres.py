@@ -125,6 +125,7 @@ class PostgresConnector(Connector):
                 raise ValueError(f"非法游标列: {cursor_col!r}") from exc
             sql += f" WHERE {cursor_sql} > %s"
             params.append(since)
+            sql += f" ORDER BY {cursor_sql} ASC"
         if limit is not None:
             sql += " LIMIT %s"
             params.append(limit)
