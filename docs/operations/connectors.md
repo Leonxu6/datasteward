@@ -20,6 +20,8 @@ an error, so repeated demonstrations do not accumulate abandoned sessions.
 
 Treat `since` and cursor-column configuration as a pair. Reject incomplete combinations. Apply filtering before limits so previews do not silently skip eligible rows. Preserve numeric and timestamp precision across extraction and loading.
 
+PostgreSQL and SQL Server incremental reads return rows in ascending cursor order. This makes bounded batches deterministic and lets callers advance a watermark from the last row rather than depending on a database's unspecified scan order. A cursor used with a limit must be unique as well as monotonic; otherwise rows tied at the batch boundary require a compound cursor that the current connector API does not yet provide.
+
 ## Introspection
 
 Introspection should agree with the later read path about schema qualification, dataset naming, and ambiguous files. A dataset advertised during onboarding should be readable with the same logical name.
