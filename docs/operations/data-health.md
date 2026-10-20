@@ -10,6 +10,10 @@ Each check returns a structured result with an id, type, table, description, sev
 
 Row counts must be non-negative integers. Missing source or sink counts are failures, not zeros. Parity mismatches should report both counts and the absolute difference so CDC lag is visible.
 
+## Replication slots
+
+The pipeline-health view reads replication slots in name order and accepts at most 1,000 rows. A larger or malformed catalog is reported as a monitoring failure instead of being rendered partially or loaded without a memory bound. Treat that result as a signal to inspect abandoned slots and the source database's `max_replication_slots` policy; do not raise the application limit before confirming the catalog is intentional.
+
 ## Freshness
 
 Accept valid naive and timezone-aware timestamps. Offset-aware values retain their offset semantics; legacy naive source values are interpreted as UTC so results do not depend on the health worker's host timezone. Invalid or empty timestamps should fail the check. Future timestamps indicate source-clock or timezone problems and should be surfaced as warnings rather than interpreted as extremely fresh data.
