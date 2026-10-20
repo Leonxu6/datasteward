@@ -21,8 +21,8 @@ class _Cursor:
     def fetchone(self):
         return self.rows[0] if self.rows else None
 
-    def fetchall(self):
-        return self.rows
+    def fetchmany(self, size):
+        return self.rows[:size]
 
     def close(self):
         self.closed = True

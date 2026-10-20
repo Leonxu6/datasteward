@@ -11,8 +11,9 @@ class _Cursor:
     def execute(self, query):
         return None
 
-    def fetchall(self):
-        return self.rows
+    def fetchmany(self, size):
+        self.fetch_size = size
+        return self.rows[:size]
 
     def close(self):
         self.closed = True
@@ -49,3 +50,26 @@ def test_replication_slots_preserve_valid_rows():
             {"slot": "slot_a", "active": True},
             {"slot": "slot_b", "active": False},
         ]
+    assert cursor.fetch_size == health._MAX_REPLICATION_SLOTS + 1
+
+
+def test_replication_slots_reject_oversized_catalog_and_close_resources():
+    rows = [(f"slot_{index}", True) for index in range(health._MAX_REPLICATION_SLOTS + 1)]
+    cursor = _Cursor(rows)
+    connection = _Connection(cursor)
+
+    with patch.object(health, "_pg", return_value=connection):
+        assert health.replication_slots() == {"error": "replication slot query failed"}
+
+    assert cursor.fetch_size == health._MAX_REPLICATION_SLOTS + 1
+    assert cursor.closed is True
+    assert connection.closed is True
+
+
+def test_replication_slots_reject_non_sequence_driver_results():
+    cursor = _Cursor([])
+    cursor.fetchmany = lambda _size: iter([("slot_a", True)])
+    connection = _Connection(cursor)
+
+    with patch.object(health, "_pg", return_value=connection):
+        assert health.replication_slots() == {"error": "replication slot query failed"}

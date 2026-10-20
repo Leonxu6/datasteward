@@ -19,6 +19,7 @@ from dm.warehouse.store import connect_ro
 
 _TABLE_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
 _MAX_RECONCILE_TABLES = 100
+_MAX_REPLICATION_SLOTS = 1000
 
 
 def _flink_job_list(payload: object) -> list[dict]:
@@ -67,6 +68,16 @@ def _replication_slot_row(row: object) -> dict[str, object]:
     return {"slot": slot, "active": active}
 
 
+def _replication_slot_rows(cursor: object) -> list[object]:
+    """Read a bounded slot snapshot so a damaged catalog cannot exhaust memory."""
+    rows = cursor.fetchmany(_MAX_REPLICATION_SLOTS + 1)
+    if not isinstance(rows, (list, tuple)):
+        raise ValueError("replication slot query must return a row sequence")
+    if len(rows) > _MAX_REPLICATION_SLOTS:
+        raise ValueError("replication slot query exceeded its row limit")
+    return list(rows)
+
+
 def flink_jobs():
     """Flink 作业概览：[{jid, name, state, duration(ms)}...] 或 {'error':...}。"""
     try:
@@ -107,6 +118,6 @@ def replication_slots():
     try:
         with closing(_pg()) as pg, closing(pg.cursor()) as c:
             c.execute("SELECT slot_name, active FROM pg_replication_slots ORDER BY slot_name")
-            return [_replication_slot_row(row) for row in c.fetchall()]
+            return [_replication_slot_row(row) for row in _replication_slot_rows(c)]
     except Exception:  # noqa: BLE001
         return {"error": "replication slot query failed"}
