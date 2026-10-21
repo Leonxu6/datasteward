@@ -9,9 +9,13 @@ from __future__ import annotations
 
 import json
 from collections import Counter
+from collections.abc import Mapping
 from datetime import datetime
 
 from dm.app.errors import safe_error_summary
+
+_MAX_FLINK_JOBS = 1_000
+_MAX_PG_SLOTS = 1_000
 
 try:  # 缓存装饰器：Streamlit 在则短 TTL 缓存，不在则 no-op（便于单测纯聚合）
     import streamlit as st
@@ -43,6 +47,26 @@ def _unique_json_object(pairs):
             raise ValueError(f"duplicate JSON object key is not allowed: {key}")
         result[key] = value
     return result
+
+
+def _flink_json_object(response, *, endpoint: str) -> Mapping:
+    """Return one successful Flink JSON object or fail the probe closed."""
+    response.raise_for_status()
+    payload = response.json()
+    if not isinstance(payload, Mapping):
+        raise ValueError(f"Flink {endpoint} response must be a JSON object")
+    return payload
+
+
+def _bounded_flink_jobs(payload: Mapping) -> list[Mapping]:
+    jobs = payload.get("jobs", [])
+    if not isinstance(jobs, list):
+        raise ValueError("Flink jobs response must contain a jobs array")
+    if len(jobs) > _MAX_FLINK_JOBS:
+        raise ValueError(f"Flink jobs response exceeds {_MAX_FLINK_JOBS} entries")
+    if not all(isinstance(job, Mapping) for job in jobs):
+        raise ValueError("Flink jobs response contains a malformed job")
+    return jobs
 
 
 # ============================ 纯聚合 ============================
@@ -209,13 +233,21 @@ def flink_status() -> dict:
            "slots_total": None, "slots_available": None, "jobs_running": None,
            "jobs_failed": None, "jobs": [], "cdc": None, "error": ""}
     try:
-        ov = requests.get(f"{FLINK_URL}/overview", timeout=5).json()
+        ov = _flink_json_object(
+            requests.get(f"{FLINK_URL}/overview", timeout=5),
+            endpoint="overview",
+        )
         out.update(version=ov.get("flink-version"), taskmanagers=ov.get("taskmanagers"),
                    slots_total=ov.get("slots-total"), slots_available=ov.get("slots-available"),
                    jobs_running=ov.get("jobs-running"), jobs_failed=ov.get("jobs-failed"))
-        jo = requests.get(f"{FLINK_URL}/jobs/overview", timeout=5).json()
-        for j in jo.get("jobs", []):
+        jo = _flink_json_object(
+            requests.get(f"{FLINK_URL}/jobs/overview", timeout=5),
+            endpoint="jobs overview",
+        )
+        for j in _bounded_flink_jobs(jo):
             tk = j.get("tasks", {})
+            if not isinstance(tk, Mapping):
+                raise ValueError("Flink job tasks must be a JSON object")
             out["jobs"].append({
                 "jid": j.get("jid"), "name": j.get("name"), "state": j.get("state"),
                 "duration_ms": j.get("duration"), "start": j.get("start-time"),
@@ -246,7 +278,17 @@ def pg_slots() -> dict:
                     "SELECT slot_name, active, "
                     "pg_wal_lsn_diff(pg_current_wal_lsn(), confirmed_flush_lsn) AS lag "
                     "FROM pg_replication_slots ORDER BY slot_name;")
-                for name, active, lag in cur.fetchall():
+                rows = list(cur.fetchmany(_MAX_PG_SLOTS + 1))
+                if len(rows) > _MAX_PG_SLOTS:
+                    raise ValueError(
+                        f"Postgres replication slot catalog exceeds {_MAX_PG_SLOTS} entries"
+                    )
+                for row in rows:
+                    if not isinstance(row, (list, tuple)) or len(row) != 3:
+                        raise ValueError("Postgres replication slot row is malformed")
+                    name, active, lag = row
+                    if not isinstance(name, str) or not name:
+                        raise ValueError("Postgres replication slot name is malformed")
                     out["slots"].append({"name": name, "active": bool(active),
                                          "lag": int(lag) if lag is not None else None})
         out["n_active"] = sum(1 for s in out["slots"] if s["active"])
