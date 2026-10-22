@@ -20,11 +20,12 @@ class _Cursor:
         if self.connection.fail_insert:
             raise RuntimeError("vector insert failed")
 
-    def fetchall(self):
-        return self.connection.rows
+    def fetchmany(self, size):
+        self.connection.fetch_sizes.append(size)
+        return self.connection.rows[:size]
 
     def close(self):
-        pass
+        self.connection.closed_cursors += 1
 
 
 class _Connection:
@@ -33,6 +34,8 @@ class _Connection:
         self.fail_insert = fail_insert
         self.statements = []
         self.params = []
+        self.fetch_sizes = []
+        self.closed_cursors = 0
         self.commits = 0
         self.rollbacks = 0
         self.closed = False
@@ -75,6 +78,7 @@ def test_reindex_replaces_chunks_and_marker_in_one_transaction(monkeypatch, tmp_
         assert connection.rollbacks == 0
         assert any(statement.startswith("UPDATE document") for statement in connection.statements)
     assert connection.closed
+    assert connection.fetch_sizes == [index._MAX_DOCUMENT_CATALOG_ROWS + 1]
 
 
 @pytest.mark.parametrize("embeddings", [[], [[0.1], [0.2]], None])
@@ -142,3 +146,44 @@ def test_reindex_persists_a_utc_derived_naive_database_timestamp(monkeypatch, tm
     )
     assert update_params[2] == datetime(2026, 10, 13, 9, 30)
     assert update_params[2].tzinfo is None
+
+
+def test_reindex_rejects_an_oversized_catalog_before_loading_sources(monkeypatch):
+    row = ("DOC1", "manual", "Manual", "", "/unused", "new-hash", "old-hash")
+    connection = _Connection([row] * (index._MAX_DOCUMENT_CATALOG_ROWS + 1))
+    monkeypatch.setattr(index, "init_schema", lambda: None)
+    monkeypatch.setattr(index, "connect_vec", lambda *, autocommit: connection)
+    monkeypatch.setattr(
+        index,
+        "read_document_source",
+        lambda path: pytest.fail("an oversized catalog must fail before reading document files"),
+    )
+
+    with pytest.raises(RuntimeError, match="document catalog exceeds"):
+        index.reindex(verbose=False)
+
+    assert connection.commits == 0
+    assert connection.closed
+    assert connection.closed_cursors == 2
+
+
+def test_status_bounds_catalog_reads_and_closes_cursor_and_connection(monkeypatch, capsys):
+    connection = _Connection(
+        [("DOC1", "manual", 1, "", "已索引", "Manual")]
+    )
+    monkeypatch.setattr(index, "counts", lambda: (1, 1))
+    monkeypatch.setattr(index, "connect", lambda: connection)
+
+    index.status()
+
+    assert "DOC1" in capsys.readouterr().out
+    assert connection.fetch_sizes == [index._MAX_DOCUMENT_CATALOG_ROWS + 1]
+    assert connection.closed_cursors == 1
+    assert connection.closed
+
+
+def test_document_catalog_rejects_malformed_rows():
+    connection = _Connection([("DOC1", "manual")])
+
+    with pytest.raises(RuntimeError, match="malformed row"):
+        index._read_document_catalog(connection.cursor(), row_width=7)

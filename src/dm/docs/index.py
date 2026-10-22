@@ -21,6 +21,22 @@ from dm.docs.embed import embed
 from dm.docs.source import read_document_source
 from dm.docs.store import connect, connect_vec, counts, init_schema
 
+_MAX_DOCUMENT_CATALOG_ROWS = 10_000
+
+
+def _read_document_catalog(cursor, *, row_width):
+    """Read a bounded, structurally valid document catalog from a cursor."""
+    rows = cursor.fetchmany(_MAX_DOCUMENT_CATALOG_ROWS + 1)
+    if not isinstance(rows, (list, tuple)):
+        raise RuntimeError("document catalog query returned an invalid row batch")
+    if len(rows) > _MAX_DOCUMENT_CATALOG_ROWS:
+        raise RuntimeError(
+            f"document catalog exceeds the {_MAX_DOCUMENT_CATALOG_ROWS}-row safety limit"
+        )
+    if any(not isinstance(row, (list, tuple)) or len(row) != row_width for row in rows):
+        raise RuntimeError("document catalog query returned a malformed row")
+    return rows
+
 
 def chunk_text(text, target=380, overlap=80):
     """中文友好切片：先按段落切，合并到 target 长度；超长段落滑窗切（带 overlap）。"""
@@ -66,7 +82,7 @@ def reindex(force=False, verbose=True):
     try:
         mcur.execute("SELECT doc_id, doc_type, title, entities, source_path, content_hash, indexed_hash "
                      "FROM document ORDER BY doc_id")
-        rows = mcur.fetchall()
+        rows = _read_document_catalog(mcur, row_width=7)
         for doc_id, dtype, title, entities, path, chash, ihash in rows:
             if not force and chash is not None and chash == ihash:
                 skipped += 1
@@ -114,12 +130,17 @@ def status():
     print(f"=== 文档知识库：{nd} 篇 / {nc} 片（pgvector）===")
     c = connect()
     cur = c.cursor()
-    cur.execute("SELECT doc_id, doc_type, n_chunks, entities, "
-                "CASE WHEN content_hash=indexed_hash THEN '已索引' ELSE '待索引' END, title "
-                "FROM document ORDER BY doc_id")
-    for doc_id, dtype, n, ent, st, title in cur.fetchall():
-        print(f"  {doc_id}  {dtype:9} {st}  {n} 片  [{ent}]  {title}")
-    c.close()
+    try:
+        cur.execute("SELECT doc_id, doc_type, n_chunks, entities, "
+                    "CASE WHEN content_hash=indexed_hash THEN '已索引' ELSE '待索引' END, title "
+                    "FROM document ORDER BY doc_id")
+        for doc_id, dtype, n, ent, st, title in _read_document_catalog(cur, row_width=6):
+            print(f"  {doc_id}  {dtype:9} {st}  {n} 片  [{ent}]  {title}")
+    finally:
+        try:
+            cur.close()
+        finally:
+            c.close()
 
 
 def main():
