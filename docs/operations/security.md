@@ -24,6 +24,8 @@ Base URLs must use the expected scheme, include a hostname, and reject credentia
 
 Administrative pages are still user-facing trust boundaries. Metric trials compile through the shared metric registry, fetch at most 200 rows, and close both the result cursor and read-only warehouse connection on success or failure. Display a stable error category in the page rather than raw driver text, which can contain credentials, hosts, SQL fragments, or other deployment details.
 
+Agent metric queries enforce their compiled limit twice: the registry emits a SQL `LIMIT` of at most 500 rows, and the execution layer requests one sentinel row beyond that budget. An oversized or non-materialized driver batch is rejected before serialization, while cursors and read-only connections are still closed. This prevents a changed compiler or non-conforming database driver from silently turning a bounded tool response into an unbounded allocation.
+
 ## Audit data
 
 Audit records must be durable enough to diagnose actions but should avoid secret values and unbounded argument serialization. Treat audit serialization failures as operational problems, not a reason to silently drop records.
