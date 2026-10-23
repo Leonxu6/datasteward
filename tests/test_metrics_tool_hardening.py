@@ -47,7 +47,12 @@ def test_query_metric_rejects_padded_controlled_or_oversized_query_text(monkeypa
 
 def test_query_metric_closes_cursor_and_connection_after_success(monkeypatch):
     _authorized_metric(monkeypatch)
-    cursor = SimpleNamespace(description=[("value",)], fetchall=lambda: [(1,)], close=lambda: None)
+    fetch_sizes = []
+    cursor = SimpleNamespace(
+        description=[("value",)],
+        fetchmany=lambda size: fetch_sizes.append(size) or [(1,)],
+        close=lambda: None,
+    )
     cursor.closed = False
     cursor.close = lambda: setattr(cursor, "closed", True)
     connection = SimpleNamespace(execute=lambda sql: cursor, close=lambda: None)
@@ -59,11 +64,14 @@ def test_query_metric_closes_cursor_and_connection_after_success(monkeypatch):
     assert '"value": 1' in result
     assert cursor.closed is True
     assert connection.closed is True
+    assert fetch_sizes == [101]
 
 
 def test_query_metric_rejects_nonstandard_json_numbers(monkeypatch):
     _authorized_metric(monkeypatch)
-    cursor = SimpleNamespace(description=[("value",)], fetchall=lambda: [(float("nan"),)], close=lambda: None)
+    cursor = SimpleNamespace(
+        description=[("value",)], fetchmany=lambda size: [(float("nan"),)], close=lambda: None
+    )
     connection = SimpleNamespace(execute=lambda sql: cursor, close=lambda: None)
     monkeypatch.setattr(metrics_tool, "connect_ro", lambda: connection)
 
@@ -103,7 +111,7 @@ def test_query_metric_closes_resources_after_fetch_failure(monkeypatch):
     cursor = SimpleNamespace(description=[("value",)], close=lambda: None)
     cursor.closed = False
     cursor.close = lambda: setattr(cursor, "closed", True)
-    cursor.fetchall = lambda: (_ for _ in ()).throw(RuntimeError("read failed"))
+    cursor.fetchmany = lambda size: (_ for _ in ()).throw(RuntimeError("read failed"))
     connection = SimpleNamespace(execute=lambda sql: cursor, close=lambda: None)
     connection.closed = False
     connection.close = lambda: setattr(connection, "closed", True)
@@ -154,7 +162,7 @@ def test_query_metric_redacts_database_details_from_user_response(monkeypatch):
 
 def test_successful_metric_query_survives_audit_persistence_failure(monkeypatch):
     _authorized_metric(monkeypatch)
-    cursor = SimpleNamespace(description=[("value",)], fetchall=lambda: [(1,)], close=lambda: None)
+    cursor = SimpleNamespace(description=[("value",)], fetchmany=lambda size: [(1,)], close=lambda: None)
     connection = SimpleNamespace(execute=lambda sql: cursor, close=lambda: None)
     monkeypatch.setattr(metrics_tool, "connect_ro", lambda: connection)
     monkeypatch.setattr(
@@ -180,3 +188,26 @@ def test_metric_validation_error_survives_audit_persistence_failure(monkeypatch)
 
     assert result.startswith("ERROR:")
     assert "must be text" in result
+
+
+def test_query_metric_rejects_driver_results_beyond_the_compiled_limit(monkeypatch):
+    _authorized_metric(monkeypatch)
+    cursor = SimpleNamespace(
+        description=[("value",)],
+        fetchmany=lambda size: [(index,) for index in range(size)],
+        close=lambda: None,
+    )
+    connection = SimpleNamespace(execute=lambda sql: cursor, close=lambda: None)
+    monkeypatch.setattr(metrics_tool, "connect_ro", lambda: connection)
+
+    result = metrics_tool.query_metric(_principal(), "sample", limit=2)
+
+    assert result == "ERROR: 指标查询失败，请检查数据服务状态或联系维护者。"
+
+
+@pytest.mark.parametrize("rows", [None, iter([(1,)])])
+def test_bounded_metric_rows_rejects_non_materialized_driver_batches(rows):
+    cursor = SimpleNamespace(fetchmany=lambda size: rows)
+
+    with pytest.raises(ValueError, match="invalid row batch"):
+        metrics_tool._bounded_metric_rows(cursor, limit=2)

@@ -76,6 +76,16 @@ def _rows_to_records(columns: list, rows: list) -> list[dict]:
     return records
 
 
+def _bounded_metric_rows(cursor, *, limit: int) -> list:
+    """Enforce the compiled metric row budget at the driver boundary."""
+    rows = cursor.fetchmany(limit + 1)
+    if not isinstance(rows, (list, tuple)):
+        raise ValueError("metric query returned an invalid row batch")
+    if len(rows) > limit:
+        raise RuntimeError(f"metric query exceeded its {limit}-row result limit")
+    return list(rows)
+
+
 def list_metrics(principal: Principal) -> str:
     t0 = time.time()
     try:
@@ -116,7 +126,7 @@ def query_metric(principal: Principal, metric: str, dimensions: str = "",
         con = connect_ro()
         cur = con.execute(sql)
         cols = [d[0] for d in cur.description] if cur.description else []
-        rows = cur.fetchall()
+        rows = _bounded_metric_rows(cur, limit=limit)
         records = _rows_to_records(cols, rows)
         out = {"metric": metric, "cn": mdef.get("cn", ""), "unit": mdef.get("unit", ""),
                "description": mdef.get("description", ""), "sql": sql, "columns": cols,
