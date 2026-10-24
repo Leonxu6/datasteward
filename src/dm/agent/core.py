@@ -16,6 +16,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 import uuid
 from datetime import datetime
@@ -33,6 +34,35 @@ SRC_DIR = Path(__file__).resolve().parent.parent.parent
 _EMBED_CACHE = str(Path.home() / ".cache" / "dm_fastembed")
 
 MIN_INTERVAL = 0.7  # 钉钉发消息节流：相邻两条至少间隔这么久，避免被限流/漏发
+_SUBPROCESS_STDERR_LIMIT = 64 * 1024
+_SUBPROCESS_READ_CHUNK = 8 * 1024
+
+
+def _drain_bounded_stream(stream, *, limit: int) -> str:
+    """Drain a child stream completely while retaining only a bounded prefix."""
+    chunks: list[str] = []
+    retained = 0
+    while True:
+        chunk = stream.read(_SUBPROCESS_READ_CHUNK)
+        if not chunk:
+            break
+        if retained < limit:
+            kept = chunk[: limit - retained]
+            chunks.append(kept)
+            retained += len(kept)
+    return "".join(chunks)
+
+
+def _start_bounded_stderr_drain(stream):
+    """Consume stderr concurrently so a full pipe cannot stall stdout parsing."""
+    state = {"text": ""}
+
+    def drain() -> None:
+        state["text"] = _drain_bounded_stream(stream, limit=_SUBPROCESS_STDERR_LIMIT)
+
+    thread = threading.Thread(target=drain, name="dm-agent-stderr", daemon=True)
+    thread.start()
+    return thread, state
 
 
 # 表英文名→中文名（意图行用；schema 是单一真相源。dbt 分层表 dm_dw.* 不在其中→显示原名）
@@ -259,6 +289,7 @@ def _run_agent_claude(question: str, channel: str, model: str | None, on_step,
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                 stdin=subprocess.DEVNULL, text=True, encoding="utf-8",
                                 errors="replace", env=env)
+        stderr_thread, stderr_state = _start_bounded_stderr_drain(proc.stderr)
         for line in proc.stdout:
             line = line.strip()
             if not line:
@@ -295,7 +326,8 @@ def _run_agent_claude(question: str, channel: str, model: str | None, on_step,
             elif t == "result":
                 state["final"] = ev.get("result", "") or ""
         proc.wait()
-        state["err"] = (proc.stderr.read() or "").strip()
+        stderr_thread.join()
+        state["err"] = stderr_state["text"].strip()
         return saw_tool
 
     nudge = NUDGE
