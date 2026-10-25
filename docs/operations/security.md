@@ -32,6 +32,8 @@ Agent metric queries enforce their compiled limit twice: the registry emits a SQ
 
 Audit records must be durable enough to diagnose actions but should avoid secret values and unbounded argument serialization. Treat audit serialization failures as operational problems, not a reason to silently drop records.
 
+JSONL readers accept at most 64 MiB and 100,000 valid records per file. The byte budget is enforced both before and during the read so a concurrently growing log cannot bypass it. Reaching either limit fails visibly instead of materializing an unbounded Python object graph; archive or rotate the log before retrying.
+
 ## Review rule
 
 A new boundary should arrive with a validator, a focused regression test, and an error message that tells an operator what to fix without disclosing protected data.

@@ -16,6 +16,8 @@ Read-only business results are kept separate from audit-storage availability. A 
 
 Treat the warning as an observability incident, not as proof that the underlying query failed. Check the audit-store path or database independently, restore persistence, and verify a fresh operation creates an audit record. Do not retry a successful read merely to manufacture an audit entry, and do not suppress the warning at the agent boundary.
 
+If a dashboard or replay reports that a JSONL source exceeds 64 MiB or 100,000 valid records, move the closed portion into restricted archival storage and leave a new active file at the configured path. Do not raise the in-process read budget merely to keep an ever-growing audit file materialized in memory.
+
 ## Health page shows failures
 
 Read the structured `actual` value and message. A data-quality failure is different from malformed monitoring configuration. For parity, compare source and sink counts; for freshness, inspect source timezone/clock; for schema, review missing and extra columns separately.
