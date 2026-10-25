@@ -42,3 +42,21 @@ def test_read_jsonl_skips_invalid_utf8_without_losing_later_records(tmp_path):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(b"\xff\xfe\n{\"ok\":2}\n")
     assert logio.read_jsonl(tmp_path, "audit") == [{"ok": 2}]
+
+
+def test_read_jsonl_rejects_files_over_the_total_byte_budget(tmp_path, monkeypatch):
+    monkeypatch.setattr(logio, "_MAX_FILE_BYTES", 16)
+    path = logio.log_path(tmp_path, "audit")
+    path.write_bytes(b'{"private":"too large"}\n')
+
+    with pytest.raises(OSError, match="archive or rotate"):
+        logio.read_jsonl(tmp_path, "audit")
+
+
+def test_read_jsonl_rejects_more_than_the_record_budget(tmp_path, monkeypatch):
+    monkeypatch.setattr(logio, "_MAX_RECORDS", 2)
+    path = logio.log_path(tmp_path, "audit")
+    path.write_bytes(b'{"id":1}\n{"id":2}\n{"id":3}\n')
+
+    with pytest.raises(OSError, match="valid records"):
+        logio.read_jsonl(tmp_path, "audit")

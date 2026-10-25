@@ -10,6 +10,8 @@ from pathlib import Path
 
 _LOG_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 _MAX_LINE_BYTES = 1024 * 1024
+_MAX_FILE_BYTES = 64 * 1024 * 1024
+_MAX_RECORDS = 100_000
 
 
 def utc_timestamp() -> str:
@@ -102,7 +104,7 @@ def append_jsonl(log_dir: Path, name, record: dict) -> None:
 
 
 def read_jsonl(log_dir: Path, name) -> list[dict]:
-    """Read bounded unambiguous JSON-object lines while skipping corrupt/oversized records."""
+    """Read bounded unambiguous JSON-object lines while skipping corrupt records."""
     path = log_path(log_dir, name)
     flags = os.O_RDONLY
     if hasattr(os, "O_NONBLOCK"):
@@ -115,18 +117,34 @@ def read_jsonl(log_dir: Path, name) -> list[dict]:
         return []
     output: list[dict] = []
     try:
-        if not stat.S_ISREG(os.fstat(fd).st_mode):
+        metadata = os.fstat(fd)
+        if not stat.S_ISREG(metadata.st_mode):
             raise OSError("JSONL source must be a regular file")
+        if metadata.st_size > _MAX_FILE_BYTES:
+            raise OSError(f"JSONL source exceeds {_MAX_FILE_BYTES} bytes; archive or rotate it")
         with os.fdopen(fd, "rb") as handle:
             fd = -1
+            bytes_read = 0
             while True:
                 line = handle.readline(_MAX_LINE_BYTES + 1)
                 if not line:
                     break
+                bytes_read += len(line)
+                if bytes_read > _MAX_FILE_BYTES:
+                    raise OSError(
+                        f"JSONL source exceeds {_MAX_FILE_BYTES} bytes while reading; "
+                        "archive or rotate it"
+                    )
                 if len(line) > _MAX_LINE_BYTES:
                     if not line.endswith(b"\n"):
                         while line and not line.endswith(b"\n"):
                             line = handle.readline(_MAX_LINE_BYTES + 1)
+                            bytes_read += len(line)
+                            if bytes_read > _MAX_FILE_BYTES:
+                                raise OSError(
+                                    f"JSONL source exceeds {_MAX_FILE_BYTES} bytes while reading; "
+                                    "archive or rotate it"
+                                )
                     continue
                 try:
                     text = line.decode("utf-8").strip()
@@ -143,6 +161,11 @@ def read_jsonl(log_dir: Path, name) -> list[dict]:
                 except (json.JSONDecodeError, ValueError):
                     continue
                 if isinstance(value, dict):
+                    if len(output) >= _MAX_RECORDS:
+                        raise OSError(
+                            f"JSONL source exceeds {_MAX_RECORDS} valid records; "
+                            "archive or rotate it"
+                        )
                     output.append(value)
     finally:
         if fd >= 0:
