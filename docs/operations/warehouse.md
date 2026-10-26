@@ -10,6 +10,8 @@ Close cursors after reads, writes, and failed fetches. Context-manager support s
 
 Validate fetch batch sizes before touching the driver. Incremental `fetchmany` loops should close the cursor even if a later batch raises. Avoid loading unbounded result sets into memory when streaming is sufficient.
 
+The compatibility adapter caps `fetchall()` and `fetchdf()` at 100,000 rows and requests one sentinel row from the database driver so the limit is enforced before the entire result is materialized. A larger result raises explicitly and still closes the cursor. Callers that legitimately process larger datasets must use a bounded `fetchmany()` loop rather than increasing the global limit.
+
 ## Logging
 
 Append-only JSONL logs should use safe paths and durable serialization. Complex values should either be normalized or rejected with useful errors; one malformed record must not corrupt the entire log. Both readers and appenders open targets non-blocking and validate the open file descriptor, so FIFOs and other special files cannot stall or capture an audit operation. Supported platforms also refuse symbolic-link targets. Existing log permissions are narrowed to at most `0640` without making a more restrictive file broader.
