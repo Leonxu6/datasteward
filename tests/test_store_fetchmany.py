@@ -1,5 +1,6 @@
 import pytest
 
+from dm.warehouse import store
 from dm.warehouse.store import _Result
 
 
@@ -50,3 +51,37 @@ def test_fetchmany_rejects_invalid_size_before_driver_call(size):
         result.fetchmany(size)
     assert cursor.calls == []
     assert not cursor.closed
+
+
+def test_fetchall_enforces_a_driver_level_row_budget(monkeypatch):
+    monkeypatch.setattr(store, "_MAX_FETCHALL_ROWS", 2)
+    cursor = Cursor([(1,), (2,), (3,)])
+
+    with pytest.raises(RuntimeError, match="2-row fetchall limit"):
+        _Result(cursor).fetchall()
+
+    assert cursor.calls == [3]
+    assert cursor.closed
+
+
+def test_fetchdf_uses_the_same_row_budget(monkeypatch):
+    monkeypatch.setattr(store, "_MAX_FETCHALL_ROWS", 2)
+    cursor = Cursor([(1,), (2,), (3,)])
+
+    with pytest.raises(RuntimeError, match="2-row fetchall limit"):
+        _Result(cursor).fetchdf()
+
+    assert cursor.calls == [3]
+    assert cursor.closed
+
+
+def test_fetchall_rejects_malformed_driver_batches(monkeypatch):
+    monkeypatch.setattr(store, "_MAX_FETCHALL_ROWS", 2)
+    cursor = Cursor(None)
+    cursor.rows = None
+
+    with pytest.raises(TypeError, match="invalid row batch"):
+        _Result(cursor).fetchall()
+
+    assert cursor.calls == [3]
+    assert cursor.closed

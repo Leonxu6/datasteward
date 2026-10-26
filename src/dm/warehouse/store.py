@@ -9,6 +9,7 @@ from dm.warehouse.logio import append_jsonl, read_jsonl
 from dm.warehouse.validation import normalize_fetch_size
 
 LOG_DIR.mkdir(parents=True, exist_ok=True)
+_MAX_FETCHALL_ROWS = 100_000
 
 
 class _Result:
@@ -50,9 +51,17 @@ class _Result:
             self.close()
         return rows
 
+    def _bounded_fetchall(self):
+        rows = self._cur.fetchmany(_MAX_FETCHALL_ROWS + 1)
+        if not isinstance(rows, (list, tuple)):
+            raise TypeError("database driver returned an invalid row batch")
+        if len(rows) > _MAX_FETCHALL_ROWS:
+            raise RuntimeError(f"query result exceeds the {_MAX_FETCHALL_ROWS}-row fetchall limit")
+        return rows
+
     def fetchall(self):
         try:
-            return self._cur.fetchall()
+            return self._bounded_fetchall()
         finally:
             self.close()
 
@@ -60,7 +69,7 @@ class _Result:
         import pandas as pd
 
         try:
-            rows = self._cur.fetchall()
+            rows = self._bounded_fetchall()
             cols = [d[0] for d in self.description] if self.description else []
             return pd.DataFrame(list(rows), columns=cols)
         finally:
