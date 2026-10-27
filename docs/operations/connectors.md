@@ -14,7 +14,10 @@ Local CSV and Excel sources are reopened through a non-blocking, no-follow file 
 
 The CDC mutation demo accepts only a finite positive `--interval`. Its cursor
 and source connection are closed when the worker is interrupted or exits with
-an error, so repeated demonstrations do not accumulate abandoned sessions.
+an error, so repeated demonstrations do not accumulate abandoned sessions. At
+startup it selects candidates in stable inventory-ID order and admits at most
+10,000 rows. It aborts instead of retaining an unexpectedly large source table
+for the lifetime of the worker; narrow the demo dataset before retrying.
 
 ## Incremental reads
 
