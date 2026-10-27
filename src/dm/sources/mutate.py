@@ -20,6 +20,7 @@ from dm.config import (SRC_PG_DB, SRC_PG_HOST, SRC_PG_PASSWORD, SRC_PG_PORT,
 
 # eval 关键物料，避开（llm_judge 用例有硬编码 expected）
 EVAL_CRITICAL = ("M0001", "M0046", "M0050", "M0042")
+MAX_MUTATION_CANDIDATES = 10_000
 
 
 def _positive_interval(value: str) -> float:
@@ -31,6 +32,24 @@ def _positive_interval(value: str) -> float:
     if not math.isfinite(interval) or interval <= 0:
         raise argparse.ArgumentTypeError("interval must be a finite positive number")
     return interval
+
+
+def _load_mutation_candidates(cur, *, limit: int = MAX_MUTATION_CANDIDATES):
+    """Load a deterministic, bounded inventory sample for the long-lived worker."""
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+        raise ValueError("mutation candidate limit must be a positive integer")
+    cur.execute(
+        "SELECT id, material_id, warehouse_id, location_id FROM inventory "
+        "WHERE material_id NOT IN %s ORDER BY id LIMIT %s",
+        (EVAL_CRITICAL, limit + 1),
+    )
+    rows = cur.fetchmany(limit + 1)
+    if len(rows) > limit:
+        raise RuntimeError(
+            f"mutation candidate set exceeds the {limit}-row safety limit; "
+            "narrow the demo dataset before starting the worker"
+        )
+    return rows
 
 
 def _run_mutations(cur, safe, interval: float) -> None:
@@ -78,9 +97,7 @@ def main():
         conn.autocommit = True
         cur = conn.cursor()
         try:
-            cur.execute('SELECT id, material_id, warehouse_id, location_id FROM inventory '
-                        'WHERE material_id NOT IN %s', (EVAL_CRITICAL,))
-            safe = cur.fetchall()
+            safe = _load_mutation_candidates(cur)
             print(f"mutate: {len(safe)} 个可改库存行（已避开 {EVAL_CRITICAL}），间隔 {args.interval}s，Ctrl-C 停止\n")
             _run_mutations(cur, safe, args.interval)
         finally:

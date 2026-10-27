@@ -19,6 +19,52 @@ def test_positive_interval_accepts_finite_positive_values(value, expected):
     assert mutate._positive_interval(value) == expected
 
 
+def test_load_mutation_candidates_uses_deterministic_bounded_query():
+    class Cursor:
+        def __init__(self):
+            self.query = None
+            self.params = None
+
+        def execute(self, query, params):
+            self.query = query
+            self.params = params
+
+        def fetchmany(self, size):
+            assert size == 3
+            return [("row-1", "M1000", "W1", "L1")]
+
+    cursor = Cursor()
+
+    rows = mutate._load_mutation_candidates(cursor, limit=2)
+
+    assert rows == [("row-1", "M1000", "W1", "L1")]
+    assert "ORDER BY id LIMIT %s" in cursor.query
+    assert cursor.params == (mutate.EVAL_CRITICAL, 3)
+
+
+def test_load_mutation_candidates_rejects_an_oversize_dataset():
+    class Cursor:
+        def execute(self, query, params):
+            pass
+
+        def fetchmany(self, size):
+            assert size == 3
+            return [("row-1",), ("row-2",), ("row-3",)]
+
+    with pytest.raises(RuntimeError, match="2-row safety limit"):
+        mutate._load_mutation_candidates(Cursor(), limit=2)
+
+
+@pytest.mark.parametrize("limit", [True, 0, -1, 1.5])
+def test_load_mutation_candidates_rejects_invalid_limits(limit):
+    class Cursor:
+        def execute(self, *args):
+            raise AssertionError("invalid limits must fail before querying")
+
+    with pytest.raises(ValueError, match="positive integer"):
+        mutate._load_mutation_candidates(Cursor(), limit=limit)
+
+
 def test_main_closes_cursor_and_connection_when_worker_stops(monkeypatch):
     events = []
 
@@ -26,7 +72,7 @@ def test_main_closes_cursor_and_connection_when_worker_stops(monkeypatch):
         def execute(self, *args):
             events.append("query")
 
-        def fetchall(self):
+        def fetchmany(self, size):
             return []
 
         def close(self):
