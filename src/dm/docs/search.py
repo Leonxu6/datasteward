@@ -93,7 +93,11 @@ def search(query: str, top_k: int = 5):
             "1 - (embedding <=> %s) AS score "
             "FROM doc_chunk ORDER BY embedding <=> %s LIMIT %s",
             (qv, qv, pool))
-        rows = cur.fetchall()
+        rows = cur.fetchmany(pool + 1)
+        if len(rows) > pool:
+            raise RuntimeError(
+                f"vector search exceeded its {pool}-row candidate budget"
+            )
     finally:
         try:
             cur.close()

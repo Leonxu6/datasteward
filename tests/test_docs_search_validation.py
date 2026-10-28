@@ -60,7 +60,8 @@ def test_search_closes_cursor_and_connection_after_fetch(monkeypatch):
         def execute(self, sql, params):
             self.params = params
 
-        def fetchall(self):
+        def fetchmany(self, size):
+            assert size == 16
             return []
 
         def close(self):
@@ -82,5 +83,43 @@ def test_search_closes_cursor_and_connection_after_fetch(monkeypatch):
     monkeypatch.setattr(docs_search, "connect_vec", lambda: connection)
 
     assert docs_search.search("S001 contract") == []
+    assert connection.cur.closed is True
+    assert connection.closed is True
+
+
+def test_search_rejects_driver_results_beyond_the_candidate_budget(monkeypatch):
+    class Cursor:
+        def __init__(self):
+            self.closed = False
+
+        def execute(self, sql, params):
+            assert "LIMIT %s" in sql
+            assert params[-1] == 12
+
+        def fetchmany(self, size):
+            assert size == 13
+            return [("unexpected",)] * size
+
+        def close(self):
+            self.closed = True
+
+    class Connection:
+        def __init__(self):
+            self.cur = Cursor()
+            self.closed = False
+
+        def cursor(self):
+            return self.cur
+
+        def close(self):
+            self.closed = True
+
+    connection = Connection()
+    monkeypatch.setattr(docs_search, "embed_one", lambda query, is_query: [0.1, 0.2])
+    monkeypatch.setattr(docs_search, "connect_vec", lambda: connection)
+
+    with pytest.raises(RuntimeError, match="12-row candidate budget"):
+        docs_search.search("S001 contract", top_k=1)
+
     assert connection.cur.closed is True
     assert connection.closed is True
