@@ -32,6 +32,12 @@ Each document's old chunks, replacement chunks, and indexed-hash marker are upda
 
 An embedding-count mismatch means the backend returned fewer or more vectors than requested and is rejected before old chunks are removed. Custom chunk windows must use a positive `target` and `0 <= overlap < target`; invalid windows fail immediately instead of entering a non-progressing loop.
 
+Document search materializes only its bounded reranking pool: three candidates
+per requested result, with a minimum pool of 12 and a maximum of 300. The
+database query carries that limit and the driver reads at most one additional
+sentinel row. An over-budget result is treated as a query/driver contract error
+instead of being reranked or retained in process memory.
+
 Document catalog reads are capped at 10,000 rows for both reindexing and status output. If the cap is reached, narrow or archive the catalog before retrying instead of raising the process memory budget. A malformed catalog row is also rejected before source files or embedding services are touched. Status cursors and connections are closed even when the catalog query fails, so repeated diagnostics do not consume the database pool.
 
 ## Compose configuration fails
