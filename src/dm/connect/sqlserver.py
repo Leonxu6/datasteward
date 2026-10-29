@@ -3,10 +3,11 @@ from contextlib import contextmanager
 from typing import Optional
 
 from dm.config import SRC_MSSQL_DB, SRC_MSSQL_HOST, SRC_MSSQL_PASSWORD, SRC_MSSQL_PORT, SRC_MSSQL_USER
-from dm.connect.base import ColumnDef, Connector, DatasetDef, Source, normalize_port, normalize_read_limit, normalize_timeout
+from dm.connect.base import ColumnDef, Connector, DatasetDef, Source, fetch_bounded_rows, normalize_port, normalize_read_limit, normalize_timeout
 from dm.connect.validation import normalize_identifier, normalize_required_text
 
 _DEFAULT_ODBC_DRIVER = "ODBC Driver 17 for SQL Server"
+_MAX_INTROSPECTION_ROWS = 10_000
 
 
 def default_u8_source() -> Source:
@@ -104,12 +105,12 @@ class SqlServerConnector(Connector):
         schema = self._schema(schema); out = []
         _, style = _load_driver(); ph = "%s" if style == "pymssql" else "?"
         with self._cursor() as cur:
-            cur.execute("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES " f"WHERE TABLE_SCHEMA={ph} AND TABLE_TYPE='BASE TABLE' ORDER BY TABLE_NAME", (schema,)); tables = [r[0] for r in cur.fetchall()]
+            cur.execute("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES " f"WHERE TABLE_SCHEMA={ph} AND TABLE_TYPE='BASE TABLE' ORDER BY TABLE_NAME", (schema,)); tables = [r[0] for r in fetch_bounded_rows(cur, limit=_MAX_INTROSPECTION_ROWS, label="SQL Server table introspection")]
             cur.execute("SELECT tc.TABLE_NAME, kcu.COLUMN_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu ON tc.CONSTRAINT_NAME=kcu.CONSTRAINT_NAME AND tc.CONSTRAINT_SCHEMA=kcu.CONSTRAINT_SCHEMA " f"WHERE tc.CONSTRAINT_TYPE='PRIMARY KEY' AND tc.TABLE_SCHEMA={ph} ORDER BY tc.TABLE_NAME, kcu.ORDINAL_POSITION", (schema,))
             pk_map: dict = {}
-            for tname, col in cur.fetchall(): pk_map.setdefault(tname, []).append(col)
+            for tname, col in fetch_bounded_rows(cur, limit=_MAX_INTROSPECTION_ROWS, label="SQL Server primary-key introspection"): pk_map.setdefault(tname, []).append(col)
             for t in tables:
-                cur.execute("SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS " f"WHERE TABLE_SCHEMA={ph} AND TABLE_NAME={ph} ORDER BY ORDINAL_POSITION", (schema, t)); pks = set(pk_map.get(t, [])); cols = [ColumnDef(name=cn, data_type=dt, nullable=(nl == "YES"), is_primary_key=(cn in pks)) for cn, dt, nl in cur.fetchall()]; out.append(DatasetDef(name=t, columns=cols, primary_key=pk_map.get(t, [])))
+                cur.execute("SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS " f"WHERE TABLE_SCHEMA={ph} AND TABLE_NAME={ph} ORDER BY ORDINAL_POSITION", (schema, t)); pks = set(pk_map.get(t, [])); column_rows = fetch_bounded_rows(cur, limit=_MAX_INTROSPECTION_ROWS, label=f"SQL Server column introspection for {t!r}"); cols = [ColumnDef(name=cn, data_type=dt, nullable=(nl == "YES"), is_primary_key=(cn in pks)) for cn, dt, nl in column_rows]; out.append(DatasetDef(name=t, columns=cols, primary_key=pk_map.get(t, [])))
         return out
 
     def read_table(self, name: str, limit: Optional[int] = None, cursor_col: Optional[str] = None, since=None) -> tuple:

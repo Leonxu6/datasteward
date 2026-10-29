@@ -6,8 +6,10 @@
 from typing import Optional
 
 from dm.config import SRC_PG_DB, SRC_PG_HOST, SRC_PG_PASSWORD, SRC_PG_PORT, SRC_PG_USER
-from dm.connect.base import ColumnDef, Connector, DatasetDef, Source, normalize_port, normalize_read_limit, normalize_timeout
+from dm.connect.base import ColumnDef, Connector, DatasetDef, Source, fetch_bounded_rows, normalize_port, normalize_read_limit, normalize_timeout
 from dm.connect.validation import normalize_identifier, normalize_required_text
+
+_MAX_INTROSPECTION_ROWS = 10_000
 
 
 def _quote_ident(value, *, field_name: str) -> str:
@@ -78,7 +80,9 @@ class PostgresConnector(Connector):
             cur.execute(
                 "SELECT table_name FROM information_schema.tables "
                 "WHERE table_schema=%s AND table_type='BASE TABLE' ORDER BY table_name", (schema,))
-            tables = [r[0] for r in cur.fetchall()]
+            tables = [r[0] for r in fetch_bounded_rows(
+                cur, limit=_MAX_INTROSPECTION_ROWS, label="PostgreSQL table introspection"
+            )]
             cur.execute(
                 "SELECT tc.table_name, kcu.column_name "
                 "FROM information_schema.table_constraints tc "
@@ -92,15 +96,22 @@ class PostgresConnector(Connector):
                 "WHERE tc.constraint_type='PRIMARY KEY' AND tc.table_schema=%s "
                 "ORDER BY tc.table_name, kcu.ordinal_position", (schema,))
             pk_map: dict = {}
-            for tname, col in cur.fetchall():
+            for tname, col in fetch_bounded_rows(
+                cur, limit=_MAX_INTROSPECTION_ROWS, label="PostgreSQL primary-key introspection"
+            ):
                 pk_map.setdefault(tname, []).append(col)
             for t in tables:
                 cur.execute(
                     "SELECT column_name, data_type, is_nullable FROM information_schema.columns "
                     "WHERE table_schema=%s AND table_name=%s ORDER BY ordinal_position", (schema, t))
                 pks = set(pk_map.get(t, []))
+                column_rows = fetch_bounded_rows(
+                    cur,
+                    limit=_MAX_INTROSPECTION_ROWS,
+                    label=f"PostgreSQL column introspection for {t!r}",
+                )
                 cols = [ColumnDef(name=cn, data_type=dt, nullable=(nl == "YES"),
-                                  is_primary_key=(cn in pks)) for cn, dt, nl in cur.fetchall()]
+                                  is_primary_key=(cn in pks)) for cn, dt, nl in column_rows]
                 out.append(DatasetDef(name=t, columns=cols, primary_key=pk_map.get(t, [])))
         return out
 

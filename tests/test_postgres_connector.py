@@ -6,11 +6,13 @@ import pytest
 
 from dm.connect.base import Source
 from dm.connect.postgres import PostgresConnector
+import dm.connect.postgres as postgres_module
 
 
 class _Cursor:
     def __init__(self):
         self.calls = []
+        self.fetch_sizes = []
         self._responses = iter(
             [
                 [("inventory",)],
@@ -33,6 +35,10 @@ class _Cursor:
         self.calls.append((sql, params))
 
     def fetchall(self):
+        return next(self._responses)
+
+    def fetchmany(self, size):
+        self.fetch_sizes.append(size)
         return next(self._responses)
 
 
@@ -79,6 +85,19 @@ def test_introspect_preserves_composite_primary_key_order(monkeypatch):
     pk_sql, pk_params = fake.cursor_obj.calls[1]
     assert "ORDER BY tc.table_name, kcu.ordinal_position" in pk_sql
     assert pk_params == ("erp",)
+    assert fake.cursor_obj.fetch_sizes == [10_001, 10_001, 10_001]
+
+
+def test_introspect_rejects_table_results_beyond_budget(monkeypatch):
+    connector = PostgresConnector(Source(name="pg", source_type="postgres"))
+    cursor = _Cursor()
+    cursor._responses = iter([[('a',), ('b',), ('c',)]])
+    fake = _Connection(cursor=cursor)
+    monkeypatch.setattr(postgres_module, "_MAX_INTROSPECTION_ROWS", 2)
+    monkeypatch.setattr(connector, "_connect", lambda: fake)
+
+    with pytest.raises(RuntimeError, match="table introspection exceeded its 2-row budget"):
+        connector.introspect()
 
 
 def test_introspect_pk_join_matches_full_table_identity(monkeypatch):

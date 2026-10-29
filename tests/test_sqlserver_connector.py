@@ -10,10 +10,12 @@ import dm.connect.sqlserver as sqlserver_module
 class _IntrospectionCursor:
     def __init__(self):
         self.calls = []
+        self.fetch_sizes = []
         self._responses = iter([[("orders",)], [("orders", "tenant_id"), ("orders", "order_id")], [("tenant_id", "int", "NO"), ("order_id", "int", "NO"), ("name", "varchar", "YES")]])
         self.closed = False
     def execute(self, sql, params=()): self.calls.append((sql, params))
     def fetchall(self): return next(self._responses)
+    def fetchmany(self, size): self.fetch_sizes.append(size); return next(self._responses)
     def close(self): self.closed = True
 
 
@@ -117,6 +119,15 @@ def test_introspect_uses_configured_schema_and_preserves_composite_pk_order(monk
     assert "tc.CONSTRAINT_SCHEMA=kcu.CONSTRAINT_SCHEMA" in pk_sql and "ORDER BY tc.TABLE_NAME, kcu.ORDINAL_POSITION" in pk_sql and pk_params == ("erp",)
     assert "TABLE_SCHEMA=%s AND TABLE_NAME=%s" in column_sql and column_params == ("erp", "orders")
     assert fake.cursor_obj.closed is True and fake.closed is True
+    assert fake.cursor_obj.fetch_sizes == [10_001, 10_001, 10_001]
+
+
+def test_introspect_rejects_table_results_beyond_budget_and_closes_resources(monkeypatch):
+    cursor = _IntrospectionCursor(); cursor._responses = iter([[('a',), ('b',), ('c',)]])
+    connector = SqlServerConnector(Source(name="u8", source_type="sqlserver")); fake = _IntrospectionConnection(cursor=cursor)
+    monkeypatch.setattr(sqlserver_module, "_MAX_INTROSPECTION_ROWS", 2); monkeypatch.setattr(sqlserver_module, "_load_driver", lambda: (object(), "pymssql")); monkeypatch.setattr(connector, "_connect", lambda: fake)
+    with pytest.raises(RuntimeError, match="table introspection exceeded its 2-row budget"): connector.introspect()
+    assert cursor.closed is True and fake.closed is True
 
 
 def test_read_table_qualifies_configured_schema(monkeypatch):

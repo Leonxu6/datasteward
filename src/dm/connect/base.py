@@ -41,6 +41,14 @@ def normalize_read_limit(limit: Optional[int]) -> Optional[int]:
     return value
 
 
+def fetch_bounded_rows(cursor, *, limit: int, label: str) -> list:
+    """Read at most ``limit`` rows and reject a driver result that exceeds it."""
+    rows = list(cursor.fetchmany(limit + 1))
+    if len(rows) > limit:
+        raise RuntimeError(f"{label} exceeded its {limit}-row budget")
+    return rows
+
+
 def _normalize_positive_int(value, *, default=None, field_name: str) -> int:
     """解析配置中的正整数，接受 int / ASCII 数字字符串，拒绝布尔值、截断和首尾空白。"""
     value = default if value is None else value
