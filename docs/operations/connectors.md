@@ -29,6 +29,13 @@ PostgreSQL and SQL Server incremental reads return rows in ascending cursor orde
 
 Introspection should agree with the later read path about schema qualification, dataset naming, and ambiguous files. A dataset advertised during onboarding should be readable with the same logical name.
 
+PostgreSQL and SQL Server metadata reads enforce a 10,000-row budget at the
+driver boundary for table, primary-key, and per-table column queries. The
+connectors request one sentinel row beyond that budget and fail explicitly when
+it is present, while still closing the cursor and connection. An over-budget
+schema should be narrowed before retrying instead of being materialized into the
+onboarding process.
+
 ## Tests
 
 Use fake drivers to assert that malformed configuration fails before driver access. Add regression tests for identifier quoting, cleanup, schema qualification, cursor boundaries, and ambiguous file names.
