@@ -66,6 +66,39 @@ def test_append_jsonl_retries_short_writes_until_record_is_complete(tmp_path, mo
     assert read_jsonl(tmp_path, "audit") == [{"id": 7, "message": "完整记录"}]
 
 
+def test_append_jsonl_rejects_write_that_would_cross_file_budget(tmp_path, monkeypatch):
+    path = tmp_path / "audit.jsonl"
+    path.write_bytes(b'{"id":1}\n')
+    original = path.read_bytes()
+    monkeypatch.setattr(logio, "_MAX_FILE_BYTES", len(original) + 1)
+
+    with pytest.raises(OSError, match="archive or rotate"):
+        append_jsonl(tmp_path, "audit", {"id": 2})
+
+    assert path.read_bytes() == original
+
+
+def test_append_jsonl_restores_original_size_after_partial_write_failure(tmp_path, monkeypatch):
+    path = tmp_path / "audit.jsonl"
+    path.write_bytes(b'{"id":1}\n')
+    original = path.read_bytes()
+    real_write = logio.os.write
+    calls = 0
+
+    def fail_after_prefix(fd, payload):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return real_write(fd, payload[:1])
+        raise OSError("simulated storage failure")
+
+    monkeypatch.setattr(logio.os, "write", fail_after_prefix)
+    with pytest.raises(OSError, match="simulated storage failure"):
+        append_jsonl(tmp_path, "audit", {"id": 2})
+
+    assert path.read_bytes() == original
+
+
 @pytest.mark.skipif(not hasattr(os, "fchmod"), reason="platform has no descriptor chmod")
 def test_append_jsonl_tightens_existing_file_permissions(tmp_path):
     path = tmp_path / "audit.jsonl"

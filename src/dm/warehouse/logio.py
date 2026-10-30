@@ -1,6 +1,7 @@
 """Safe JSONL persistence helpers for audit/task/eval logs."""
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import re
@@ -75,7 +76,12 @@ def encode_record(record: dict) -> bytes:
 
 
 def append_jsonl(log_dir: Path, name, record: dict) -> None:
-    """Append and fsync one complete bounded UTF-8 JSON line."""
+    """Append and fsync one complete bounded UTF-8 JSON line.
+
+    The write-side byte budget matches ``read_jsonl`` so a successful append
+    cannot make the active log unreadable.  A process lock keeps the capacity
+    check and append together when multiple workers share the same log.
+    """
     directory = _log_dir(log_dir)
     directory.mkdir(parents=True, exist_ok=True)
     path = log_path(directory, name)
@@ -92,13 +98,33 @@ def append_jsonl(log_dir: Path, name, record: dict) -> None:
             raise OSError("JSONL target must be a regular file")
         if hasattr(os, "fchmod"):
             os.fchmod(fd, stat.S_IMODE(metadata.st_mode) & 0o640)
-        offset = 0
-        while offset < len(payload):
-            written = os.write(fd, payload[offset:])
-            if written <= 0:
-                raise OSError(f"short JSONL append stalled after {offset}/{len(payload)} bytes")
-            offset += written
-        os.fsync(fd)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        original_size = os.fstat(fd).st_size
+        try:
+            if original_size + len(payload) > _MAX_FILE_BYTES:
+                raise OSError(
+                    f"JSONL target would exceed {_MAX_FILE_BYTES} bytes; archive or rotate it"
+                )
+            offset = 0
+            while offset < len(payload):
+                written = os.write(fd, payload[offset:])
+                if written <= 0:
+                    raise OSError(
+                        f"short JSONL append stalled after {offset}/{len(payload)} bytes"
+                    )
+                offset += written
+            os.fsync(fd)
+        except Exception:
+            try:
+                os.ftruncate(fd, original_size)
+                os.fsync(fd)
+            except OSError as rollback_error:
+                raise OSError(
+                    "JSONL append failed and could not restore the previous file size"
+                ) from rollback_error
+            raise
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
     finally:
         os.close(fd)
 
