@@ -45,6 +45,7 @@ class _Cursor:
 class _ReadCursor:
     def __init__(self):
         self.calls = []
+        self.fetch_sizes = []
         self.description = [("id",), ("updated_at",)]
 
     def __enter__(self):
@@ -56,7 +57,8 @@ class _ReadCursor:
     def execute(self, sql, params=None):
         self.calls.append((sql, params))
 
-    def fetchall(self):
+    def fetchmany(self, size):
+        self.fetch_sizes.append(size)
         return [(2, "2026-08-13")]
 
 
@@ -136,6 +138,19 @@ def test_read_table_qualifies_configured_schema(monkeypatch):
     sql, params = cursor.calls[0]
     assert sql == 'SELECT * FROM "erp"."orders" WHERE "updated_at" > %s ORDER BY "updated_at" ASC LIMIT %s'
     assert params == ["2026-08-01", 2]
+    assert cursor.fetch_sizes == [3]
+
+
+def test_read_table_rejects_unbounded_results_beyond_driver_budget(monkeypatch):
+    connector = PostgresConnector(Source(name="pg", source_type="postgres"))
+    cursor = _ReadCursor()
+    cursor.fetchmany = lambda size: [(1, "a"), (2, "b"), (3, "c")]
+    fake = _Connection(cursor=cursor)
+    monkeypatch.setattr("dm.connect.base._MAX_READ_ROWS", 2)
+    monkeypatch.setattr(connector, "_connect", lambda: fake)
+
+    with pytest.raises(RuntimeError, match="table read for 'orders' exceeded its 2-row budget"):
+        connector.read_table("orders")
 
 
 def test_read_table_safely_quotes_complex_identifiers(monkeypatch):

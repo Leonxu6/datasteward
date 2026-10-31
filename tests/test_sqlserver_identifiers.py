@@ -16,7 +16,7 @@ class _Cursor:
         self.sql = sql
         self.params = params
 
-    def fetchall(self):
+    def fetchmany(self, size):
         return [(1,)]
 
     def close(self):

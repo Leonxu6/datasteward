@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from typing import Optional
 
 from dm.config import SRC_MSSQL_DB, SRC_MSSQL_HOST, SRC_MSSQL_PASSWORD, SRC_MSSQL_PORT, SRC_MSSQL_USER
-from dm.connect.base import ColumnDef, Connector, DatasetDef, Source, fetch_bounded_rows, normalize_port, normalize_read_limit, normalize_timeout
+from dm.connect.base import ColumnDef, Connector, DatasetDef, Source, fetch_bounded_rows, normalize_port, normalize_read_limit, normalize_timeout, read_row_budget
 from dm.connect.validation import normalize_identifier, normalize_required_text
 
 _DEFAULT_ODBC_DRIVER = "ODBC Driver 17 for SQL Server"
@@ -127,7 +127,17 @@ class SqlServerConnector(Connector):
             except ValueError as exc:
                 raise ValueError(f"非法游标列: {cursor_col!r}") from exc
             sql += f" WHERE {cursor_sql} > {ph} ORDER BY {cursor_sql} ASC"; params.append(since)
-        with self._cursor() as cur: cur.execute(sql, tuple(params) if params else ()); cols = [d[0] for d in cur.description]; rows = [tuple(row) for row in cur.fetchall()]
+        with self._cursor() as cur:
+            cur.execute(sql, tuple(params) if params else ())
+            cols = [d[0] for d in cur.description]
+            rows = [
+                tuple(row)
+                for row in fetch_bounded_rows(
+                    cur,
+                    limit=read_row_budget(limit),
+                    label=f"SQL Server table read for {name!r}",
+                )
+            ]
         return cols, rows
 
     def capabilities(self) -> dict:

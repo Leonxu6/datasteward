@@ -19,6 +19,8 @@ from typing import Optional
 
 from dm.connect.validation import normalize_env_name, normalize_required_text
 
+_MAX_READ_ROWS = 100_000
+
 
 class SyncMode(str, Enum):
     SNAPSHOT = "snapshot"        # 全量替换（源不支持增量时）
@@ -47,6 +49,14 @@ def fetch_bounded_rows(cursor, *, limit: int, label: str) -> list:
     if len(rows) > limit:
         raise RuntimeError(f"{label} exceeded its {limit}-row budget")
     return rows
+
+
+def read_row_budget(limit: Optional[int]) -> int:
+    """Return the driver fetch budget for one materialized table read."""
+    normalized = normalize_read_limit(limit)
+    if normalized is None:
+        return _MAX_READ_ROWS
+    return min(normalized, _MAX_READ_ROWS)
 
 
 def _normalize_positive_int(value, *, default=None, field_name: str) -> int:

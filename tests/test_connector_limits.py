@@ -27,6 +27,9 @@ class _FakeCursor:
     def fetchall(self):
         return []
 
+    def fetchmany(self, size):
+        return []
+
 
 class _FakeConnection:
     def __init__(self):

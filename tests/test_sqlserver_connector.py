@@ -42,9 +42,9 @@ class _DriverRow(list): pass
 
 
 class _ReadCursor:
-    def __init__(self): self.description = [("id",), ("name",)]; self.closed = False
+    def __init__(self): self.description = [("id",), ("name",)]; self.closed = False; self.fetch_sizes = []
     def execute(self, sql, params=()): self.sql, self.params = sql, params
-    def fetchall(self): return [_DriverRow([1, "alpha"]), _DriverRow([2, "beta"])]
+    def fetchmany(self, size): self.fetch_sizes.append(size); return [_DriverRow([1, "alpha"]), _DriverRow([2, "beta"])]
     def close(self): self.closed = True
 
 
@@ -184,3 +184,11 @@ def test_read_table_normalizes_driver_rows_to_tuples(monkeypatch):
     columns, rows = connector.read_table("orders")
     assert columns == ["id", "name"] and rows == [(1, "alpha"), (2, "beta")]
     assert all(type(row) is tuple for row in rows) and cursor.closed is True and fake.closed is True
+
+
+def test_read_table_rejects_unbounded_results_beyond_driver_budget(monkeypatch):
+    connector = SqlServerConnector(Source(name="u8", source_type="sqlserver")); cursor = _ReadCursor(); fake = _IntrospectionConnection(cursor=cursor)
+    cursor.fetchmany = lambda size: [_DriverRow([1]), _DriverRow([2]), _DriverRow([3])]
+    monkeypatch.setattr("dm.connect.base._MAX_READ_ROWS", 2); monkeypatch.setattr(sqlserver_module, "_load_driver", lambda: (object(), "pymssql")); monkeypatch.setattr(connector, "_connect", lambda: fake)
+    with pytest.raises(RuntimeError, match="table read for 'orders' exceeded its 2-row budget"): connector.read_table("orders")
+    assert cursor.closed is True and fake.closed is True

@@ -6,7 +6,7 @@
 from typing import Optional
 
 from dm.config import SRC_PG_DB, SRC_PG_HOST, SRC_PG_PASSWORD, SRC_PG_PORT, SRC_PG_USER
-from dm.connect.base import ColumnDef, Connector, DatasetDef, Source, fetch_bounded_rows, normalize_port, normalize_read_limit, normalize_timeout
+from dm.connect.base import ColumnDef, Connector, DatasetDef, Source, fetch_bounded_rows, normalize_port, normalize_read_limit, normalize_timeout, read_row_budget
 from dm.connect.validation import normalize_identifier, normalize_required_text
 
 _MAX_INTROSPECTION_ROWS = 10_000
@@ -143,7 +143,11 @@ class PostgresConnector(Connector):
         with self._connect() as c, c.cursor() as cur:
             cur.execute(sql, params or None)
             cols = [d[0] for d in cur.description]
-            rows = cur.fetchall()
+            rows = fetch_bounded_rows(
+                cur,
+                limit=read_row_budget(limit),
+                label=f"PostgreSQL table read for {name!r}",
+            )
         return cols, rows
 
     def capabilities(self) -> dict:
