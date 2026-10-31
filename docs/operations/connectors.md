@@ -25,6 +25,16 @@ Treat `since` and cursor-column configuration as a pair. Reject incomplete combi
 
 PostgreSQL and SQL Server incremental reads return rows in ascending cursor order. This makes bounded batches deterministic and lets callers advance a watermark from the last row rather than depending on a database's unspecified scan order. A cursor used with a limit must be unique as well as monotonic; otherwise rows tied at the batch boundary require a compound cursor that the current connector API does not yet provide.
 
+## Runtime read budgets
+
+PostgreSQL and SQL Server table reads materialize their result for the connector
+API, so the driver boundary enforces a hard 100,000-row budget even when the
+caller omits `limit` or requests a larger value. The connector asks for one
+sentinel row beyond the effective budget and fails explicitly if it is present.
+Use a smaller `limit`, an incremental cursor, or a streaming pipeline for larger
+extracts; do not raise the in-process budget to turn a batch API into a bulk
+transport.
+
 ## Introspection
 
 Introspection should agree with the later read path about schema qualification, dataset naming, and ambiguous files. A dataset advertised during onboarding should be readable with the same logical name.
