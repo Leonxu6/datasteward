@@ -35,6 +35,13 @@ Use a smaller `limit`, an incremental cursor, or a streaming pipeline for larger
 extracts; do not raise the in-process budget to turn a batch API into a bulk
 transport.
 
+The U8 `status` command applies a separate 10,000-table discovery budget when
+enumerating `raw_u8__*` ODS tables. It orders names before requesting one
+sentinel row beyond the budget, then refuses an oversized catalog instead of
+materializing every table and issuing an unbounded sequence of count queries.
+Archive obsolete raw tables or narrow the catalog before retrying; increasing
+the process memory allowance does not change this operational limit.
+
 ## Introspection
 
 Introspection should agree with the later read path about schema qualification, dataset naming, and ambiguous files. A dataset advertised during onboarding should be readable with the same logical name.
