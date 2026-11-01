@@ -106,3 +106,67 @@ def test_status_closes_warehouse_and_redacts_query_failures(monkeypatch, capsys)
     assert "RuntimeError" in output
     assert "secret" not in output
     assert "warehouse/internal" not in output
+
+
+def test_status_bounds_and_orders_raw_table_discovery(monkeypatch, capsys):
+    captured = {"queries": []}
+
+    class FakeResult:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def fetchmany(self, size):
+            captured.setdefault("fetch_sizes", []).append(size)
+            return self.rows[:size]
+
+        def fetchone(self):
+            return self.rows[0]
+
+    class FakeWarehouse:
+        def execute(self, sql):
+            captured["queries"].append(sql)
+            if "information_schema.tables" in sql:
+                return FakeResult([("raw_u8__inventory",)])
+            return FakeResult([(3,)])
+
+        def close(self):
+            captured["closed"] = True
+
+    monkeypatch.setattr(u8_mapping, "_load_wm", lambda: {})
+    monkeypatch.setattr(u8_mapping, "connect_admin", lambda db: FakeWarehouse())
+    monkeypatch.setattr(u8_mapping, "_MAX_STATUS_TABLES", 2)
+
+    u8_mapping.status()
+
+    output = capsys.readouterr().out
+    assert "raw_u8__inventory" in output
+    assert "3 行" in output
+    assert "ORDER BY table_name LIMIT 3" in captured["queries"][0]
+    assert captured["fetch_sizes"] == [3]
+    assert captured["closed"]
+
+
+def test_status_rejects_raw_table_discovery_over_budget(monkeypatch, capsys):
+    captured = {}
+
+    class FakeResult:
+        def fetchmany(self, size):
+            return [("raw_u8__a",), ("raw_u8__b",), ("raw_u8__c",)][:size]
+
+    class FakeWarehouse:
+        def execute(self, sql):
+            return FakeResult()
+
+        def close(self):
+            captured["closed"] = True
+
+    monkeypatch.setattr(u8_mapping, "_load_wm", lambda: {})
+    monkeypatch.setattr(u8_mapping, "connect_admin", lambda db: FakeWarehouse())
+    monkeypatch.setattr(u8_mapping, "_MAX_STATUS_TABLES", 2)
+
+    u8_mapping.status()
+
+    output = capsys.readouterr().out
+    assert "RuntimeError" in output
+    assert "raw_u8__a" not in output
+    assert captured["closed"]

@@ -12,6 +12,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from dm.config import LOG_DIR, WH_DB
+from dm.connect.base import fetch_bounded_rows
 from dm.connect.catalog import get_connector
 from dm.connect.sync_state import (
     atomic_write_json,
@@ -25,6 +26,7 @@ from dm.tools.principal import Principal
 from dm.warehouse.store import connect_admin
 
 WATERMARK_FILE = LOG_DIR / "u8_watermark.json"
+_MAX_STATUS_TABLES = 10_000
 
 U8_TABLE_MAP = [
     {"u8": "Inventory",       "object": "material",        "cursor": "dModifyDate", "cn": "存货档案"},
@@ -261,10 +263,16 @@ def status():
     sr = None
     try:
         sr = connect_admin(WH_DB)
-        rows = sr.execute(
+        cursor = sr.execute(
             f"SELECT table_name FROM information_schema.tables "
-            f"WHERE table_schema='{WH_DB}' AND table_name LIKE 'raw_u8__%'"
-        ).fetchall()
+            f"WHERE table_schema='{WH_DB}' AND table_name LIKE 'raw_u8__%' "
+            f"ORDER BY table_name LIMIT {_MAX_STATUS_TABLES + 1}"
+        )
+        rows = fetch_bounded_rows(
+            cursor,
+            limit=_MAX_STATUS_TABLES,
+            label="U8 status table discovery",
+        )
         print(f"=== StarRocks ODS：{len(rows)} 张 raw_u8__* ===")
         for (table,) in rows:
             count = sr.execute(f"SELECT COUNT(*) FROM `{table}`").fetchone()[0]
