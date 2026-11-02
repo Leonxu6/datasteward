@@ -12,6 +12,8 @@ Validate fetch batch sizes before touching the driver. Incremental `fetchmany` l
 
 The compatibility adapter caps `fetchall()` and `fetchdf()` at 100,000 rows and requests one sentinel row from the database driver so the limit is enforced before the entire result is materialized. A larger result raises explicitly and still closes the cursor. Callers that legitimately process larger datasets must use a bounded `fetchmany()` loop rather than increasing the global limit.
 
+Ontology reads apply the same fail-closed rule at smaller API budgets. Object listings accept at most 500 rows and each incoming link accepts at most 200 rows. Both queries ask the database for one sentinel row and use a bounded driver fetch; an adapter that returns more than the requested budget raises instead of silently materializing or truncating the excess.
+
 ## Logging
 
 Append-only JSONL logs should use safe paths and durable serialization. Complex values should either be normalized or rejected with useful errors; one malformed record must not corrupt the entire log. Both readers and appenders open targets non-blocking and validate the open file descriptor, so FIFOs and other special files cannot stall or capture an audit operation. Supported platforms also refuse symbolic-link targets. Existing log permissions are narrowed to at most `0640` without making a more restrictive file broader.
