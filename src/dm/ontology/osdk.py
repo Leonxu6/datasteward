@@ -1,6 +1,7 @@
 """OSDK-lite：本体的**只读**访问 API（对标 Palantir OSDK 的 objects.X.get/where/iterate）。"""
 from typing import Optional
 
+from dm.connect.base import fetch_bounded_rows
 from dm.ontology.model import ObjectType, get_object_type, incoming_links
 from dm.warehouse.store import connect_ro
 
@@ -75,12 +76,12 @@ def list_objects(api_name: str, limit: int = 50, order_by: Optional[str] = None,
     sql = f"SELECT * FROM `{ot.table}`" + where
     if order_prop is not None:
         sql += f" ORDER BY `{order_prop.column}`"
-    sql += f" LIMIT {limit}"
+    sql += f" LIMIT {limit + 1}"
     con = connect_ro()
     try:
         cur = con.execute(sql)
         cols = [d[0] for d in cur.description]
-        rows = cur.fetchall()
+        rows = fetch_bounded_rows(cur, limit=limit, label=f"{ot.api_name} object listing")
     finally:
         con.close()
     objs = [_row_to_obj(ot, r, cols) for r in rows]
@@ -147,10 +148,14 @@ def get_links(api_name: str, pk_value, per_link_limit: int = 20) -> dict:
         for lk in incoming_links(ot.api_name):
             child = get_object_type(lk.from_object)
             cur = con.execute(
-                f"SELECT * FROM `{child.table}` WHERE `{lk.from_property}` = %s LIMIT {per_link_limit}",
+                f"SELECT * FROM `{child.table}` WHERE `{lk.from_property}` = %s LIMIT {per_link_limit + 1}",
                 (pk_value,))
             cols = [d[0] for d in cur.description]
-            rows = cur.fetchall()
+            rows = fetch_bounded_rows(
+                cur,
+                limit=per_link_limit,
+                label=f"{lk.from_object}.{lk.api_name} incoming link",
+            )
             if rows:
                 incoming[f"{lk.from_object}.{lk.api_name}"] = {
                     "from": lk.from_object, "display": lk.display_name,
