@@ -54,6 +54,8 @@ def _fetch_batches(cursor, *, size=_KG_BATCH_SIZE):
         rows = cursor.fetchmany(size)
         if not isinstance(rows, (list, tuple)):
             raise RuntimeError("knowledge-graph query returned a malformed batch")
+        if len(rows) > size:
+            raise RuntimeError("knowledge-graph query exceeded the requested batch size")
         if not rows:
             return
         yield rows

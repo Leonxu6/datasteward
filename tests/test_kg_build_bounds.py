@@ -182,3 +182,12 @@ def test_fetch_batches_rejects_malformed_driver_results():
 
     with pytest.raises(RuntimeError, match="malformed batch"):
         list(build._fetch_batches(BadCursor()))
+
+
+def test_fetch_batches_rejects_driver_batches_over_the_requested_size():
+    class OversizedCursor:
+        def fetchmany(self, size):
+            return [(index,) for index in range(size + 1)]
+
+    with pytest.raises(RuntimeError, match="exceeded the requested batch size"):
+        list(build._fetch_batches(OversizedCursor(), size=2))

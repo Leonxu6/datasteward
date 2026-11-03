@@ -10,6 +10,11 @@ Close cursors after reads, writes, and failed fetches. Context-manager support s
 
 Validate fetch batch sizes before touching the driver. Incremental `fetchmany` loops should close the cursor even if a later batch raises. Avoid loading unbounded result sets into memory when streaming is sufficient.
 
+Knowledge-graph imports also treat the requested `fetchmany` size as a hard
+driver contract. A driver that returns a larger batch is rejected before rows
+are converted into graph records, so a non-conforming adapter cannot silently
+defeat the importer memory budget.
+
 The compatibility adapter caps `fetchall()` and `fetchdf()` at 100,000 rows and requests one sentinel row from the database driver so the limit is enforced before the entire result is materialized. A larger result raises explicitly and still closes the cursor. Callers that legitimately process larger datasets must use a bounded `fetchmany()` loop rather than increasing the global limit.
 
 Ontology reads apply the same fail-closed rule at smaller API budgets. Object listings accept at most 500 rows and each incoming link accepts at most 200 rows. Both queries ask the database for one sentinel row and use a bounded driver fetch; an adapter that returns more than the requested budget raises instead of silently materializing or truncating the excess.
