@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import tempfile
 from datetime import date, datetime
 from pathlib import Path
 from typing import Iterable
 
 _MAX_STATE_BYTES = 1_048_576
+_STATE_READ_CHUNK_BYTES = 64 * 1024
 
 
 def _path(value, *, field: str) -> Path:
@@ -58,14 +60,39 @@ def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
     return result
 
 
+def _read_bounded_state(path: Path) -> bytes | None:
+    """Read one regular state file through its descriptor without crossing the byte budget."""
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(path, flags)
+    try:
+        metadata = os.fstat(fd)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > _MAX_STATE_BYTES:
+            return None
+        chunks: list[bytes] = []
+        total = 0
+        while True:
+            remaining = _MAX_STATE_BYTES + 1 - total
+            chunk = os.read(fd, min(_STATE_READ_CHUNK_BYTES, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+            if total > _MAX_STATE_BYTES:
+                return None
+        return b"".join(chunks)
+    finally:
+        os.close(fd)
+
+
 def load_json_mapping(path: Path) -> dict:
     """Load a strict JSON object, returning an empty mapping for missing/corrupt/non-object files."""
     path = _path(path, field="state path")
     try:
-        if path.stat().st_size > _MAX_STATE_BYTES:
+        raw_bytes = _read_bounded_state(path)
+        if raw_bytes is None:
             return {}
         raw = json.loads(
-            path.read_text(encoding="utf-8"),
+            raw_bytes.decode("utf-8"),
             parse_constant=_reject_json_constant,
             object_pairs_hook=_unique_json_object,
         )

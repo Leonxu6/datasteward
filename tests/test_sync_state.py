@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+import dm.connect.sync_state as sync_state
 from dm.connect.sync_state import (
     _MAX_STATE_BYTES,
     atomic_write_json,
@@ -36,6 +37,33 @@ def test_load_json_mapping_rejects_oversized_state_before_parse(tmp_path):
     path = tmp_path / "state.json"
     path.write_text("{" + (" " * _MAX_STATE_BYTES) + "}", encoding="utf-8")
     assert path.stat().st_size > _MAX_STATE_BYTES
+    assert load_json_mapping(path) == {}
+
+
+def test_load_json_mapping_uses_descriptor_owned_bounded_reads(tmp_path, monkeypatch):
+    path = tmp_path / "state.json"
+    path.write_text('{"cursor":7}', encoding="utf-8")
+    monkeypatch.setattr(Path, "read_text", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError))
+
+    assert load_json_mapping(path) == {"cursor": 7}
+
+
+def test_load_json_mapping_rejects_state_that_grows_during_read(tmp_path, monkeypatch):
+    path = tmp_path / "state.json"
+    path.write_text('{"cursor":7}', encoding="utf-8")
+    real_read = sync_state.os.read
+    calls = 0
+
+    def growing_read(fd, size):
+        nonlocal calls
+        chunk = real_read(fd, size)
+        calls += 1
+        if calls == 1:
+            with path.open("ab") as handle:
+                handle.write(b" " * (_MAX_STATE_BYTES + 1))
+        return chunk
+
+    monkeypatch.setattr(sync_state.os, "read", growing_read)
     assert load_json_mapping(path) == {}
 
 

@@ -25,6 +25,11 @@ Treat `since` and cursor-column configuration as a pair. Reject incomplete combi
 
 PostgreSQL and SQL Server incremental reads return rows in ascending cursor order. This makes bounded batches deterministic and lets callers advance a watermark from the last row rather than depending on a database's unspecified scan order. A cursor used with a limit must be unique as well as monotonic; otherwise rows tied at the batch boundary require a compound cursor that the current connector API does not yet provide.
 
+Incremental watermarks are read through an open file descriptor with a 1 MiB
+hard budget. The loader rechecks the descriptor type and stops if the file
+grows past that budget while it is being read, so path replacement or a
+concurrent writer cannot turn a small preflight check into an unbounded read.
+
 ## Runtime read budgets
 
 PostgreSQL and SQL Server table reads materialize their result for the connector
