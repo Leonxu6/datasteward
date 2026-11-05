@@ -6,6 +6,8 @@ DataSteward consumes dbt metadata as an integration boundary, so artifact parsin
 
 Treat `manifest.json` as external structured data. Validate top-level collections before iterating, ignore malformed individual entries when safe, and avoid assuming optional fields are always present. Dataset and lineage registration should be deterministic for the same manifest.
 
+Artifact size limits are enforced while reading from one opened regular-file descriptor, not by checking a pathname and later reopening it. A concurrently replaced or growing `manifest.json` or `run_results.json` is therefore either read from the already opened file or rejected once it crosses its byte budget; it cannot bypass the memory boundary through a metadata/read race.
+
 ## Run results
 
 `run_results.json` may be missing, malformed, contain no tests, or contain failed/error tests. These cases have different operational meanings and should remain distinguishable in data-health output.

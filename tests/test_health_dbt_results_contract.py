@@ -53,3 +53,14 @@ def test_dbt_health_rejects_missing_result_identity(tmp_path, monkeypatch):
     result = checks._dbt_tests_result(_CHK)
     assert result["status"] == "fail"
     assert "结构异常" in result["message"]
+
+
+def test_dbt_health_uses_descriptor_owned_artifact_reads(tmp_path, monkeypatch):
+    _write_results(tmp_path, '{"results": []}')
+    path = tmp_path / "target" / "run_results.json"
+
+    def reject_path_read(*_args, **_kwargs):
+        raise AssertionError("path-based reads reintroduce a size-check race")
+
+    monkeypatch.setattr(checks.Path, "read_text", reject_path_read)
+    assert checks._load_dbt_results(path) == []

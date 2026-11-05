@@ -4,6 +4,7 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
+from dm.bounded_files import read_bounded_text
 from dm.config import SRC_PG_DB, SRC_PG_HOST, SRC_PG_PASSWORD, SRC_PG_PORT, SRC_PG_USER
 from dm.schema import business_table_names, table_by_name
 from dm.warehouse.store import connect_ro
@@ -186,11 +187,8 @@ def _to_dt(v):
 
 def _load_dbt_results(path: Path) -> list[dict]:
     try:
-        metadata = path.stat()
-        if not path.is_file() or metadata.st_size > _MAX_DBT_RESULTS_BYTES:
-            raise ValueError("invalid dbt run-results artifact")
         data = json.loads(
-            path.read_text(encoding="utf-8"),
+            read_bounded_text(path, max_bytes=_MAX_DBT_RESULTS_BYTES),
             parse_constant=_reject_json_constant,
             object_pairs_hook=_unique_json_object,
         )

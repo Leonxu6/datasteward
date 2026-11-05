@@ -7,6 +7,8 @@ import unicodedata
 from pathlib import Path
 from typing import Iterator
 
+from dm.bounded_files import read_bounded_text
+
 _MAX_MANIFEST_BYTES = 64 * 1024 * 1024
 
 
@@ -43,11 +45,8 @@ def load_manifest(path: Path) -> dict | None:
         raise ValueError("manifest path must be a filesystem path")
     path = Path(path)
     try:
-        metadata = path.stat()
-        if not path.is_file() or metadata.st_size > _MAX_MANIFEST_BYTES:
-            return None
         document = json.loads(
-            path.read_text(encoding="utf-8"),
+            read_bounded_text(path, max_bytes=_MAX_MANIFEST_BYTES),
             parse_constant=_reject_json_constant,
             object_pairs_hook=_unique_json_object,
         )

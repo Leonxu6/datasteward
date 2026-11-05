@@ -1,5 +1,6 @@
 import pytest
 
+from dm import bounded_files
 from dm.datasets import dbt_manifest
 
 
@@ -14,6 +15,37 @@ def test_load_manifest_rejects_non_paths_and_oversized_files(tmp_path, monkeypat
 
 def test_load_manifest_rejects_directories(tmp_path):
     assert dbt_manifest.load_manifest(tmp_path) is None
+
+
+def test_load_manifest_uses_a_bounded_descriptor_read(tmp_path, monkeypatch):
+    path = tmp_path / "manifest.json"
+    path.write_text('{"nodes": {}}', encoding="utf-8")
+
+    def reject_path_read(*_args, **_kwargs):
+        raise AssertionError("path-based reads reintroduce a size-check race")
+
+    monkeypatch.setattr(dbt_manifest.Path, "read_text", reject_path_read)
+    assert dbt_manifest.load_manifest(path) == {"nodes": {}}
+
+
+def test_load_manifest_rejects_files_that_grow_while_reading(tmp_path, monkeypatch):
+    path = tmp_path / "manifest.json"
+    path.write_bytes(b"{}")
+    monkeypatch.setattr(dbt_manifest, "_MAX_MANIFEST_BYTES", 2)
+    original_read = bounded_files.os.read
+    calls = 0
+
+    def growing_read(fd, size):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return b"{}"
+        if calls == 2:
+            return b"x"
+        return original_read(fd, size)
+
+    monkeypatch.setattr(bounded_files.os, "read", growing_read)
+    assert dbt_manifest.load_manifest(path) is None
 
 
 def test_iter_nodes_validates_manifest_and_resource_type():
