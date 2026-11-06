@@ -12,6 +12,7 @@ import hmac
 import math
 import os
 import re
+import stat
 import sys
 import time
 from collections import OrderedDict, deque
@@ -31,6 +32,50 @@ from dm.yaml_utils import safe_load_unique
 
 DEFAULT_ROLE = "仓管"
 _ROLE_MAP_MAX_CHARS = 200_000
+_ROLE_MAP_MAX_BYTES = 200_000
+_ROLE_MAP_READ_CHUNK_BYTES = 64 * 1024
+
+
+def _open_role_map(path, previous_signature=None):
+    """Open one bounded role-map snapshot and return its descriptor metadata."""
+    if stat.S_ISLNK(os.lstat(path).st_mode):
+        raise ValueError("role map must not be a symbolic link")
+    flags = os.O_RDONLY
+    if hasattr(os, "O_CLOEXEC"):
+        flags |= os.O_CLOEXEC
+    if hasattr(os, "O_NONBLOCK"):
+        flags |= os.O_NONBLOCK
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(path, flags)
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise ValueError("role map must be a regular file")
+        if metadata.st_size > _ROLE_MAP_MAX_BYTES:
+            raise ValueError("role map exceeds its size limit")
+        signature = (
+            metadata.st_dev,
+            metadata.st_ino,
+            metadata.st_size,
+            metadata.st_mtime_ns,
+        )
+        if signature == previous_signature:
+            return signature, None
+        chunks = []
+        remaining = _ROLE_MAP_MAX_BYTES + 1
+        while remaining:
+            chunk = os.read(descriptor, min(_ROLE_MAP_READ_CHUNK_BYTES, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        payload = b"".join(chunks)
+        if len(payload) > _ROLE_MAP_MAX_BYTES:
+            raise ValueError("role map exceeds its size limit")
+        return signature, payload.decode("utf-8")
+    finally:
+        os.close(descriptor)
 
 
 def _normalize_secret(value):
@@ -90,20 +135,19 @@ class _RoleMap:
 
     def __init__(self, path=None):
         self.path = path or os.environ.get("DM_ROLE_MAP", "role_map.yaml")
-        self._mtime = None
+        self._signature = None
         self._map: dict[str, str] = {}
 
     def _refresh(self):
         try:
-            mtime = os.stat(self.path).st_mtime
-        except OSError:
-            self._mtime, self._map = None, {}
+            signature, text = _open_role_map(self.path, self._signature)
+        except (OSError, UnicodeDecodeError, ValueError):
+            self._signature, self._map = None, {}
             return
-        if mtime == self._mtime:
+        if text is None:
             return
         try:
-            with open(self.path, encoding="utf-8") as handle:
-                document = safe_load_unique(handle.read(), max_chars=_ROLE_MAP_MAX_CHARS) or {}
+            document = safe_load_unique(text, max_chars=_ROLE_MAP_MAX_CHARS) or {}
             if not isinstance(document, dict):
                 raise ValueError("role map root must be a mapping")
             raw = document.get("roles") or {}
@@ -119,7 +163,7 @@ class _RoleMap:
         except Exception as exc:  # noqa: BLE001
             print(f"[钉钉] 角色映射解析失败（{exc.__class__.__name__}），全员按默认角色「{DEFAULT_ROLE}」")
             self._map = {}
-        self._mtime = mtime
+        self._signature = signature
 
     def role_of(self, staff_id) -> str:
         self._refresh()

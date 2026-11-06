@@ -80,6 +80,32 @@ def test_role_map_hot_reload_on_mtime(tmp_path):
     assert rm.role_of("s001") == "管理层"
 
 
+def test_role_map_hot_reload_detects_atomic_replacement_with_preserved_mtime(tmp_path):
+    p = tmp_path / "role_map.yaml"
+    p.write_text('roles:\n  "s001": 采购\n', encoding="utf-8")
+    original = p.stat()
+    rm = _RoleMap(path=str(p))
+    assert rm.role_of("s001") == "采购"
+
+    replacement = tmp_path / "replacement.yaml"
+    replacement.write_text('roles:\n  "s001": 仓管\n', encoding="utf-8")
+    os.utime(replacement, ns=(original.st_atime_ns, original.st_mtime_ns))
+    os.replace(replacement, p)
+
+    assert rm.role_of("s001") == "仓管"
+
+
+def test_role_map_refuses_symbolic_link_targets(tmp_path):
+    target = tmp_path / "outside.yaml"
+    target.write_text('roles:\n  "s001": 管理员\n', encoding="utf-8")
+    link = tmp_path / "role_map.yaml"
+    link.symlink_to(target)
+
+    rm = _RoleMap(path=str(link))
+
+    assert rm.role_of("s001") == DEFAULT_ROLE
+
+
 def test_role_map_broken_yaml_degrades(tmp_path):
     p = tmp_path / "role_map.yaml"
     p.write_text("roles: [::broken", encoding="utf-8")
