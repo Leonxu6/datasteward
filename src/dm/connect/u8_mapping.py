@@ -6,6 +6,7 @@ StarRocks 前完成校验，避免半成功同步留下不可恢复的水位状�
 
 CLI: dm-u8 full|sync|status [表名...]
 """
+import re
 import sys
 import time
 from datetime import date, datetime, timezone
@@ -27,6 +28,8 @@ from dm.warehouse.store import connect_admin
 
 WATERMARK_FILE = LOG_DIR / "u8_watermark.json"
 _MAX_STATUS_TABLES = 10_000
+_STATUS_TABLE_NAME = re.compile(r"raw_u8__[a-z0-9_]+\Z", re.ASCII)
+_MAX_SR_IDENTIFIER_CHARS = 256
 
 U8_TABLE_MAP = [
     {"u8": "Inventory",       "object": "material",        "cursor": "dModifyDate", "cn": "存货档案"},
@@ -65,6 +68,19 @@ def _safe_failure(exc: BaseException) -> str:
     if isinstance(exc, _SyncValidationError):
         return str(exc)
     return exc.__class__.__name__
+
+
+def _quote_sr_identifier(value: object, *, field: str) -> str:
+    """Validate one metadata-derived StarRocks identifier before quoting it."""
+    if (
+        not isinstance(value, str)
+        or not value
+        or value != value.strip()
+        or len(value) > _MAX_SR_IDENTIFIER_CHARS
+        or any(ord(ch) < 32 or ord(ch) == 127 or ch == "`" for ch in value)
+    ):
+        raise _SyncValidationError(f"{field}无效或不安全")
+    return f"`{value}`"
 
 
 def _validate_read_batch(dset, cols, rows):
@@ -113,7 +129,12 @@ def _sr_ddl(dset, pk_cols: list) -> str:
         raise ValueError(f"{dset.name} 没有可同步列")
     if not pk_cols:
         raise ValueError(f"{dset.name} 缺少主键列")
-    known = {column.name for column in dset.columns}
+    quoted_table = _quote_sr_identifier(ods_name(dset.name), field="目标表名")
+    quoted_columns = {
+        column.name: _quote_sr_identifier(column.name, field="源列名")
+        for column in dset.columns
+    }
+    known = set(quoted_columns)
     missing = [name for name in pk_cols if name not in known]
     if missing:
         raise ValueError(f"{dset.name} 主键列不在自省结果中: {missing}")
@@ -124,14 +145,14 @@ def _sr_ddl(dset, pk_cols: list) -> str:
         if column.name in pk_cols:
             if starrocks_type.startswith("VARCHAR") or starrocks_type == "STRING":
                 starrocks_type = "VARCHAR(255)"
-            cols_pk.append(f"`{column.name}` {starrocks_type} NOT NULL")
+            cols_pk.append(f"{quoted_columns[column.name]} {starrocks_type} NOT NULL")
         else:
-            cols_rest.append(f"`{column.name}` {starrocks_type} NULL")
+            cols_rest.append(f"{quoted_columns[column.name]} {starrocks_type} NULL")
     cols_rest.append("`_synced_at` DATETIME NULL")
-    key = ", ".join(f"`{column}`" for column in pk_cols)
+    key = ", ".join(quoted_columns[column] for column in pk_cols)
     body = ",\n  ".join(cols_pk + cols_rest)
     return (
-        f"CREATE TABLE IF NOT EXISTS `{ods_name(dset.name)}` (\n  {body}\n) "
+        f"CREATE TABLE IF NOT EXISTS {quoted_table} (\n  {body}\n) "
         f"PRIMARY KEY({key}) DISTRIBUTED BY HASH({key}) BUCKETS 1 "
         f'PROPERTIES("replication_num"="1")'
     )
@@ -182,7 +203,8 @@ def sync(tables=None, full=False, verbose=True) -> dict:
                 if cursor_col is None:
                     cols, rows = conn.read_table(name)
                     cols, rows = _validate_read_batch(dset, cols, rows)
-                    sr.execute(f"TRUNCATE TABLE `{ods_name(name)}`")
+                    target_table = _quote_sr_identifier(ods_name(name), field="目标表名")
+                    sr.execute(f"TRUNCATE TABLE {target_table}")
                     cursor_max = None
                 else:
                     cols, rows = conn.read_table(name, cursor_col=cursor_col, since=since)
@@ -196,12 +218,15 @@ def sync(tables=None, full=False, verbose=True) -> dict:
                     # StarRocks DATETIME has no timezone field. Store a UTC wall
                     # clock value explicitly instead of inheriting the host zone.
                     now = datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
-                    collist = ", ".join(f"`{column}`" for column in cols) + ", `_synced_at`"
+                    target_table = _quote_sr_identifier(ods_name(name), field="目标表名")
+                    collist = ", ".join(
+                        _quote_sr_identifier(column, field="读取列名") for column in cols
+                    ) + ", `_synced_at`"
                     placeholders = ", ".join(["%s"] * (len(cols) + 1))
                     values = [tuple([_norm(value) for value in row] + [now]) for row in rows]
                     for index in range(0, len(values), 500):
                         sr.executemany(
-                            f"INSERT INTO `{ods_name(name)}` ({collist}) VALUES ({placeholders})",
+                            f"INSERT INTO {target_table} ({collist}) VALUES ({placeholders})",
                             values[index:index + 500],
                         )
                     if cursor_col and cursor_max is not None:
@@ -264,9 +289,10 @@ def status():
     try:
         sr = connect_admin(WH_DB)
         cursor = sr.execute(
-            f"SELECT table_name FROM information_schema.tables "
-            f"WHERE table_schema='{WH_DB}' AND table_name LIKE 'raw_u8__%' "
-            f"ORDER BY table_name LIMIT {_MAX_STATUS_TABLES + 1}"
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema=%s AND table_name LIKE %s "
+            f"ORDER BY table_name LIMIT {_MAX_STATUS_TABLES + 1}",
+            (WH_DB, "raw_u8__%"),
         )
         rows = fetch_bounded_rows(
             cursor,
@@ -275,7 +301,10 @@ def status():
         )
         print(f"=== StarRocks ODS：{len(rows)} 张 raw_u8__* ===")
         for (table,) in rows:
-            count = sr.execute(f"SELECT COUNT(*) FROM `{table}`").fetchone()[0]
+            if not isinstance(table, str) or not _STATUS_TABLE_NAME.fullmatch(table):
+                raise _SyncValidationError("状态查询返回不安全表名")
+            quoted_table = _quote_sr_identifier(table, field="状态表名")
+            count = sr.execute(f"SELECT COUNT(*) FROM {quoted_table}").fetchone()[0]
             print(f"  {table:28} {count} 行")
     except Exception as exc:  # noqa: BLE001
         print(f"（StarRocks 不可达：{_safe_failure(exc)}）")

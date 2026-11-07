@@ -90,7 +90,7 @@ def test_status_closes_warehouse_and_redacts_query_failures(monkeypatch, capsys)
     captured = {}
 
     class FakeWarehouse:
-        def execute(self, sql):
+        def execute(self, sql, params=None):
             raise RuntimeError("mysql://user:password=secret@warehouse/internal")
 
         def close(self):
@@ -123,8 +123,8 @@ def test_status_bounds_and_orders_raw_table_discovery(monkeypatch, capsys):
             return self.rows[0]
 
     class FakeWarehouse:
-        def execute(self, sql):
-            captured["queries"].append(sql)
+        def execute(self, sql, params=None):
+            captured["queries"].append((sql, params))
             if "information_schema.tables" in sql:
                 return FakeResult([("raw_u8__inventory",)])
             return FakeResult([(3,)])
@@ -141,7 +141,8 @@ def test_status_bounds_and_orders_raw_table_discovery(monkeypatch, capsys):
     output = capsys.readouterr().out
     assert "raw_u8__inventory" in output
     assert "3 行" in output
-    assert "ORDER BY table_name LIMIT 3" in captured["queries"][0]
+    assert "ORDER BY table_name LIMIT 3" in captured["queries"][0][0]
+    assert captured["queries"][0][1] == (u8_mapping.WH_DB, "raw_u8__%")
     assert captured["fetch_sizes"] == [3]
     assert captured["closed"]
 
@@ -154,7 +155,7 @@ def test_status_rejects_raw_table_discovery_over_budget(monkeypatch, capsys):
             return [("raw_u8__a",), ("raw_u8__b",), ("raw_u8__c",)][:size]
 
     class FakeWarehouse:
-        def execute(self, sql):
+        def execute(self, sql, params=None):
             return FakeResult()
 
         def close(self):
@@ -169,4 +170,31 @@ def test_status_rejects_raw_table_discovery_over_budget(monkeypatch, capsys):
     output = capsys.readouterr().out
     assert "RuntimeError" in output
     assert "raw_u8__a" not in output
+    assert captured["closed"]
+
+
+def test_status_rejects_catalog_controlled_identifier_before_count(monkeypatch, capsys):
+    captured = {"queries": []}
+
+    class FakeResult:
+        def fetchmany(self, size):
+            return [("raw_u8__inventory` WHERE 1=1 --",)]
+
+    class FakeWarehouse:
+        def execute(self, sql, params=None):
+            captured["queries"].append((sql, params))
+            return FakeResult()
+
+        def close(self):
+            captured["closed"] = True
+
+    monkeypatch.setattr(u8_mapping, "_load_wm", lambda: {})
+    monkeypatch.setattr(u8_mapping, "connect_admin", lambda db: FakeWarehouse())
+
+    u8_mapping.status()
+
+    output = capsys.readouterr().out
+    assert "状态查询返回不安全表名" in output
+    assert "WHERE 1=1" not in output
+    assert len(captured["queries"]) == 1
     assert captured["closed"]

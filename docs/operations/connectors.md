@@ -47,6 +47,13 @@ materializing every table and issuing an unbounded sequence of count queries.
 Archive obsolete raw tables or narrow the catalog before retrying; increasing
 the process memory allowance does not change this operational limit.
 
+U8 source column names and StarRocks catalog table names remain untrusted
+metadata at the SQL boundary. DDL, inserts, truncation, and status count queries
+validate identifiers before quoting them; catalog filters use bound values.
+Unsafe control characters, backticks, or unexpected `raw_u8__*` names abort the
+affected operation before the metadata can alter SQL structure or terminal
+output.
+
 ## Introspection
 
 Introspection should agree with the later read path about schema qualification, dataset naming, and ambiguous files. A dataset advertised during onboarding should be readable with the same logical name.

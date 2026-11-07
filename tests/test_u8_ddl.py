@@ -37,3 +37,26 @@ def test_u8_ddl_places_primary_key_first_and_not_null():
     assert "PRIMARY KEY(`cInvCode`)" in ddl
     assert ddl.index("`cInvCode`") < ddl.index("`cInvName`")
     assert "`enabled` BOOLEAN NULL" in ddl
+
+
+@pytest.mark.parametrize("unsafe_name", ["name` STRING", "name\nDROP TABLE x", " name"])
+def test_u8_ddl_rejects_unsafe_introspected_column_names(unsafe_name):
+    dataset = DatasetDef(
+        name="Inventory",
+        columns=[ColumnDef(name=unsafe_name, data_type="nvarchar")],
+        primary_key=[unsafe_name],
+    )
+
+    with pytest.raises(ValueError, match="源列名无效或不安全"):
+        _sr_ddl(dataset, [unsafe_name])
+
+
+def test_u8_ddl_rejects_unsafe_generated_table_name():
+    dataset = DatasetDef(
+        name="Inventory` DROP TABLE x",
+        columns=[ColumnDef(name="id", data_type="int")],
+        primary_key=["id"],
+    )
+
+    with pytest.raises(ValueError, match="目标表名无效或不安全"):
+        _sr_ddl(dataset, ["id"])
