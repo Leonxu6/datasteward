@@ -9,17 +9,24 @@ _READ_CHUNK_BYTES = 64 * 1024
 
 
 def read_bounded_text(path: Path, *, max_bytes: int) -> str:
-    """Read one regular file as UTF-8 without a path-based size-check race."""
+    """Read one stable regular file as UTF-8 without following a final symlink."""
     if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes < 1:
         raise ValueError("max_bytes must be a positive integer")
+    expected = os.lstat(path)
+    if stat.S_ISLNK(expected.st_mode):
+        raise ValueError("artifact must not be a symbolic link")
     flags = os.O_RDONLY
     if hasattr(os, "O_CLOEXEC"):
         flags |= os.O_CLOEXEC
     if hasattr(os, "O_NONBLOCK"):
         flags |= os.O_NONBLOCK
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
     fd = os.open(path, flags)
     try:
         metadata = os.fstat(fd)
+        if (metadata.st_dev, metadata.st_ino) != (expected.st_dev, expected.st_ino):
+            raise ValueError("artifact changed while it was being opened")
         if not stat.S_ISREG(metadata.st_mode):
             raise ValueError("artifact must be a regular file")
         if metadata.st_size > max_bytes:
