@@ -55,6 +55,30 @@ ACTION_TYPES = {
     },
 }
 
+_ROLLBACK_CONTRACTS = {
+    "adjust_safety_stock": {
+        "table": "material",
+        "op": "update",
+        "pk_col": "material_id",
+        "before_fields": ("safety_stock",),
+        "sql": "UPDATE material SET safety_stock=%s WHERE material_id=%s",
+    },
+    "create_purchase_requisition": {
+        "table": "purchase_order",
+        "op": "insert",
+        "pk_col": "po_id",
+        "before_fields": (),
+        "sql": "DELETE FROM purchase_order WHERE po_id=%s",
+    },
+    "create_delivery": {
+        "table": "delivery_note",
+        "op": "insert",
+        "pk_col": "delivery_id",
+        "before_fields": (),
+        "sql": "DELETE FROM delivery_note WHERE delivery_id=%s",
+    },
+}
+
 
 def list_action_types() -> list:
     return [{"action": k, **v} for k, v in ACTION_TYPES.items()]
@@ -97,6 +121,39 @@ def _integer_parameter(params: dict, name: str) -> int | None:
     """Return a schema-valid integer without coercing booleans or decimals."""
     value = params.get(name)
     return value if type(value) is int else None
+
+
+def _rollback_statement(rec: object) -> tuple[str, tuple, str, str]:
+    """Build a rollback only from a known action contract, never log-owned SQL identifiers."""
+    if not isinstance(rec, dict):
+        raise ValueError("rollback record must be an object")
+    action = rec.get("action")
+    contract = _ROLLBACK_CONTRACTS.get(action)
+    if contract is None:
+        raise ValueError("rollback record names an unsupported action")
+    for field in ("table", "op", "pk_col"):
+        if rec.get(field) != contract[field]:
+            raise ValueError(f"rollback record has an invalid {field}")
+    pk_val = rec.get("pk_val")
+    if not isinstance(pk_val, str) or not pk_val or len(pk_val) > 200:
+        raise ValueError("rollback record has an invalid primary-key value")
+
+    before_fields = contract["before_fields"]
+    if before_fields:
+        before = rec.get("before")
+        if not isinstance(before, dict) or tuple(before) != before_fields:
+            raise ValueError("rollback record has invalid before values")
+        value = before[before_fields[0]]
+        if type(value) is not int or value < 0:
+            raise ValueError("rollback record has an invalid safety-stock value")
+        parameters = (value, pk_val)
+        detail = f"恢复 {contract['table']}.{pk_val} → {before}"
+    else:
+        if rec.get("before") is not None:
+            raise ValueError("insert rollback record must not contain before values")
+        parameters = (pk_val,)
+        detail = f"删除 {contract['table']}.{pk_val}"
+    return contract["sql"], parameters, detail, contract["table"]
 
 
 def _validate(action, params) -> str:
@@ -286,33 +343,33 @@ def approve_action(action_id, user: User = None) -> dict:
 def rollback_action(action_id, user: User = None) -> dict:
     """回滚一个已执行 Action（通用：update→恢复列值，insert→删除该行）。"""
     user = user or user_from_env()
-    recs = [r for r in read_log("action_log") if r["action_id"] == action_id]
+    recs = [
+        r for r in read_log("action_log")
+        if isinstance(r, dict) and r.get("action_id") == action_id
+    ]
     rec = recs[-1] if recs else None
-    if not rec or rec["status"] != "executed":
+    if not rec or rec.get("status") != "executed":
         return {"ok": False, "error": "未找到可回滚的已执行 Action"}
     if rec.get("rolled_back"):
         return {"ok": False, "error": "该 Action 已回滚过"}
-    ok, reason = can_execute_action(user, rec["action"])
+    try:
+        sql, parameters, detail, table = _rollback_statement(rec)
+    except ValueError:
+        return {"ok": False, "error": "Action 回滚记录无效，已拒绝执行"}
+    ok, reason = can_execute_action(user, rec.get("action"))
     if not ok:
         return {"ok": False, "error": "权限不足：" + reason}
     con = _pg_conn()
     try:
         with con.cursor() as cur:
-            if rec["op"] == "update":
-                sets = ", ".join(f"{k}=%s" for k in rec["before"])
-                cur.execute(f"UPDATE {rec['table']} SET {sets} WHERE {rec['pk_col']}=%s",
-                            (*rec["before"].values(), rec["pk_val"]))
-                detail = f"恢复 {rec['table']}.{rec['pk_val']} → {rec['before']}"
-            else:  # insert → 删除
-                cur.execute(f"DELETE FROM {rec['table']} WHERE {rec['pk_col']}=%s", (rec["pk_val"],))
-                detail = f"删除 {rec['table']}.{rec['pk_val']}"
+            cur.execute(sql, parameters)
         con.commit()
     finally:
         con.close()
     append_log("action_log", {**rec, "status": "rolled_back", "rolled_back": True,
                               "rollback_ts": utc_timestamp()})
     _audit_action("RB" + action_id, rec["action"], {"rollback_of": action_id}, user, "allow",
-                  detail, rec["table"])
+                  detail, table)
     return {"ok": True, "message": f"已回滚：{detail}"}
 
 
