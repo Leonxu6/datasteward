@@ -156,6 +156,19 @@ def _rollback_statement(rec: object) -> tuple[str, tuple, str, str]:
     return contract["sql"], parameters, detail, contract["table"]
 
 
+def _approval_request(rec: object) -> tuple[str, dict]:
+    """Return a persisted pending request only when its executable shape is valid."""
+    if not isinstance(rec, dict):
+        raise ValueError("approval record must be an object")
+    action = rec.get("action")
+    params = rec.get("params")
+    if action not in _HANDLERS:
+        raise ValueError("approval record names an unsupported action")
+    if not isinstance(params, dict):
+        raise ValueError("approval record parameters must be an object")
+    return action, params
+
+
 def _validate(action, params) -> str:
     """提交条件（不需 DB 的部分）；返回错误串（None 通过）。"""
     if action == "adjust_safety_stock":
@@ -336,7 +349,11 @@ def approve_action(action_id, user: User = None) -> dict:
     status = rec.get("status")
     if status != "pending":
         return {"ok": False, "error": f"该 Action 状态为 {status or 'unknown'}，不可审批"}
-    return execute_action(rec["action"], rec["params"], user=user, approve=True,
+    try:
+        action, params = _approval_request(rec)
+    except ValueError:
+        return {"ok": False, "error": "Action 审批记录无效，已拒绝执行"}
+    return execute_action(action, params, user=user, approve=True,
                           action_id=action_id)
 
 
