@@ -4,6 +4,7 @@
 指标口径改这里（yaml），智能体/报表/eval 三处同步生效——一次定义、处处复用。
 """
 import re
+import unicodedata
 from importlib.resources import files
 
 from dm.config import DW_SCHEMA as _DW_SCHEMA
@@ -19,7 +20,7 @@ _CACHE = None
 def _clean_name(value: object, *, field: str) -> str:
     if not isinstance(value, str) or not value or value != value.strip():
         raise ValueError(f"{field} must be clean non-empty text")
-    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+    if any(unicodedata.category(ch) in {"Cc", "Cf", "Cs", "Zl", "Zp"} for ch in value):
         raise ValueError(f"{field} contains control characters")
     return value
 
@@ -34,9 +35,7 @@ def _identifier(value: object, *, field: str) -> str:
 def _string_list(value: object, *, field: str) -> list[str]:
     if not isinstance(value, list):
         raise ValueError(f"{field} must be a list")
-    if any(not isinstance(item, str) for item in value):
-        raise ValueError(f"{field} must contain only strings")
-    return list(value)
+    return [_clean_name(item, field=f"{field} item") for item in value]
 
 
 def _query_items(value: object, *, field: str) -> list[str]:
@@ -141,6 +140,10 @@ def compile_metric(name: str, dimensions: list | None = None, filters: list | No
         known = ", ".join(load_metrics().keys())
         raise ValueError(f"未知指标 '{name}'。可用指标：{known}")
 
+    _string_list(
+        m.get("required_markings", []),
+        field=f"metric '{name}' required_markings",
+    )
     expr = _identifier(m.get("expr"), field=f"metric '{name}' expr")
     base_model = _identifier(m.get("base_model"), field=f"metric '{name}' base_model")
     raw_allowed = m.get("dimensions", [])

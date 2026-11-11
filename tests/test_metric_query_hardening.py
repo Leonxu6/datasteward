@@ -85,6 +85,18 @@ def test_compile_metric_rejects_invalid_aggregate_definitions(monkeypatch, agg):
         compile_metric("sample_metric")
 
 
+@pytest.mark.parametrize(
+    "required_markings",
+    ["FIN", [3], [" FIN"], ["FIN\u200dHIDDEN"]],
+)
+def test_compile_metric_rejects_malformed_required_markings(monkeypatch, required_markings):
+    definition = _metric_definition(required_markings=required_markings)
+    monkeypatch.setattr(metrics, "_CACHE", {"sample_metric": definition})
+
+    with pytest.raises(ValueError, match="required_markings"):
+        compile_metric("sample_metric")
+
+
 def test_compile_metric_normalizes_aggregate_case(monkeypatch):
     monkeypatch.setattr(metrics, "_CACHE", {"sample_metric": _metric_definition(agg="AVG")})
     sql, _ = compile_metric("sample_metric")
