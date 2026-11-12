@@ -14,7 +14,7 @@ Row counts must be non-negative integers. Missing source or sink counts are fail
 
 Both the pipeline-health evaluator and the Streamlit dashboard read replication slots in name order and accept at most 1,000 rows. A larger or malformed catalog is reported as a monitoring failure instead of being rendered partially or loaded without a memory bound. Treat that result as a signal to inspect abandoned slots and the source database's `max_replication_slots` policy; do not raise the application limit before confirming the catalog is intentional.
 
-The dashboard also requires successful HTTP responses and object-shaped JSON from Flink's overview endpoints. Its job catalog is capped at 1,000 entries, and malformed task summaries fail the probe closed. This keeps an unhealthy or compromised monitoring endpoint from turning a dashboard refresh into an unbounded allocation or a misleading healthy status.
+Both the dashboard and pipeline-health helper require object-shaped JSON from Flink's overview endpoints and cap the job catalog at 1,000 entries. The pipeline helper also reads at most 1 MiB before decoding UTF-8 JSON, while the dashboard requires successful HTTP responses and bounds its own download. Oversized bodies, oversized catalogs, and malformed task summaries fail the probe closed. This keeps an unhealthy or compromised monitoring endpoint from turning a health refresh into an unbounded allocation or a misleading healthy status.
 
 ## Freshness
 

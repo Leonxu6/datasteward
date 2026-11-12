@@ -20,6 +20,21 @@ from dm.warehouse.store import connect_ro
 _TABLE_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
 _MAX_RECONCILE_TABLES = 100
 _MAX_REPLICATION_SLOTS = 1000
+_MAX_FLINK_OVERVIEW_BYTES = 1024 * 1024
+_MAX_FLINK_JOBS = 1000
+
+
+def _load_flink_overview(response: object) -> object:
+    """Decode one bounded UTF-8 JSON response from the Flink monitoring endpoint."""
+    raw = response.read(_MAX_FLINK_OVERVIEW_BYTES + 1)
+    if not isinstance(raw, (bytes, bytearray)):
+        raise ValueError("Flink overview response must be bytes")
+    if len(raw) > _MAX_FLINK_OVERVIEW_BYTES:
+        raise ValueError("Flink overview response exceeded its size limit")
+    try:
+        return json.loads(bytes(raw).decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("Flink overview response must be UTF-8 JSON") from exc
 
 
 def _flink_job_list(payload: object) -> list[dict]:
@@ -28,6 +43,8 @@ def _flink_job_list(payload: object) -> list[dict]:
     jobs = payload.get("jobs", [])
     if not isinstance(jobs, list) or any(not isinstance(job, dict) for job in jobs):
         raise ValueError("Flink jobs must be a list of objects")
+    if len(jobs) > _MAX_FLINK_JOBS:
+        raise ValueError("Flink jobs exceeded their entry limit")
     return jobs
 
 
@@ -82,7 +99,7 @@ def flink_jobs():
     """Flink 作业概览：[{jid, name, state, duration(ms)}...] 或 {'error':...}。"""
     try:
         with urllib.request.urlopen(f"{FLINK_REST}/jobs/overview", timeout=8) as r:
-            return _flink_job_list(json.load(r))
+            return _flink_job_list(_load_flink_overview(r))
     except Exception:  # noqa: BLE001
         return {"error": "Flink job query failed"}
 

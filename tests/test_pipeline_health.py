@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from io import BytesIO
 from unittest.mock import patch
 
 import dm.pipeline.health as health
@@ -128,10 +130,11 @@ def test_flink_failures_do_not_expose_backend_details():
 
 def test_flink_overview_requires_object_and_job_object_list():
     for payload in (None, [], "jobs", {"jobs": {}}, {"jobs": ["not-an-object"]}):
-        with patch.object(health.json, "load", return_value=payload), patch.object(
-            health.urllib.request, "urlopen"
-        ) as urlopen:
-            urlopen.return_value.__enter__.return_value = object()
+        with patch.object(
+            health.urllib.request,
+            "urlopen",
+            return_value=BytesIO(json.dumps(payload).encode("utf-8")),
+        ):
             assert health.flink_jobs() == {"error": "Flink job query failed"}
 
 
@@ -141,8 +144,30 @@ def test_flink_overview_accepts_missing_or_valid_jobs():
         ({"jobs": [{"jid": "j1", "state": "RUNNING"}]}, [{"jid": "j1", "state": "RUNNING"}]),
     )
     for payload, expected in cases:
-        with patch.object(health.json, "load", return_value=payload), patch.object(
-            health.urllib.request, "urlopen"
-        ) as urlopen:
-            urlopen.return_value.__enter__.return_value = object()
+        with patch.object(
+            health.urllib.request,
+            "urlopen",
+            return_value=BytesIO(json.dumps(payload).encode("utf-8")),
+        ):
             assert health.flink_jobs() == expected
+
+
+def test_flink_overview_rejects_oversized_or_malformed_response_bodies():
+    invalid_bodies = (
+        b"x" * (health._MAX_FLINK_OVERVIEW_BYTES + 1),
+        b"\xff",
+        b"{not-json}",
+    )
+    for body in invalid_bodies:
+        with patch.object(health.urllib.request, "urlopen", return_value=BytesIO(body)):
+            assert health.flink_jobs() == {"error": "Flink job query failed"}
+
+
+def test_flink_overview_rejects_excessive_job_catalog():
+    payload = {"jobs": [{} for _ in range(health._MAX_FLINK_JOBS + 1)]}
+    with patch.object(
+        health.urllib.request,
+        "urlopen",
+        return_value=BytesIO(json.dumps(payload).encode("utf-8")),
+    ):
+        assert health.flink_jobs() == {"error": "Flink job query failed"}
