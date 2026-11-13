@@ -1,3 +1,7 @@
+from decimal import Decimal
+
+import pytest
+
 from dm.app import data
 
 
@@ -157,6 +161,60 @@ def test_pg_slot_probe_rejects_oversized_catalog(monkeypatch):
     assert result["ok"] is False
     assert result["slots"] == []
     assert "ValueError" in result["error"]
+
+
+def test_pg_slot_probe_preserves_decimal_integer_lag():
+    assert data._pg_slot_row(("slot_a", False, Decimal("42"))) == {
+        "name": "slot_a",
+        "active": False,
+        "lag": 42,
+    }
+
+
+def test_pg_slot_probe_rejects_coercible_or_invalid_row_values():
+    invalid_rows = (
+        ("slot_a", "false", 0),
+        ("slot_a", True, -1),
+        ("slot_a", True, Decimal("1.5")),
+        (" slot_a", True, 0),
+    )
+    for row in invalid_rows:
+        with pytest.raises(ValueError):
+            data._pg_slot_row(row)
+
+
+def test_pg_slot_probe_does_not_publish_partial_rows(monkeypatch):
+    import psycopg
+
+    class Cursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def execute(self, _query):
+            return None
+
+        def fetchmany(self, _size):
+            return [("slot_a", True, 0), ("slot_b", "false", 1)]
+
+    class Connection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def cursor(self):
+            return Cursor()
+
+    monkeypatch.setattr(psycopg, "connect", lambda **kwargs: Connection())
+
+    result = _call(data.pg_slots)
+
+    assert result["ok"] is False
+    assert result["slots"] == []
 
 
 def test_warehouse_probe_redacts_backend_exception(monkeypatch):

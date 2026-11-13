@@ -11,6 +11,7 @@ import json
 from collections import Counter
 from collections.abc import Mapping
 from datetime import datetime
+from decimal import Decimal
 
 from dm.app.errors import safe_error_summary
 
@@ -67,6 +68,28 @@ def _bounded_flink_jobs(payload: Mapping) -> list[Mapping]:
     if not all(isinstance(job, Mapping) for job in jobs):
         raise ValueError("Flink jobs response contains a malformed job")
     return jobs
+
+
+def _pg_slot_row(row: object) -> dict[str, object]:
+    """Normalize one replication-slot row without coercing malformed health data."""
+    if not isinstance(row, (list, tuple)) or len(row) != 3:
+        raise ValueError("Postgres replication slot row is malformed")
+    name, active, lag = row
+    if not isinstance(name, str) or not name or name != name.strip():
+        raise ValueError("Postgres replication slot name is malformed")
+    if not isinstance(active, bool):
+        raise ValueError("Postgres replication slot active state must be boolean")
+    normalized_lag: int | None = None
+    if lag is not None:
+        if isinstance(lag, bool) or not isinstance(lag, (int, Decimal)):
+            raise ValueError("Postgres replication slot lag must be a non-negative integer")
+        try:
+            normalized_lag = int(lag)
+        except (OverflowError, ValueError) as exc:
+            raise ValueError("Postgres replication slot lag must be a non-negative integer") from exc
+        if normalized_lag < 0 or lag != normalized_lag:
+            raise ValueError("Postgres replication slot lag must be a non-negative integer")
+    return {"name": name, "active": active, "lag": normalized_lag}
 
 
 # ============================ 纯聚合 ============================
@@ -283,14 +306,8 @@ def pg_slots() -> dict:
                     raise ValueError(
                         f"Postgres replication slot catalog exceeds {_MAX_PG_SLOTS} entries"
                     )
-                for row in rows:
-                    if not isinstance(row, (list, tuple)) or len(row) != 3:
-                        raise ValueError("Postgres replication slot row is malformed")
-                    name, active, lag = row
-                    if not isinstance(name, str) or not name:
-                        raise ValueError("Postgres replication slot name is malformed")
-                    out["slots"].append({"name": name, "active": bool(active),
-                                         "lag": int(lag) if lag is not None else None})
+                slots = [_pg_slot_row(row) for row in rows]
+                out["slots"] = slots
         out["n_active"] = sum(1 for s in out["slots"] if s["active"])
         lags = [s["lag"] for s in out["slots"] if s["lag"] is not None]
         out["max_lag"] = max(lags) if lags else None
