@@ -1,3 +1,4 @@
+import json
 from decimal import Decimal
 
 import pytest
@@ -23,16 +24,21 @@ def test_flink_probe_redacts_backend_exception(monkeypatch):
 
 
 class _Response:
-    def __init__(self, payload, *, status_error=None):
-        self.payload = payload
+    def __init__(self, payload=None, *, raw=None, status_error=None):
+        self.raw = raw if raw is not None else json.dumps(payload).encode("utf-8")
         self.status_error = status_error
+        self.closed = False
 
     def raise_for_status(self):
         if self.status_error:
             raise self.status_error
 
-    def json(self):
-        return self.payload
+    def iter_content(self, chunk_size):
+        for offset in range(0, len(self.raw), chunk_size):
+            yield self.raw[offset:offset + chunk_size]
+
+    def close(self):
+        self.closed = True
 
 
 def test_flink_probe_checks_http_status_before_using_payload(monkeypatch):
@@ -68,6 +74,44 @@ def test_flink_probe_rejects_oversized_job_catalog(monkeypatch):
     assert result["jobs"] == []
 
 
+def test_flink_probe_streams_bounded_responses_and_closes_them(monkeypatch):
+    import requests
+
+    overview = _Response({"flink-version": "1.18"})
+    jobs = _Response({"jobs": []})
+    responses = iter([overview, jobs])
+    calls = []
+
+    def fake_get(*args, **kwargs):
+        calls.append((args, kwargs))
+        return next(responses)
+
+    monkeypatch.setattr(requests, "get", fake_get)
+
+    result = _call(data.flink_status)
+
+    assert result["ok"] is True
+    assert overview.closed is True
+    assert jobs.closed is True
+    assert [kwargs for _args, kwargs in calls] == [
+        {"stream": True, "timeout": 5},
+        {"stream": True, "timeout": 5},
+    ]
+
+
+def test_flink_probe_rejects_oversized_response_body(monkeypatch):
+    import requests
+
+    response = _Response(raw=b"{" + b" " * data._MAX_FLINK_RESPONSE_BYTES + b"}")
+    monkeypatch.setattr(requests, "get", lambda *args, **kwargs: response)
+
+    result = _call(data.flink_status)
+
+    assert result["ok"] is False
+    assert result["jobs"] == []
+    assert response.closed is True
+
+
 def test_flink_probe_rejects_malformed_job_tasks(monkeypatch):
     import requests
 
@@ -75,6 +119,23 @@ def test_flink_probe_rejects_malformed_job_tasks(monkeypatch):
         [
             _Response({}),
             _Response({"jobs": [{"jid": "job-1", "tasks": []}]}),
+        ]
+    )
+    monkeypatch.setattr(requests, "get", lambda *args, **kwargs: next(responses))
+
+    result = _call(data.flink_status)
+
+    assert result["ok"] is False
+    assert result["jobs"] == []
+
+
+def test_flink_probe_does_not_publish_partially_valid_jobs(monkeypatch):
+    import requests
+
+    responses = iter(
+        [
+            _Response({}),
+            _Response({"jobs": [{"jid": "valid", "tasks": {}}, {"jid": "bad", "tasks": []}]}),
         ]
     )
     monkeypatch.setattr(requests, "get", lambda *args, **kwargs: next(responses))

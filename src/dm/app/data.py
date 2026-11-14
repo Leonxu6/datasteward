@@ -16,6 +16,8 @@ from decimal import Decimal
 from dm.app.errors import safe_error_summary
 
 _MAX_FLINK_JOBS = 1_000
+_MAX_FLINK_RESPONSE_BYTES = 1 * 1024 * 1024
+_FLINK_RESPONSE_CHUNK_BYTES = 64 * 1024
 _MAX_PG_SLOTS = 1_000
 
 try:  # 缓存装饰器：Streamlit 在则短 TTL 缓存，不在则 no-op（便于单测纯聚合）
@@ -53,10 +55,36 @@ def _unique_json_object(pairs):
 def _flink_json_object(response, *, endpoint: str) -> Mapping:
     """Return one successful Flink JSON object or fail the probe closed."""
     response.raise_for_status()
-    payload = response.json()
+    chunks: list[bytes] = []
+    total = 0
+    for chunk in response.iter_content(chunk_size=_FLINK_RESPONSE_CHUNK_BYTES):
+        if not isinstance(chunk, (bytes, bytearray)):
+            raise ValueError(f"Flink {endpoint} response yielded non-byte content")
+        total += len(chunk)
+        if total > _MAX_FLINK_RESPONSE_BYTES:
+            raise ValueError(
+                f"Flink {endpoint} response exceeds {_MAX_FLINK_RESPONSE_BYTES} bytes"
+            )
+        chunks.append(bytes(chunk))
+    try:
+        payload = json.loads(
+            b"".join(chunks).decode("utf-8"),
+            parse_constant=_reject_json_constant,
+            object_pairs_hook=_unique_json_object,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(f"Flink {endpoint} response is not valid UTF-8 JSON") from exc
     if not isinstance(payload, Mapping):
         raise ValueError(f"Flink {endpoint} response must be a JSON object")
     return payload
+
+
+def _fetch_flink_json(requests, url: str, *, endpoint: str) -> Mapping:
+    response = requests.get(url, stream=True, timeout=5)
+    try:
+        return _flink_json_object(response, endpoint=endpoint)
+    finally:
+        response.close()
 
 
 def _bounded_flink_jobs(payload: Mapping) -> list[Mapping]:
@@ -256,25 +284,29 @@ def flink_status() -> dict:
            "slots_total": None, "slots_available": None, "jobs_running": None,
            "jobs_failed": None, "jobs": [], "cdc": None, "error": ""}
     try:
-        ov = _flink_json_object(
-            requests.get(f"{FLINK_URL}/overview", timeout=5),
+        ov = _fetch_flink_json(
+            requests,
+            f"{FLINK_URL}/overview",
             endpoint="overview",
         )
         out.update(version=ov.get("flink-version"), taskmanagers=ov.get("taskmanagers"),
                    slots_total=ov.get("slots-total"), slots_available=ov.get("slots-available"),
                    jobs_running=ov.get("jobs-running"), jobs_failed=ov.get("jobs-failed"))
-        jo = _flink_json_object(
-            requests.get(f"{FLINK_URL}/jobs/overview", timeout=5),
+        jo = _fetch_flink_json(
+            requests,
+            f"{FLINK_URL}/jobs/overview",
             endpoint="jobs overview",
         )
+        jobs = []
         for j in _bounded_flink_jobs(jo):
             tk = j.get("tasks", {})
             if not isinstance(tk, Mapping):
                 raise ValueError("Flink job tasks must be a JSON object")
-            out["jobs"].append({
+            jobs.append({
                 "jid": j.get("jid"), "name": j.get("name"), "state": j.get("state"),
                 "duration_ms": j.get("duration"), "start": j.get("start-time"),
                 "t_running": tk.get("running"), "t_total": tk.get("total"), "t_failed": tk.get("failed")})
+        out["jobs"] = jobs
         running = [j for j in out["jobs"] if j["state"] == "RUNNING"]
         out["cdc"] = running[0] if running else (out["jobs"][0] if out["jobs"] else None)
         out["ok"] = True
