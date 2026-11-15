@@ -22,6 +22,13 @@ That fallback consumes child stderr concurrently with stdout. It drains the pipe
 
 Base URLs must use the expected scheme, include a hostname, and reject credentials or ambiguous syntax. API keys must not contain control characters that can alter headers.
 
+Non-streaming model calls still request a streamed HTTP body so the client can
+enforce an 8 MiB wire-size budget before decoding JSON. The decoder rejects
+invalid UTF-8, duplicate object keys, and non-standard numeric constants, then
+applies the existing content-size limit. Keep these wire and semantic bounds
+separate: limiting the final message alone does not prevent an oversized
+gateway response from being buffered first.
+
 ## Administrative previews
 
 Administrative pages are still user-facing trust boundaries. Metric trials compile through the shared metric registry, fetch at most 200 rows, and close both the result cursor and read-only warehouse connection on success or failure. Display a stable error category in the page rather than raw driver text, which can contain credentials, hosts, SQL fragments, or other deployment details.

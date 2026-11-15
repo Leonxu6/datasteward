@@ -13,6 +13,8 @@ from dm.config import (LLM_API_KEY, LLM_BASE_URL, LLM_CONNECT_TIMEOUT, LLM_MODEL
 _MAX_MESSAGES = 200
 _MAX_SERIALIZED_MESSAGES = 1_000_000
 _MAX_RESPONSE_CHARS = 1_000_000
+_MAX_NONSTREAM_RESPONSE_BYTES = 8 * 1024 * 1024
+_RESPONSE_CHUNK_BYTES = 64 * 1024
 _ALLOWED_ROLES = {"system", "user", "assistant", "tool", "function", "developer"}
 
 
@@ -174,6 +176,42 @@ def _close_response(response) -> None:
         return
 
 
+def _read_nonstream_json(response):
+    """Decode one bounded response body without letting requests pre-buffer it."""
+    iter_content = getattr(response, "iter_content", None)
+    if not callable(iter_content):
+        # Preserve compatibility with small requests-like adapters used by callers.
+        try:
+            return response.json()
+        except ValueError as exc:
+            raise RuntimeError("LLM 响应不是有效 JSON") from exc
+
+    chunks: list[bytes] = []
+    total_bytes = 0
+    try:
+        for chunk in iter_content(chunk_size=_RESPONSE_CHUNK_BYTES):
+            if not chunk:
+                continue
+            if not isinstance(chunk, (bytes, bytearray)):
+                raise RuntimeError("LLM 响应包含无效的字节块")
+            total_bytes += len(chunk)
+            if total_bytes > _MAX_NONSTREAM_RESPONSE_BYTES:
+                raise RuntimeError("LLM 响应正文超过大小上限")
+            chunks.append(bytes(chunk))
+    except requests.RequestException as exc:
+        raise RuntimeError("LLM 非流式读取中断") from exc
+
+    try:
+        text = b"".join(chunks).decode("utf-8")
+        return json.loads(
+            text,
+            parse_constant=_reject_json_constant,
+            object_pairs_hook=_unique_json_object,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        raise RuntimeError("LLM 响应不是有效 JSON") from exc
+
+
 def chat(messages: list, model: str | None = None, temperature: float = 0.2,
          timeout: int = 180, max_tokens: int | None = None) -> str:
     messages = _validate_messages(messages)
@@ -190,7 +228,7 @@ def chat(messages: list, model: str | None = None, temperature: float = 0.2,
     headers = {"Authorization": f"Bearer {api_key}"}
     try:
         if not LLM_STREAMING:
-            r = requests.post(url, json=payload, headers=headers, timeout=timeout)
+            r = requests.post(url, json=payload, headers=headers, stream=True, timeout=timeout)
         else:
             connect_timeout = min(_positive_number(LLM_CONNECT_TIMEOUT, field_name="LLM_CONNECT_TIMEOUT"), timeout)
             read_timeout = min(_positive_number(LLM_READ_TIMEOUT, field_name="LLM_READ_TIMEOUT"), timeout)
@@ -203,10 +241,7 @@ def chat(messages: list, model: str | None = None, temperature: float = 0.2,
         raise RuntimeError(f"LLM 调用失败 HTTP {r.status_code}")
     if not LLM_STREAMING:
         try:
-            try:
-                data = r.json()
-            except ValueError as exc:
-                raise RuntimeError("LLM 响应不是有效 JSON") from exc
+            data = _read_nonstream_json(r)
             return _nonstream_content(data)
         finally:
             _close_response(r)
