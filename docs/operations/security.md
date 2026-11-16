@@ -29,6 +29,12 @@ applies the existing content-size limit. Keep these wire and semantic bounds
 separate: limiting the final message alone does not prevent an oversized
 gateway response from being buffered first.
 
+DingTalk webhook acknowledgements are also streamed through a 16 KiB limit and
+decoded as strict JSON. HTTP success is not delivery success: the client
+requires an integer `errcode` of zero, closes every response, and logs only the
+status plus a stable success marker. Do not print the gateway's raw `errmsg`;
+it is untrusted external text and may contain private or terminal-active data.
+
 ## Administrative previews
 
 Administrative pages are still user-facing trust boundaries. Metric trials compile through the shared metric registry, fetch at most 200 rows, and close both the result cursor and read-only warehouse connection on success or failure. Display a stable error category in the page rather than raw driver text, which can contain credentials, hosts, SQL fragments, or other deployment details.

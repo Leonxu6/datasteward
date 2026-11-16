@@ -9,6 +9,7 @@ import asyncio
 import base64
 import hashlib
 import hmac
+import json
 import math
 import os
 import re
@@ -34,6 +35,59 @@ DEFAULT_ROLE = "仓管"
 _ROLE_MAP_MAX_CHARS = 200_000
 _ROLE_MAP_MAX_BYTES = 200_000
 _ROLE_MAP_READ_CHUNK_BYTES = 64 * 1024
+_WEBHOOK_RESPONSE_MAX_BYTES = 16 * 1024
+_WEBHOOK_RESPONSE_CHUNK_BYTES = 4 * 1024
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"non-standard JSON constant: {value}")
+
+
+def _unique_json_object(pairs: list[tuple[str, object]]) -> dict:
+    result: dict = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON object key: {key}")
+        result[key] = value
+    return result
+
+
+def _webhook_result(response) -> dict:
+    """Read one bounded DingTalk result without logging its untrusted body."""
+    chunks: list[bytes] = []
+    total_bytes = 0
+    for chunk in response.iter_content(chunk_size=_WEBHOOK_RESPONSE_CHUNK_BYTES):
+        if not chunk:
+            continue
+        if not isinstance(chunk, (bytes, bytearray)):
+            raise RuntimeError("钉钉 webhook 响应包含无效字节块")
+        total_bytes += len(chunk)
+        if total_bytes > _WEBHOOK_RESPONSE_MAX_BYTES:
+            raise RuntimeError("钉钉 webhook 响应超过大小上限")
+        chunks.append(bytes(chunk))
+    try:
+        payload = json.loads(
+            b"".join(chunks).decode("utf-8"),
+            parse_constant=_reject_json_constant,
+            object_pairs_hook=_unique_json_object,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        raise RuntimeError("钉钉 webhook 响应不是有效 JSON") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError("钉钉 webhook 响应结构异常")
+    errcode = payload.get("errcode")
+    if isinstance(errcode, bool) or not isinstance(errcode, int):
+        raise RuntimeError("钉钉 webhook 响应缺少有效错误码")
+    if errcode != 0:
+        raise RuntimeError(f"钉钉 webhook 返回错误码 {errcode}")
+    return payload
+
+
+def _close_response(response) -> None:
+    try:
+        response.close()
+    except Exception:  # noqa: BLE001
+        return
 
 
 def _open_role_map(path, previous_signature=None):
@@ -105,10 +159,19 @@ def push_webhook(text, webhook=None, secret=None):
         ).decode("ascii")
         url = append_query_params(webhook, timestamp=ts, sign=sign)
 
-    resp = requests.post(url, json={"msgtype": "text", "text": {"content": text}}, timeout=15)
-    resp.raise_for_status()
-    print("钉钉返回:", resp.status_code, resp.text)
-    return resp
+    resp = requests.post(
+        url,
+        json={"msgtype": "text", "text": {"content": text}},
+        stream=True,
+        timeout=15,
+    )
+    try:
+        resp.raise_for_status()
+        _webhook_result(resp)
+        print("钉钉返回:", resp.status_code, "ok")
+        return resp
+    finally:
+        _close_response(resp)
 
 
 def should_trigger(incoming) -> tuple[bool, str]:

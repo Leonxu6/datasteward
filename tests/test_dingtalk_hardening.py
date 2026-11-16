@@ -6,9 +6,27 @@ import pytest
 from dm.channels import dingtalk
 
 
+class _Response:
+    def __init__(self, chunks, *, status_code=200, http_error=None):
+        self.chunks = chunks
+        self.status_code = status_code
+        self.http_error = http_error
+        self.closed = False
+
+    def iter_content(self, *, chunk_size):
+        assert chunk_size == dingtalk._WEBHOOK_RESPONSE_CHUNK_BYTES
+        yield from self.chunks
+
+    def raise_for_status(self):
+        if self.http_error is not None:
+            raise self.http_error
+
+    def close(self):
+        self.closed = True
+
+
 def test_push_webhook_merges_signature_query_without_assuming_existing_query(monkeypatch):
-    response = Mock(status_code=200, text="ok")
-    response.raise_for_status.return_value = None
+    response = _Response([b'{"errcode":0,"errmsg":"ok"}'])
     post = Mock(return_value=response)
     monkeypatch.setattr(dingtalk.requests, "post", post)
     monkeypatch.setattr(dingtalk.time, "time", lambda: 1.234)
@@ -19,7 +37,51 @@ def test_push_webhook_merges_signature_query_without_assuming_existing_query(mon
     assert url.startswith("https://example.com/hook?")
     assert "timestamp=1234" in url
     assert "sign=" in url
-    response.raise_for_status.assert_called_once_with()
+    assert post.call_args.kwargs["stream"] is True
+    assert response.closed is True
+
+
+def test_push_webhook_rejects_oversized_response_and_closes_it(monkeypatch):
+    response = _Response([b"x" * 9, b"y" * 8])
+    monkeypatch.setattr(dingtalk, "_WEBHOOK_RESPONSE_MAX_BYTES", 16)
+    monkeypatch.setattr(dingtalk.requests, "post", Mock(return_value=response))
+
+    with pytest.raises(RuntimeError, match="响应超过大小上限"):
+        dingtalk.push_webhook("hello", webhook="https://example.com/hook")
+
+    assert response.closed is True
+
+
+def test_push_webhook_closes_http_error_response(monkeypatch):
+    error = dingtalk.requests.HTTPError("service unavailable")
+    response = _Response([], status_code=503, http_error=error)
+    monkeypatch.setattr(dingtalk.requests, "post", Mock(return_value=response))
+
+    with pytest.raises(dingtalk.requests.HTTPError):
+        dingtalk.push_webhook("hello", webhook="https://example.com/hook")
+
+    assert response.closed is True
+
+
+def test_push_webhook_rejects_business_error_without_printing_backend_message(monkeypatch, capsys):
+    response = _Response([b'{"errcode":310000,"errmsg":"private backend detail"}'])
+    monkeypatch.setattr(dingtalk.requests, "post", Mock(return_value=response))
+
+    with pytest.raises(RuntimeError, match="错误码 310000"):
+        dingtalk.push_webhook("hello", webhook="https://example.com/hook")
+
+    assert "private backend detail" not in capsys.readouterr().out
+    assert response.closed is True
+
+
+def test_push_webhook_rejects_duplicate_result_keys(monkeypatch):
+    response = _Response([b'{"errcode":0,"errcode":310000}'])
+    monkeypatch.setattr(dingtalk.requests, "post", Mock(return_value=response))
+
+    with pytest.raises(RuntimeError, match="不是有效 JSON"):
+        dingtalk.push_webhook("hello", webhook="https://example.com/hook")
+
+    assert response.closed is True
 
 
 def test_push_webhook_rejects_insecure_url_before_network(monkeypatch):
