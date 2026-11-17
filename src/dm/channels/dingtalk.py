@@ -113,6 +113,7 @@ def _open_role_map(path, previous_signature=None):
             metadata.st_ino,
             metadata.st_size,
             metadata.st_mtime_ns,
+            metadata.st_ctime_ns,
         )
         if signature == previous_signature:
             return signature, None
@@ -127,6 +128,16 @@ def _open_role_map(path, previous_signature=None):
         payload = b"".join(chunks)
         if len(payload) > _ROLE_MAP_MAX_BYTES:
             raise ValueError("role map exceeds its size limit")
+        final_metadata = os.fstat(descriptor)
+        final_signature = (
+            final_metadata.st_dev,
+            final_metadata.st_ino,
+            final_metadata.st_size,
+            final_metadata.st_mtime_ns,
+            final_metadata.st_ctime_ns,
+        )
+        if final_signature != signature or len(payload) != final_metadata.st_size:
+            raise ValueError("role map changed while reading")
         return signature, payload.decode("utf-8")
     finally:
         os.close(descriptor)

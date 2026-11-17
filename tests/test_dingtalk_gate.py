@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from dm.channels import dingtalk
 from dm.channels.dingtalk import DEFAULT_ROLE, _Gate, _RoleMap, resolve_identity, should_trigger
 
 
@@ -93,6 +94,26 @@ def test_role_map_hot_reload_detects_atomic_replacement_with_preserved_mtime(tmp
     os.replace(replacement, p)
 
     assert rm.role_of("s001") == "仓管"
+
+
+def test_role_map_rejects_a_snapshot_changed_during_read(tmp_path, monkeypatch):
+    p = tmp_path / "role_map.yaml"
+    p.write_text('roles:\n  "s001": 采购\n', encoding="utf-8")
+    original_read = os.read
+    changed = False
+
+    def read_and_change(descriptor, size):
+        nonlocal changed
+        chunk = original_read(descriptor, size)
+        if chunk and not changed:
+            changed = True
+            p.write_text('roles:\n  "s001": 仓管\n', encoding="utf-8")
+        return chunk
+
+    monkeypatch.setattr(dingtalk.os, "read", read_and_change)
+
+    with pytest.raises(ValueError, match="changed while reading"):
+        dingtalk._open_role_map(p)
 
 
 def test_role_map_refuses_symbolic_link_targets(tmp_path):

@@ -14,6 +14,8 @@ Values belong in driver parameters. Schema, table, and cursor identifiers requir
 
 File connectors should remain inside their configured root, reject ambiguous dataset names, and handle symlinks deliberately. Temporary office files and platform metadata should not become datasets merely because their extensions look readable.
 
+The DingTalk role map is an authorization input, so reloads use one bounded regular-file descriptor and accept its contents only when device, inode, size, modification time, and change time remain stable for the complete read. An operator should publish updates with an atomic rename; an in-place edit racing with a request is rejected instead of producing a mixed permission snapshot.
+
 The legacy Claude/MCP fallback writes its per-session MCP configuration with exclusive creation and owner-only permissions. It refuses an existing or symbolic-link target, completes and syncs the JSON before launching the subprocess, and removes the file after the session. These temporary files contain operator identity and purpose metadata even though they do not contain database credentials.
 
 That fallback consumes child stderr concurrently with stdout. It drains the pipe to completion so verbose CLI failures cannot deadlock the agent, but retains only a bounded prefix for diagnostics. Never replace this with sequential full-stream reads or persist the complete child output: stderr can be both unbounded and sensitive.
