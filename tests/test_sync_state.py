@@ -67,6 +67,24 @@ def test_load_json_mapping_rejects_state_that_grows_during_read(tmp_path, monkey
     assert load_json_mapping(path) == {}
 
 
+def test_load_json_mapping_rejects_same_size_rewrite_during_read(tmp_path, monkeypatch):
+    path = tmp_path / "state.json"
+    path.write_text('{"cursor":7}', encoding="utf-8")
+    real_read = sync_state.os.read
+    mutated = False
+
+    def rewriting_read(fd, size):
+        nonlocal mutated
+        chunk = real_read(fd, size)
+        if not mutated:
+            path.write_text('{"cursor":8}', encoding="utf-8")
+            mutated = True
+        return chunk
+
+    monkeypatch.setattr(sync_state.os, "read", rewriting_read)
+    assert load_json_mapping(path) == {}
+
+
 def test_state_helpers_reject_symlinked_state_files(tmp_path):
     target = tmp_path / "outside.json"
     target.write_text('{"cursor": 7}', encoding="utf-8")

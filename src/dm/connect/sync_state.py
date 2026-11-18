@@ -61,12 +61,12 @@ def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
 
 
 def _read_bounded_state(path: Path) -> bytes | None:
-    """Read one regular state file through its descriptor without crossing the byte budget."""
+    """Read one stable regular-file snapshot without crossing the byte budget."""
     flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
     fd = os.open(path, flags)
     try:
-        metadata = os.fstat(fd)
-        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > _MAX_STATE_BYTES:
+        before = os.fstat(fd)
+        if not stat.S_ISREG(before.st_mode) or before.st_size > _MAX_STATE_BYTES:
             return None
         chunks: list[bytes] = []
         total = 0
@@ -79,7 +79,25 @@ def _read_bounded_state(path: Path) -> bytes | None:
             total += len(chunk)
             if total > _MAX_STATE_BYTES:
                 return None
-        return b"".join(chunks)
+        payload = b"".join(chunks)
+        after = os.fstat(fd)
+        before_signature = (
+            before.st_dev,
+            before.st_ino,
+            before.st_size,
+            before.st_mtime_ns,
+            before.st_ctime_ns,
+        )
+        after_signature = (
+            after.st_dev,
+            after.st_ino,
+            after.st_size,
+            after.st_mtime_ns,
+            after.st_ctime_ns,
+        )
+        if before_signature != after_signature or len(payload) != after.st_size:
+            return None
+        return payload
     finally:
         os.close(fd)
 

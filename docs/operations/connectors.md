@@ -29,6 +29,9 @@ Incremental watermarks are read through an open file descriptor with a 1 MiB
 hard budget. The loader rechecks the descriptor type and stops if the file
 grows past that budget while it is being read, so path replacement or a
 concurrent writer cannot turn a small preflight check into an unbounded read.
+It also compares the descriptor's identity, size, and change timestamps before
+and after reading, rejecting in-place rewrites instead of accepting a mixed
+watermark snapshot. Writers should still publish state with atomic replacement.
 
 ## Runtime read budgets
 
