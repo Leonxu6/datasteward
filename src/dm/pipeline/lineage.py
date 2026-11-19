@@ -40,7 +40,11 @@ def _build_graph() -> tuple[dict[str, dict], list[tuple[str, str, str]]]:
             "label": dataset.name,
         }
         source_id = f"source:{dataset.source}" if dataset.source else None
-        if source_id and source_id in nodes:
+        if source_id and source_id not in nodes:
+            raise ValueError(
+                f"dataset {dataset.name} references unknown source: {dataset.source}"
+            )
+        if source_id:
             edges.append((source_id, node_id, "sync"))
     for transform in TRANSFORMS.values():
         transform_id = f"transform:{transform.name}"
@@ -52,12 +56,18 @@ def _build_graph() -> tuple[dict[str, dict], list[tuple[str, str, str]]]:
         }
         for input_name in transform.inputs:
             input_id = f"dataset:{input_name}"
-            if input_id in nodes:
-                edges.append((input_id, transform_id, "input"))
+            if input_id not in nodes:
+                raise ValueError(
+                    f"transform {transform.name} references unknown input dataset: {input_name}"
+                )
+            edges.append((input_id, transform_id, "input"))
         for output_name in transform.outputs:
             output_id = f"dataset:{output_name}"
-            if output_id in nodes:
-                edges.append((transform_id, output_id, "output"))
+            if output_id not in nodes:
+                raise ValueError(
+                    f"transform {transform.name} references unknown output dataset: {output_name}"
+                )
+            edges.append((transform_id, output_id, "output"))
     return nodes, edges
 
 

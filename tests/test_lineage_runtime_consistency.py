@@ -132,3 +132,44 @@ def test_effective_markings_follow_live_upstream_registry(monkeypatch):
     assert lineage.effective_markings("clean") == ["CURATED", "PII", "RAW"]
     source.markings.append("EXPORT_CONTROLLED")
     assert lineage.effective_markings("clean") == ["CURATED", "EXPORT_CONTROLLED", "PII", "RAW"]
+
+
+def test_broken_source_reference_fails_closed_for_graph_and_markings(monkeypatch):
+    monkeypatch.setattr(lineage, "SOURCES", {})
+    monkeypatch.setattr(
+        lineage,
+        "DATASETS",
+        {"raw": _dataset("raw", source="missing", markings=["PII"])},
+    )
+    monkeypatch.setattr(lineage, "TRANSFORMS", {})
+
+    message = "dataset raw references unknown source: missing"
+    with pytest.raises(ValueError, match=message):
+        lineage.lineage_graph()
+    with pytest.raises(ValueError, match=message):
+        lineage.effective_markings("raw")
+
+
+@pytest.mark.parametrize(
+    ("inputs", "outputs", "reference_kind", "missing_name"),
+    [
+        (["missing"], ["known"], "input", "missing"),
+        (["known"], ["missing"], "output", "missing"),
+    ],
+)
+def test_broken_transform_references_fail_closed(
+    monkeypatch, inputs, outputs, reference_kind, missing_name
+):
+    monkeypatch.setattr(lineage, "SOURCES", {})
+    monkeypatch.setattr(lineage, "DATASETS", {"known": _dataset("known")})
+    monkeypatch.setattr(
+        lineage,
+        "TRANSFORMS",
+        {"refine": Transform(name="refine", kind="refine", inputs=inputs, outputs=outputs)},
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=f"transform refine references unknown {reference_kind} dataset: {missing_name}",
+    ):
+        lineage.lineage_graph()
