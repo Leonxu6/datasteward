@@ -28,6 +28,7 @@ _SAFE_VALIDATION_MESSAGES = (
     "max_age_days must be a non-negative integer",
 )
 _MAX_DBT_RESULTS_BYTES = 32 * 1024 * 1024
+_DBT_TEST_STATUSES = frozenset({"pass", "warn", "fail", "error", "skipped"})
 
 
 def _reject_json_constant(value: str) -> None:
@@ -219,6 +220,8 @@ def _dbt_tests_result(chk):
         if not isinstance(unique_id, str) or not isinstance(status, str):
             return _result(chk, "fail", None, "run_results.json 包含结构异常的结果项")
         if unique_id.startswith("test."):
+            if status not in _DBT_TEST_STATUSES:
+                return _result(chk, "fail", None, "run_results.json 包含未知的 dbt 测试状态")
             tests.append(item)
     bad = [
         r["unique_id"].split(".")[2] if len(r["unique_id"].split(".")) > 2 else r["unique_id"]
@@ -229,6 +232,16 @@ def _dbt_tests_result(chk):
         return _result(chk, "fail", len(bad), f"{len(bad)} 个 dbt 测试未过：{', '.join(bad[:5])}")
     if not tests:
         return _result(chk, "warn", 0, "run_results.json 里没有测试结果（可能只跑了 run）")
+    warned = sum(1 for result in tests if result["status"] == "warn")
+    skipped = sum(1 for result in tests if result["status"] == "skipped")
+    if warned or skipped:
+        actual = {"total": len(tests), "warn": warned, "skipped": skipped}
+        return _result(
+            chk,
+            "warn",
+            actual,
+            f"dbt 测试未全部通过：{warned} 个警告，{skipped} 个跳过",
+        )
     return _result(chk, "ok", len(tests), f"dbt 测试全过（{len(tests)} 个）")
 
 

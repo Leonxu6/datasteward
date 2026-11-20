@@ -55,6 +55,43 @@ def test_dbt_health_rejects_missing_result_identity(tmp_path, monkeypatch):
     assert "结构异常" in result["message"]
 
 
+def test_dbt_health_surfaces_warned_and_skipped_tests(tmp_path, monkeypatch):
+    _write_results(
+        tmp_path,
+        json.dumps(
+            {
+                "results": [
+                    {"unique_id": "test.project.accepted_values", "status": "warn"},
+                    {"unique_id": "test.project.relationships", "status": "skipped"},
+                ]
+            }
+        ),
+    )
+    monkeypatch.setenv("DM_DBT_DIR", str(tmp_path))
+
+    result = checks._dbt_tests_result(_CHK)
+
+    assert result["status"] == "warn"
+    assert result["actual"] == {"total": 2, "warn": 1, "skipped": 1}
+    assert "未全部通过" in result["message"]
+
+
+def test_dbt_health_rejects_unknown_test_statuses(tmp_path, monkeypatch):
+    _write_results(
+        tmp_path,
+        json.dumps(
+            {"results": [{"unique_id": "test.project.not_null", "status": "unknown"}]}
+        ),
+    )
+    monkeypatch.setenv("DM_DBT_DIR", str(tmp_path))
+
+    result = checks._dbt_tests_result(_CHK)
+
+    assert result["status"] == "fail"
+    assert result["actual"] is None
+    assert "未知的 dbt 测试状态" in result["message"]
+
+
 def test_dbt_health_uses_descriptor_owned_artifact_reads(tmp_path, monkeypatch):
     _write_results(tmp_path, '{"results": []}')
     path = tmp_path / "target" / "run_results.json"

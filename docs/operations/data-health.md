@@ -26,7 +26,7 @@ Compare normalized column names and report missing and extra columns separately.
 
 ## dbt tests
 
-A missing `run_results.json` is different from a failed dbt test. Report missing artifacts as an actionable warning, explicit test failures as failures, and a run with no tests as a distinct warning.
+A missing `run_results.json` is different from a failed dbt test. Report missing artifacts as an actionable warning, explicit test failures as failures, and a run with no tests as a distinct warning. A `warn` or `skipped` test is not an all-passing run and must keep the health result at warning status; unknown test statuses fail the artifact contract instead of being counted as successful.
 
 ## On-call workflow
 
