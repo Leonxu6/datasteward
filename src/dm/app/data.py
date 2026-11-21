@@ -393,7 +393,7 @@ def sr_pg_parity() -> dict:
         out["rows"].append({"table": t["name"], "cn": t["cn"], "pg": p, "sr": s, "match": match})
         if match:
             out["n_match"] += 1
-    out["ok"] = bool(sr)
+    out["ok"] = bool(sr) and all(value is not None for value in sr.values())
     return out
 
 

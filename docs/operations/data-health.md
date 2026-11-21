@@ -10,6 +10,8 @@ Each check returns a structured result with an id, type, table, description, sev
 
 Row counts must be non-negative integers. Missing source or sink counts are failures, not zeros. Parity mismatches should report both counts and the absolute difference so CDC lag is visible.
 
+The dashboard parity probe marks the warehouse side healthy only when every configured table count is readable. A partially populated count map is still a monitoring failure; the presence of table names alone must not make the sink look available.
+
 ## Replication slots
 
 Both the pipeline-health evaluator and the Streamlit dashboard read replication slots in name order and accept at most 1,000 rows. Slot names must be clean text, active state must be a real boolean, and lag must be a non-negative integral value (or null); values are never coerced from strings. A larger or malformed catalog is reported as a monitoring failure without publishing a partial snapshot or loading an unbounded result. Treat that result as a signal to inspect abandoned slots and the source database's `max_replication_slots` policy; do not raise the application limit before confirming the catalog is intentional.

@@ -278,6 +278,54 @@ def test_pg_slot_probe_does_not_publish_partial_rows(monkeypatch):
     assert result["slots"] == []
 
 
+def test_parity_probe_does_not_mark_failed_sink_counts_healthy(monkeypatch):
+    import psycopg
+    from dm import schema
+    from dm.warehouse import store
+
+    class Warehouse:
+        def execute(self, _query):
+            raise RuntimeError("count unavailable")
+
+        def close(self):
+            return None
+
+    class Cursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def execute(self, _query):
+            return None
+
+        def fetchone(self):
+            return (7,)
+
+    class Postgres:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def cursor(self):
+            return Cursor()
+
+    monkeypatch.setattr(schema, "TABLES", [{"name": "inventory", "cn": "库存"}])
+    monkeypatch.setattr(store, "connect_ro", lambda: Warehouse())
+    monkeypatch.setattr(psycopg, "connect", lambda **_kwargs: Postgres())
+
+    result = _call(data.sr_pg_parity)
+
+    assert result["ok"] is False
+    assert result["pg_ok"] is True
+    assert result["rows"] == [
+        {"table": "inventory", "cn": "库存", "pg": 7, "sr": None, "match": False}
+    ]
+
+
 def test_warehouse_probe_redacts_backend_exception(monkeypatch):
     from dm.warehouse import store
 
