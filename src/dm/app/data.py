@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+import math
 from collections import Counter
 from collections.abc import Mapping
 from datetime import datetime
@@ -123,8 +124,26 @@ def _pg_slot_row(row: object) -> dict[str, object]:
 # ============================ 纯聚合 ============================
 def agg_audit(logs) -> dict:
     n = len(logs)
-    ok = sum(1 for r in logs if r.get("ok"))
-    durs = [r["duration_ms"] for r in logs if isinstance(r.get("duration_ms"), (int, float))]
+    ok = sum(1 for r in logs if r.get("ok") is True)
+    durs = [
+        duration
+        for r in logs
+        if (
+            not isinstance((duration := r.get("duration_ms")), bool)
+            and isinstance(duration, (int, float))
+            and math.isfinite(duration)
+            and duration >= 0
+        )
+    ]
+    if durs:
+        scale = max(durs)
+        average_duration = (
+            0
+            if scale == 0
+            else scale * (sum(value / scale for value in durs) / len(durs))
+        )
+    else:
+        average_duration = None
     tools = Counter((r.get("tool_name") or "?") for r in logs)
     tables = Counter()
     for r in logs:
@@ -135,11 +154,11 @@ def agg_audit(logs) -> dict:
     return {
         "total": n, "ok": ok, "fail": n - ok,
         "success_rate": round(ok / n * 100) if n else None,
-        "avg_ms": round(sum(durs) / len(durs)) if durs else None,
+        "avg_ms": round(average_duration) if average_duration is not None else None,
         "by_tool": dict(tools),
         "by_table": tables.most_common(8),
         "durations": durs,
-        "failures": [r for r in logs if not r.get("ok")][-20:][::-1],
+        "failures": [r for r in logs if r.get("ok") is not True][-20:][::-1],
         "recent": logs[-15:][::-1],
     }
 
