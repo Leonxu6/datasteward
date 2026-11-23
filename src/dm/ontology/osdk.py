@@ -76,7 +76,7 @@ def list_objects(api_name: str, limit: int = 50, order_by: Optional[str] = None,
     sql = f"SELECT * FROM `{ot.table}`" + where
     if order_prop is not None:
         sql += f" ORDER BY `{order_prop.column}`"
-    sql += f" LIMIT {limit + 1}"
+    sql += f" LIMIT {limit}"
     con = connect_ro()
     try:
         cur = con.execute(sql)
@@ -148,7 +148,7 @@ def get_links(api_name: str, pk_value, per_link_limit: int = 20) -> dict:
         for lk in incoming_links(ot.api_name):
             child = get_object_type(lk.from_object)
             cur = con.execute(
-                f"SELECT * FROM `{child.table}` WHERE `{lk.from_property}` = %s LIMIT {per_link_limit + 1}",
+                f"SELECT * FROM `{child.table}` WHERE `{lk.from_property}` = %s LIMIT {per_link_limit}",
                 (pk_value,))
             cols = [d[0] for d in cur.description]
             rows = fetch_bounded_rows(

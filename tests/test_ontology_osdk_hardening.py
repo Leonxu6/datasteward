@@ -74,7 +74,7 @@ def test_list_objects_enforces_limit_at_driver_boundary(monkeypatch):
         list_objects("Material", limit=2)
 
     assert connection.cursor.fetch_sizes == [3]
-    assert connection.calls == [("SELECT * FROM `material` LIMIT 3", None)]
+    assert connection.calls == [("SELECT * FROM `material` LIMIT 2", None)]
     assert connection.closed is True
 
 
@@ -100,8 +100,22 @@ def test_get_links_enforces_each_incoming_link_budget(monkeypatch):
 
     assert connection.cursor.fetch_sizes == [3]
     assert connection.calls == [
-        ("SELECT * FROM `child` WHERE `material_id` = %s LIMIT 3", ("M001",))
+        ("SELECT * FROM `child` WHERE `material_id` = %s LIMIT 2", ("M001",))
     ]
+    assert connection.closed is True
+
+
+def test_list_objects_returns_a_full_page_when_the_database_honors_the_limit(monkeypatch):
+    connection = _Connection([("M001", "one"), ("M002", "two")])
+    monkeypatch.setattr(osdk, "get_object_type", lambda _name: _object_type_stub())
+    monkeypatch.setattr(osdk, "connect_ro", lambda: connection)
+
+    result = list_objects("Material", limit=2)
+
+    assert result["count"] == 2
+    assert [item["id"] for item in result["objects"]] == ["M001", "M002"]
+    assert connection.cursor.fetch_sizes == [3]
+    assert connection.calls == [("SELECT * FROM `material` LIMIT 2", None)]
     assert connection.closed is True
 
 
