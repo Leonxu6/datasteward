@@ -6,12 +6,13 @@ from pathlib import Path
 from typing import Optional
 
 from dm.config import FILE_SOURCE_DIR
-from dm.connect.base import ColumnDef, Connector, DatasetDef, Source, normalize_read_limit
+from dm.connect.base import ColumnDef, Connector, DatasetDef, Source, normalize_read_limit, read_row_budget
 
 _EXTS = (".csv", ".xlsx", ".xls")
 _EXT_PRIORITY = {ext: idx for idx, ext in enumerate(_EXTS)}
 _TEMP_PREFIXES = ("~$", "._")
 _MAX_COLUMN_NAME = 256
+_MAX_FILE_ROWS = read_row_budget(None)
 
 
 def default_file_source() -> Source:
@@ -190,7 +191,11 @@ class FileConnector(Connector):
         limit = normalize_read_limit(limit); incremental = since is not None
         if cursor_col is not None and since is None: raise ValueError("增量读取提供 cursor_col 时必须同时提供 since")
         if incremental: cursor_col = self._validate_cursor(cursor_col)
-        df = self._normalize_columns(self._read_df(self._path(name), nrows=None if incremental else limit))
+        bounded_scan = incremental or limit is None or limit > _MAX_FILE_ROWS
+        nrows = _MAX_FILE_ROWS + 1 if bounded_scan else limit
+        df = self._normalize_columns(self._read_df(self._path(name), nrows=nrows))
+        if len(df) > _MAX_FILE_ROWS:
+            raise RuntimeError(f"文件源读取超过 {_MAX_FILE_ROWS} 行预算")
         if incremental:
             if cursor_col not in df.columns: raise ValueError(f"增量游标列不存在: {cursor_col}")
             try:

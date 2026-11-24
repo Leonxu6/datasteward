@@ -43,6 +43,12 @@ Use a smaller `limit`, an incremental cursor, or a streaming pipeline for larger
 extracts; do not raise the in-process budget to turn a batch API into a bulk
 transport.
 
+CSV and Excel reads enforce the same 100,000-row materialization ceiling. An
+unbounded snapshot, an oversized requested limit, or an incremental scan reads
+at most one sentinel row beyond that ceiling and then fails explicitly. Split
+larger drop files or move them to a streaming/bulk ingestion path instead of
+letting a local parsing worker consume memory without a bound.
+
 The U8 `status` command applies a separate 10,000-table discovery budget when
 enumerating `raw_u8__*` ODS tables. It orders names before requesting one
 sentinel row beyond the budget, then refuses an oversized catalog instead of

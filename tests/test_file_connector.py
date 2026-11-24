@@ -172,7 +172,41 @@ def test_incremental_limit_is_applied_after_cursor_filter(tmp_path, monkeypatch)
     def fake_read(path, nrows=None):
         calls.append(nrows); return pd.DataFrame({"id": [1, 2, 3], "updated_at": ["2026-07-01", "2026-08-01", "2026-08-07"]})
     monkeypatch.setattr(connector, "_read_df", fake_read); columns, rows = connector.read_table("orders", limit=1, cursor_col="updated_at", since="2026-07-15")
-    assert calls == [None] and columns == ["id", "updated_at"] and rows == [(2, "2026-08-01")]
+    assert calls == [100_001] and columns == ["id", "updated_at"] and rows == [(2, "2026-08-01")]
+
+
+@pytest.mark.parametrize(
+    ("limit", "cursor_col", "since"),
+    [
+        (None, None, None),
+        (10, "updated_at", "2026-07-15"),
+        (10, None, None),
+    ],
+)
+def test_file_reads_reject_materialization_beyond_global_budget(
+    tmp_path, monkeypatch, limit, cursor_col, since
+):
+    (tmp_path / "orders.csv").write_text("id,updated_at\n", encoding="utf-8")
+    connector = _connector(tmp_path)
+    calls = []
+
+    monkeypatch.setattr("dm.connect.file._MAX_FILE_ROWS", 2)
+
+    def fake_read(path, nrows=None):
+        calls.append(nrows)
+        return pd.DataFrame(
+            {
+                "id": [1, 2, 3],
+                "updated_at": ["2026-07-01", "2026-08-01", "2026-08-07"],
+            }
+        )
+
+    monkeypatch.setattr(connector, "_read_df", fake_read)
+
+    with pytest.raises(RuntimeError, match="超过 2 行预算"):
+        connector.read_table("orders", limit=limit, cursor_col=cursor_col, since=since)
+
+    assert calls == [3]
 
 
 def test_negative_limit_is_rejected(tmp_path):
