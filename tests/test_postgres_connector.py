@@ -151,6 +151,20 @@ def test_read_table_rejects_unbounded_results_beyond_driver_budget(monkeypatch):
 
     with pytest.raises(RuntimeError, match="table read for 'orders' exceeded its 2-row budget"):
         connector.read_table("orders")
+    assert cursor.calls == [('SELECT * FROM "public"."orders" LIMIT %s', [3])]
+
+
+def test_read_table_pushes_effective_budget_into_query(monkeypatch):
+    connector = PostgresConnector(Source(name="pg", source_type="postgres"))
+    cursor = _ReadCursor()
+    fake = _Connection(cursor=cursor)
+    monkeypatch.setattr("dm.connect.base._MAX_READ_ROWS", 2)
+    monkeypatch.setattr(connector, "_connect", lambda: fake)
+
+    connector.read_table("orders", limit=10)
+
+    assert cursor.calls == [('SELECT * FROM "public"."orders" LIMIT %s', [3])]
+    assert cursor.fetch_sizes == [3]
 
 
 def test_read_table_safely_quotes_complex_identifiers(monkeypatch):
@@ -160,8 +174,8 @@ def test_read_table_safely_quotes_complex_identifiers(monkeypatch):
     monkeypatch.setattr(connector, "_connect", lambda: fake)
     connector.read_table('Order "Items"', cursor_col="updated at", since="2026-08-01")
     sql, params = cursor.calls[0]
-    assert sql == 'SELECT * FROM "ERP Data"."Order ""Items""" WHERE "updated at" > %s ORDER BY "updated at" ASC'
-    assert params == ["2026-08-01"]
+    assert sql == 'SELECT * FROM "ERP Data"."Order ""Items""" WHERE "updated at" > %s ORDER BY "updated at" ASC LIMIT %s'
+    assert params == ["2026-08-01", 100_001]
 
 
 @pytest.mark.parametrize("name", [None, 123, ["orders"], "", " orders", "orders ", "orders\x00raw"])

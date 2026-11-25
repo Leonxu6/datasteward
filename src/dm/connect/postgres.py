@@ -127,6 +127,8 @@ class PostgresConnector(Connector):
             raise ValueError("增量读取提供 since 时必须同时提供非空 cursor_col")
         schema = self._schema()
         limit = normalize_read_limit(limit)
+        budget = read_row_budget(limit)
+        query_limit = limit if limit is not None and limit <= budget else budget + 1
         sql = f"SELECT * FROM {_quote_ident(schema, field_name='schema')}.{table_sql}"
         params = []
         if since is not None:
@@ -137,15 +139,14 @@ class PostgresConnector(Connector):
             sql += f" WHERE {cursor_sql} > %s"
             params.append(since)
             sql += f" ORDER BY {cursor_sql} ASC"
-        if limit is not None:
-            sql += " LIMIT %s"
-            params.append(limit)
+        sql += " LIMIT %s"
+        params.append(query_limit)
         with self._connect() as c, c.cursor() as cur:
             cur.execute(sql, params or None)
             cols = [d[0] for d in cur.description]
             rows = fetch_bounded_rows(
                 cur,
-                limit=read_row_budget(limit),
+                limit=budget,
                 label=f"PostgreSQL table read for {name!r}",
             )
         return cols, rows

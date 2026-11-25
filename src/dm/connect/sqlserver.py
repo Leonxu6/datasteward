@@ -120,7 +120,14 @@ class SqlServerConnector(Connector):
             raise ValueError(f"非法表名: {name!r}") from exc
         if cursor_col is not None and since is None: raise ValueError("增量读取提供 cursor_col 时必须同时提供 since")
         if since is not None and (not isinstance(cursor_col, str) or not cursor_col.strip()): raise ValueError("增量读取提供 since 时必须同时提供非空 cursor_col")
-        schema = self._schema(); limit = normalize_read_limit(limit); ph = "%s" if _load_driver()[1] == "pymssql" else "?"; top = f"TOP ({limit}) " if limit is not None else ""; sql = f"SELECT {top}* FROM {_quote_ident(schema, field_name='schema')}.{table_sql}"; params = []
+        schema = self._schema()
+        limit = normalize_read_limit(limit)
+        budget = read_row_budget(limit)
+        query_limit = limit if limit is not None and limit <= budget else budget + 1
+        ph = "%s" if _load_driver()[1] == "pymssql" else "?"
+        top = f"TOP ({query_limit}) "
+        sql = f"SELECT {top}* FROM {_quote_ident(schema, field_name='schema')}.{table_sql}"
+        params = []
         if since is not None:
             try:
                 cursor_sql = _quote_ident(cursor_col, field_name="cursor_col")
@@ -134,7 +141,7 @@ class SqlServerConnector(Connector):
                 tuple(row)
                 for row in fetch_bounded_rows(
                     cur,
-                    limit=read_row_budget(limit),
+                    limit=budget,
                     label=f"SQL Server table read for {name!r}",
                 )
             ]

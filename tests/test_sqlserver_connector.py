@@ -134,7 +134,7 @@ def test_read_table_qualifies_configured_schema(monkeypatch):
     connector = SqlServerConnector(Source(name="u8", source_type="sqlserver", params={"schema": "erp"})); cursor = _ReadCursor(); fake = _IntrospectionConnection(cursor=cursor)
     monkeypatch.setattr(sqlserver_module, "_load_driver", lambda: (object(), "pyodbc")); monkeypatch.setattr(connector, "_connect", lambda: fake)
     connector.read_table("orders", cursor_col="id", since=10)
-    assert cursor.sql == "SELECT * FROM [erp].[orders] WHERE [id] > ? ORDER BY [id] ASC" and cursor.params == (10,)
+    assert cursor.sql == "SELECT TOP (100001) * FROM [erp].[orders] WHERE [id] > ? ORDER BY [id] ASC" and cursor.params == (10,)
 
 
 @pytest.mark.parametrize("name", [None, 123, ["orders"], "", " orders", "orders ", "orders\x00raw"])
@@ -191,4 +191,15 @@ def test_read_table_rejects_unbounded_results_beyond_driver_budget(monkeypatch):
     cursor.fetchmany = lambda size: [_DriverRow([1]), _DriverRow([2]), _DriverRow([3])]
     monkeypatch.setattr("dm.connect.base._MAX_READ_ROWS", 2); monkeypatch.setattr(sqlserver_module, "_load_driver", lambda: (object(), "pymssql")); monkeypatch.setattr(connector, "_connect", lambda: fake)
     with pytest.raises(RuntimeError, match="table read for 'orders' exceeded its 2-row budget"): connector.read_table("orders")
+    assert cursor.sql == "SELECT TOP (3) * FROM [dbo].[orders]"
     assert cursor.closed is True and fake.closed is True
+
+
+def test_read_table_pushes_effective_budget_into_query(monkeypatch):
+    connector = SqlServerConnector(Source(name="u8", source_type="sqlserver")); cursor = _ReadCursor(); fake = _IntrospectionConnection(cursor=cursor)
+    monkeypatch.setattr("dm.connect.base._MAX_READ_ROWS", 2); monkeypatch.setattr(sqlserver_module, "_load_driver", lambda: (object(), "pymssql")); monkeypatch.setattr(connector, "_connect", lambda: fake)
+
+    connector.read_table("orders", limit=10)
+
+    assert cursor.sql == "SELECT TOP (3) * FROM [dbo].[orders]"
+    assert cursor.fetch_sizes == [3]

@@ -39,6 +39,9 @@ PostgreSQL and SQL Server table reads materialize their result for the connector
 API, so the driver boundary enforces a hard 100,000-row budget even when the
 caller omits `limit` or requests a larger value. The connector asks for one
 sentinel row beyond the effective budget and fails explicitly if it is present.
+The same effective limit is pushed into PostgreSQL `LIMIT` and SQL Server `TOP`,
+so the database and driver do not have to produce an otherwise unbounded result
+before the client-side sentinel check runs.
 Use a smaller `limit`, an incremental cursor, or a streaming pipeline for larger
 extracts; do not raise the in-process budget to turn a batch API into a bulk
 transport.

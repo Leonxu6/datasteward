@@ -48,7 +48,7 @@ def test_sqlserver_read_safely_quotes_complex_identifiers(monkeypatch):
     assert columns == ["id"]
     assert rows == [(1,)]
     assert connection.cursor_obj.sql == (
-        "SELECT * FROM [ERP Data].[Order ]] Items] WHERE [updated at] > ? "
+        "SELECT TOP (100001) * FROM [ERP Data].[Order ]] Items] WHERE [updated at] > ? "
         "ORDER BY [updated at] ASC"
     )
     assert connection.cursor_obj.params == (10,)
