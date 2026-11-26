@@ -43,6 +43,12 @@ class _Result:
         size = normalize_fetch_size(size)
         try:
             rows = self._cur.fetchmany(size)
+            if not isinstance(rows, (list, tuple)):
+                raise TypeError("database driver returned an invalid row batch")
+            if len(rows) > size:
+                raise RuntimeError(
+                    f"database driver returned more than the requested {size} rows"
+                )
             exhausted = len(rows) < size
         except Exception:
             self.close()
