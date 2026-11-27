@@ -68,6 +68,30 @@ def test_queue_query_closes_connection_when_fetch_fails(monkeypatch):
     assert connection.closed is True
 
 
+@pytest.mark.parametrize(
+    ("description", "rows", "message"),
+    [
+        ([("id",), "value"], [(1, 2)], "malformed column metadata"),
+        ([("id",), ("id",)], [(1, 2)], "duplicate column"),
+        ([("id",), ("value",)], [(1,)], "row width"),
+        ([("id",)], ["text row"], "non-text positional"),
+        ([("id",)], [object()], "sized sequences"),
+    ],
+)
+def test_queue_query_rejects_malformed_records_and_closes_connection(
+    monkeypatch, description, rows, message
+):
+    cursor = Cursor(rows)
+    cursor.description = description
+    connection = Connection(cursor)
+    monkeypatch.setattr(workshop, "connect_ro", lambda: connection)
+
+    with pytest.raises(ValueError, match=message):
+        workshop._q("SELECT queue", limit=3)
+
+    assert connection.closed is True
+
+
 @pytest.mark.parametrize("limit", [True, False, 0, -1, 101, 1.5, "15"])
 def test_queue_query_rejects_invalid_limits_before_connect(monkeypatch, limit):
     monkeypatch.setattr(

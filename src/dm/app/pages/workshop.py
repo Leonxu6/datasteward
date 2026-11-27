@@ -19,6 +19,43 @@ _QUEUE_PAGE_SIZE = 15
 _MAX_QUEUE_QUERY_ROWS = 100
 
 
+def _queue_records(description: object, rows: object) -> list[dict]:
+    """Convert a driver batch without silently truncating malformed queue rows."""
+    if isinstance(description, (str, bytes, bytearray, dict)):
+        raise ValueError("queue query returned malformed column metadata")
+    try:
+        descriptors = list(description)
+    except TypeError as exc:
+        raise ValueError("queue query returned malformed column metadata") from exc
+    columns: list[str] = []
+    for item in descriptors:
+        if isinstance(item, (str, bytes, bytearray, dict)):
+            raise ValueError("queue query returned malformed column metadata")
+        try:
+            columns.append(item[0])
+        except (TypeError, IndexError) as exc:
+            raise ValueError("queue query returned malformed column metadata") from exc
+    if any(not isinstance(column, str) or not column for column in columns):
+        raise ValueError("queue query returned invalid column names")
+    if len(columns) != len(set(columns)):
+        raise ValueError("queue query returned duplicate column names")
+    if not isinstance(rows, (list, tuple)):
+        raise ValueError("queue query returned an invalid row batch")
+
+    records: list[dict] = []
+    for row in rows:
+        if isinstance(row, (str, bytes, bytearray, dict)):
+            raise ValueError("queue rows must be non-text positional sequences")
+        try:
+            width = len(row)
+        except TypeError as exc:
+            raise ValueError("queue rows must be sized sequences") from exc
+        if width != len(columns):
+            raise ValueError("queue row width does not match result columns")
+        records.append(dict(zip(columns, row)))
+    return records
+
+
 def _q(sql: str, *, limit: int = _QUEUE_PAGE_SIZE) -> tuple[list[dict], bool]:
     """Read one bounded queue page and report whether more rows exist."""
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= _MAX_QUEUE_QUERY_ROWS:
@@ -26,9 +63,8 @@ def _q(sql: str, *, limit: int = _QUEUE_PAGE_SIZE) -> tuple[list[dict], bool]:
     con = connect_ro()
     try:
         cur = con.execute(sql)
-        cols = [d[0] for d in cur.description]
         rows = cur.fetchmany(limit + 1)
-        return [dict(zip(cols, row)) for row in rows[:limit]], len(rows) > limit
+        return _queue_records(cur.description, rows[:limit]), len(rows) > limit
     finally:
         con.close()
 
