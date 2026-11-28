@@ -4,11 +4,10 @@ from dm.app.pages import metrics_page
 
 
 class Cursor:
-    description = [("metric",), ("value",)]
-
-    def __init__(self, rows, error=None):
+    def __init__(self, rows, error=None, description=(("metric",), ("value",))):
         self.rows = rows
         self.error = error
+        self.description = description
         self.fetch_sizes = []
         self.closed = False
 
@@ -78,3 +77,45 @@ def test_metric_trial_rejects_invalid_limits_before_connect(monkeypatch, row_lim
 
     with pytest.raises(ValueError, match="trial row limit"):
         metrics_page._run_metric_trial("SELECT metric", row_limit=row_limit)
+
+
+@pytest.mark.parametrize(
+    ("description", "message"),
+    [
+        (None, "column metadata"),
+        ("metric", "column metadata"),
+        ((("metric",), ("metric",)), "duplicate column"),
+        ((("metric",), ("",)), "invalid column"),
+    ],
+)
+def test_metric_trial_rejects_malformed_column_metadata(monkeypatch, description, message):
+    cursor = Cursor([], description=description)
+    connection = Connection(cursor)
+    monkeypatch.setattr(metrics_page, "connect_ro", lambda: connection)
+
+    with pytest.raises(ValueError, match=message):
+        metrics_page._run_metric_trial("SELECT metric")
+
+    assert cursor.closed is True
+    assert connection.closed is True
+
+
+@pytest.mark.parametrize(
+    ("row", "message"),
+    [
+        (("orders",), "row width"),
+        (("orders", 42, "extra"), "row width"),
+        ("orders", "non-text positional"),
+        (object(), "sized sequences"),
+    ],
+)
+def test_metric_trial_rejects_malformed_rows(monkeypatch, row, message):
+    cursor = Cursor([row])
+    connection = Connection(cursor)
+    monkeypatch.setattr(metrics_page, "connect_ro", lambda: connection)
+
+    with pytest.raises(ValueError, match=message):
+        metrics_page._run_metric_trial("SELECT metric, value")
+
+    assert cursor.closed is True
+    assert connection.closed is True

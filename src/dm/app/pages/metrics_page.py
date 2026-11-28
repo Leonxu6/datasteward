@@ -13,6 +13,42 @@ from dm.warehouse.store import connect_ro
 _MAX_TRIAL_ROWS = 200
 
 
+def _validated_trial_result(description: object, rows: object) -> tuple[list[str], list]:
+    """Validate driver metadata and row widths before building a preview table."""
+    if isinstance(description, (str, bytes, bytearray, dict)):
+        raise ValueError("metric trial returned malformed column metadata")
+    try:
+        descriptors = list(description)
+    except TypeError as exc:
+        raise ValueError("metric trial returned malformed column metadata") from exc
+
+    columns: list[str] = []
+    for item in descriptors:
+        if isinstance(item, (str, bytes, bytearray, dict)):
+            raise ValueError("metric trial returned malformed column metadata")
+        try:
+            columns.append(item[0])
+        except (TypeError, IndexError) as exc:
+            raise ValueError("metric trial returned malformed column metadata") from exc
+    if any(not isinstance(column, str) or not column for column in columns):
+        raise ValueError("metric trial returned invalid column names")
+    if len(columns) != len(set(columns)):
+        raise ValueError("metric trial returned duplicate column names")
+    if not isinstance(rows, (list, tuple)):
+        raise ValueError("metric trial returned an invalid row batch")
+
+    for row in rows:
+        if isinstance(row, (str, bytes, bytearray, dict)):
+            raise ValueError("metric trial rows must be non-text positional sequences")
+        try:
+            width = len(row)
+        except TypeError as exc:
+            raise ValueError("metric trial rows must be sized sequences") from exc
+        if width != len(columns):
+            raise ValueError("metric trial row width does not match result columns")
+    return columns, rows
+
+
 def _run_metric_trial(sql: str, *, row_limit: int = _MAX_TRIAL_ROWS) -> tuple[list[str], list]:
     """Run one bounded metric preview and release its cursor and connection."""
     if (
@@ -24,9 +60,8 @@ def _run_metric_trial(sql: str, *, row_limit: int = _MAX_TRIAL_ROWS) -> tuple[li
 
     with connect_ro() as con:
         with con.execute(sql) as cur:
-            cols = [d[0] for d in cur.description] if cur.description else []
             rows = list(cur.fetchmany(row_limit))
-    return cols, rows
+            return _validated_trial_result(cur.description, rows)
 
 
 def render():
